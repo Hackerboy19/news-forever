@@ -52,6 +52,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
     { name: 'Subscribe', icon: Mail },
     { name: 'Activity Log', icon: ShieldCheck },
     { name: 'Users', icon: Users },
+    { name: 'Sub Admin', icon: Users },
     { name: 'Profile', icon: User },
     { name: 'Setting', icon: Settings },
   ];

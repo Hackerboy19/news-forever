@@ -16,6 +16,7 @@ import {
 import PublicLayout from './components/PublicLayout';
 import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
+import SEOManager from './components/SEOManager';
 
 // Admin Components
 import AdminLayout from './components/AdminLayout';
@@ -388,11 +389,11 @@ export function App() {
               <AdminUsers users={users} />
             )}
 
-            {(adminTab === 'Tag' || adminTab === 'Profile') && (
-              <div className="bg-slate-900 border border-slate-800 p-8 rounded-2xl text-center space-y-3">
-                <h2 className="text-xl font-bold text-white">{adminTab} Settings</h2>
-                <p className="text-xs text-slate-400 font-mono">
-                  Module strictly synchronized with CodeIgniter MySQL schema tables (<code className="text-rose-400">ci_tags / ci_users</code>).
+            {(adminTab === 'Tag' || adminTab === 'Profile' || adminTab === 'Sub Admin') && (
+              <div className="bg-white border border-[#E7E5E4] p-8 text-center space-y-3 shadow-xs">
+                <h2 className="text-xl font-bold font-serif italic text-stone-900">{adminTab} Module</h2>
+                <p className="text-xs text-stone-600 font-mono">
+                  Module synchronized with CodeIgniter MySQL schema tables (<code className="text-[#991B1B]">ci_admin / ci_tags / ci_users</code>).
                 </p>
               </div>
             )}
@@ -408,6 +409,7 @@ export function App() {
       categories={categories}
       ads={ads}
       setting={setting}
+      blogs={blogs}
       activeCategory={activeCategory}
       onCategorySelect={(catId) => {
         setActiveCategory(catId);
@@ -421,6 +423,13 @@ export function App() {
       onSwitchToAdmin={() => setViewMode('admin')}
       onSubscribe={handleSubscribe}
     >
+      {!selectedArticleUrl && (
+        <SEOManager
+          siteName={setting?.site_title || "News Forever"}
+          defaultTitle="News Forever | Official News, Pageantry & FSIA Portal"
+          defaultDescription={setting?.site_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+        />
+      )}
       {selectedArticleUrl ? (
         <PublicArticlePage
           urlSlug={selectedArticleUrl}

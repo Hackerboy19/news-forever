@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CIBlog, CIAdvertisement } from '../types';
-import SEOHead from './SEOHead';
+import SEOManager from './SEOManager';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -87,7 +87,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   if (!article) {
     return (
       <div className="py-20 text-center space-y-4 max-w-lg mx-auto bg-white p-8 border border-[#E7E5E4] shadow-xs">
-        <SEOHead defaultTitle="Article Not Found | Global Gazette" />
+        <SEOManager defaultTitle="Article Not Found | News Forever" />
         <h2 className="text-2xl font-serif italic font-bold text-stone-900">404 - Article Not Found</h2>
         <p className="text-sm text-stone-600">
           No legacy news record exists matching <code className="text-[#991B1B] font-mono">/article/{urlSlug}</code>.
@@ -108,7 +108,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* PROGRAMMATIC SEO & OPENGRAPH HEAD INJECTION */}
-      <SEOHead article={article} />
+      <SEOManager article={article} siteName="News Forever" />
 
       {/* Breadcrumbs & Native Web Share Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-stone-600 border-b border-[#E7E5E4] pb-4">
@@ -187,10 +187,6 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
                   (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80';
                 }}
               />
-            </div>
-            {/* Alt Tag Caption */}
-            <div className="text-right text-[10px] font-mono text-stone-500 uppercase tracking-widest font-semibold">
-              Image Alt Tag: <code className="text-[#991B1B] font-bold">"{article.alt_tag}"</code>
             </div>
           </div>
 
@@ -274,20 +270,6 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             </div>
           </div>
 
-          {/* HEADING HIERARCHY MAP (H2 - H6 DOM Elements) */}
-          <div className="p-5 bg-[#FAF8F5] border border-[#E7E5E4] space-y-3">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-[#991B1B] font-mono">
-              Database DOM Heading Hierarchy (<code className="text-stone-700">h2_tag - h6_tag</code>)
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
-              {article.h2_tag && <div className="p-2.5 bg-white border border-stone-200 text-stone-800"><span className="text-[#991B1B] font-bold">&lt;H2&gt;</span> {article.h2_tag}</div>}
-              {article.h3_tag && <div className="p-2.5 bg-white border border-stone-200 text-stone-800"><span className="text-[#991B1B] font-bold">&lt;H3&gt;</span> {article.h3_tag}</div>}
-              {article.h4_tag && <div className="p-2.5 bg-white border border-stone-200 text-stone-800"><span className="text-[#991B1B] font-bold">&lt;H4&gt;</span> {article.h4_tag}</div>}
-              {article.h5_tag && <div className="p-2.5 bg-white border border-stone-200 text-stone-800"><span className="text-[#991B1B] font-bold">&lt;H5&gt;</span> {article.h5_tag}</div>}
-              {article.h6_tag && <div className="p-2.5 bg-white border border-stone-200 text-stone-800"><span className="text-[#991B1B] font-bold">&lt;H6&gt;</span> {article.h6_tag}</div>}
-            </div>
-          </div>
-
           {/* HTML Article Body */}
           <div 
             className="prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
@@ -312,20 +294,6 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               </a>
             </div>
           )}
-
-          {/* SEO Metadata Table Inspection */}
-          <div className="p-5 bg-[#FAF8F5] border border-[#E7E5E4] space-y-3 pt-4">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#991B1B] font-mono border-b border-[#E7E5E4] pb-2">
-              Injected Article SEO Metadata Inspection
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono text-stone-600">
-              <div><span className="text-stone-900 font-bold">meta_title:</span> {article.meta_title}</div>
-              <div><span className="text-stone-900 font-bold">meta_keywords:</span> {article.meta_keyword}</div>
-              <div className="sm:col-span-2"><span className="text-stone-900 font-bold">meta_description:</span> {article.meta_description}</div>
-              <div><span className="text-stone-900 font-bold">og_title:</span> {article.og_title}</div>
-              <div><span className="text-stone-900 font-bold">og_url:</span> {article.og_url}</div>
-            </div>
-          </div>
         </article>
 
         {/* Sticky Sidebar Ads & Related Articles */}

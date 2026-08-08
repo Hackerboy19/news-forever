@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIBlog, CIAdvertisement, CICategory } from '../types';
 import { TrendingUp, Eye, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react';
+import TrendingSidebar from './TrendingSidebar';
 
 interface PublicHomeProps {
   blogs: CIBlog[];
@@ -218,8 +219,11 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </div>
         </div>
 
-        {/* Sticky Right Sidebar (1 Column) */}
+        {/* Right Sidebar (1 Column) */}
         <div className="space-y-8">
+          {/* Trending Now Component */}
+          <TrendingSidebar blogs={blogs} onSelectArticle={onSelectArticle} />
+
           {/* Sticky Sidebar Ad Zone */}
           {sidebarAd && (
             <div className="sticky top-20 bg-white border border-[#E7E5E4] p-4 text-center space-y-3 shadow-xs">

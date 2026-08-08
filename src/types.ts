@@ -32,11 +32,11 @@ export interface CIBlog {
   og_image: string;
 
   // DOM Heading Hierarchy Fields
-  h2_tag: string;
-  h3_tag: string;
-  h4_tag: string;
-  h5_tag: string;
-  h6_tag: string;
+  h2_tag?: string;
+  h3_tag?: string;
+  h4_tag?: string;
+  h5_tag?: string;
+  h6_tag?: string;
 }
 
 export interface CICategory {
