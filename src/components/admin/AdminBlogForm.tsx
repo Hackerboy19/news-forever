@@ -1,0 +1,685 @@
+import React, { useState, useEffect } from 'react';
+import { CIBlog, CICategory, CITag, CIImageLibrary } from '../../types';
+import { 
+  FileText, 
+  Image as ImageIcon, 
+  Search, 
+  Heading, 
+  Save, 
+  ArrowLeft, 
+  Check, 
+  Sparkles, 
+  Globe, 
+  Eye, 
+  Tag as TagIcon,
+  HelpCircle,
+  AlertCircle
+} from 'lucide-react';
+
+interface AdminBlogFormProps {
+  initialData?: CIBlog | null;
+  categories: CICategory[];
+  tags: CITag[];
+  images: CIImageLibrary[];
+  onSave: (formData: Partial<CIBlog>) => void;
+  onCancel: () => void;
+  isSaving?: boolean;
+}
+
+export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
+  initialData,
+  categories,
+  tags,
+  images,
+  onSave,
+  onCancel,
+  isSaving = false,
+}) => {
+  const [activeTab, setActiveTab] = useState<'general' | 'media' | 'seo' | 'headings'>('general');
+  const [showImagePicker, setShowImagePicker] = useState(false);
+
+  // Form State initialized with database defaults
+  const [formData, setFormData] = useState<Partial<CIBlog>>({
+    title: '',
+    url: '',
+    short_content: '',
+    content: '',
+    category_id: categories.length ? categories[0].id : 1,
+    tag_ids: [],
+    image: 'assets/img/blog/2026/08/miss-universe-stage.jpg',
+    alt_tag: '',
+    status: 1,
+    is_featured: false,
+    is_trending: false,
+    
+    // SEO
+    meta_title: '',
+    meta_description: '',
+    meta_keyword: '',
+    og_title: '',
+    og_url: '',
+    og_description: '',
+    og_image: '',
+
+    // Headings
+    h2_tag: '',
+    h3_tag: '',
+    h4_tag: '',
+    h5_tag: '',
+    h6_tag: '',
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData(initialData);
+    }
+  }, [initialData]);
+
+  // Handle URL slug auto-generation from Title
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const title = e.target.value;
+    const autoSlug = title
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[\s_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    setFormData(prev => ({
+      ...prev,
+      title,
+      // Auto fill URL & SEO titles if empty or pristine
+      url: prev.url && initialData ? prev.url : autoSlug,
+      meta_title: prev.meta_title ? prev.meta_title : title,
+      og_title: prev.og_title ? prev.og_title : title,
+      alt_tag: prev.alt_tag ? prev.alt_tag : title,
+    }));
+  };
+
+  const handleInputChange = (field: keyof CIBlog, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleTagToggle = (tagId: number) => {
+    const currentTags = formData.tag_ids || [];
+    if (currentTags.includes(tagId)) {
+      handleInputChange('tag_ids', currentTags.filter(id => id !== tagId));
+    } else {
+      handleInputChange('tag_ids', [...currentTags, tagId]);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title) {
+      setActiveTab('general');
+      alert('Please enter an Article Title');
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <div id="admin-blog-form-container" className="bg-[#111111] border border-[#222222] shadow-2xl text-[#E0E0E0] overflow-hidden">
+      {/* Header bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 border-b border-[#222222] bg-[#0A0A0A]">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onCancel}
+            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded transition"
+            title="Back to Blog List"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2 font-serif italic">
+              {initialData ? `Edit Article #${initialData.id}` : 'Create New Article'}
+              <span className="text-[10px] uppercase tracking-widest px-2.5 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20 font-mono font-bold">
+                ci_blog Schema
+              </span>
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              100% database-aligned editor mapping to <code className="text-zinc-300 font-mono">ci_blog</code> fields
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-zinc-300 border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white bg-orange-600 hover:bg-orange-500 transition shadow-lg shadow-orange-600/20 disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            {isSaving ? 'Saving...' : 'Update Article'}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs Bar */}
+      <div className="flex border-b border-[#222222] bg-[#0D0D0D] px-6 gap-1 pt-4 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab('general')}
+          className={`flex items-center gap-2 px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition whitespace-nowrap ${
+            activeTab === 'general'
+              ? 'bg-orange-600 text-white'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          General Info
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('media')}
+          className={`flex items-center gap-2 px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition whitespace-nowrap ${
+            activeTab === 'media'
+              ? 'bg-orange-600 text-white'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white'
+          }`}
+        >
+          <ImageIcon className="w-3.5 h-3.5" />
+          Media Library
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('seo')}
+          className={`flex items-center gap-2 px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition whitespace-nowrap ${
+            activeTab === 'seo'
+              ? 'bg-orange-600 text-white'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5" />
+          SEO & Metadata
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('headings')}
+          className={`flex items-center gap-2 px-6 py-2.5 text-xs font-bold uppercase tracking-widest transition whitespace-nowrap ${
+            activeTab === 'headings'
+              ? 'bg-orange-600 text-white'
+              : 'bg-zinc-900 text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Heading className="w-3.5 h-3.5" />
+          Header Tags (H2-H6)
+        </button>
+      </div>
+
+      {/* Form Body */}
+      <form onSubmit={handleSubmit} className="p-6">
+        {/* TAB 1: GENERAL INFO */}
+        {activeTab === 'general' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Title & URL Slug */}
+              <div className="lg:col-span-2 space-y-6">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">
+                    Article Title (h1) (<code className="text-orange-400">title</code>)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.title || ''}
+                    onChange={handleTitleChange}
+                    placeholder="e.g. The Evolution of Global Pageantry: A New Era Begins"
+                    className="w-full bg-transparent border-b-2 border-zinc-700 py-3 text-2xl font-serif italic text-white outline-none focus:border-orange-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2 flex items-center justify-between">
+                    <span>Database URL Key (<code className="text-orange-400">ci_blog.url</code>)</span>
+                    <span className="text-zinc-500 text-[10px] font-normal">Exact SEO route match</span>
+                  </label>
+                  <div className="flex bg-[#0A0A0A] border border-[#222222] p-3 text-xs font-mono text-zinc-300">
+                    <span className="text-zinc-500 pr-2">/article/</span>
+                    <input
+                      type="text"
+                      required
+                      value={formData.url || ''}
+                      onChange={(e) => handleInputChange('url', e.target.value)}
+                      placeholder="evolution-of-global-pageantry"
+                      className="w-full bg-transparent text-orange-400 outline-none font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Short Content */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">
+                    Article Abstract / Short Content (<code className="text-orange-400">short_content</code>)
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={formData.short_content || ''}
+                    onChange={(e) => handleInputChange('short_content', e.target.value)}
+                    placeholder="Brief 2-3 sentence article summary..."
+                    className="w-full p-4 bg-[#0A0A0A] border border-[#222222] text-sm font-serif leading-relaxed text-zinc-300 outline-none focus:border-orange-500 transition"
+                  />
+                </div>
+
+                {/* Full HTML Content */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">
+                    Article Body (<code className="text-orange-400">content</code>)
+                  </label>
+                  <textarea
+                    rows={10}
+                    value={formData.content || ''}
+                    onChange={(e) => handleInputChange('content', e.target.value)}
+                    placeholder="<p>Write or paste your article body content here...</p>"
+                    className="w-full p-4 bg-[#0A0A0A] border border-[#222222] text-sm font-serif leading-relaxed text-zinc-300 outline-none focus:border-orange-500 transition font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Sidebar Metadata & SEO Preview Sidebar */}
+              <div className="space-y-6">
+                {/* SEO Preview Box */}
+                <div className="bg-zinc-950 text-white p-6 border border-[#222222]">
+                  <h3 className="text-xs font-bold uppercase tracking-widest mb-4 flex justify-between items-center text-zinc-300">
+                    SEO Preview
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-mono font-bold">Healthy</span>
+                  </h3>
+                  <div className="space-y-3 text-xs">
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Meta Title</p>
+                      <p className="text-xs font-semibold text-zinc-200 mt-0.5">{formData.meta_title || formData.title || 'Untitled Article'}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Meta Keywords</p>
+                      <p className="text-xs italic underline decoration-zinc-700 underline-offset-4 text-orange-400 mt-0.5">{formData.meta_keyword || 'pageant, news, global'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ad Placement Zone Box */}
+                <div className="bg-[#0A0A0A] border border-[#222222] p-6 relative overflow-hidden space-y-3">
+                  <div className="absolute top-3 right-3 flex items-center gap-1">
+                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                  </div>
+                  <h3 className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest mb-2">Ad Placement (ci_advertisement)</h3>
+                  <div className="border-2 border-dashed border-zinc-800 rounded p-4 flex items-center justify-center min-h-[100px] text-center">
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Sidebar Sticky Zone (Active)</span>
+                  </div>
+                </div>
+
+                {/* Category & Status */}
+                <div className="bg-[#0A0A0A] border border-[#222222] p-5 space-y-4">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 border-b border-zinc-800 pb-2">
+                    Taxonomy & Publishing Status
+                  </h3>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Category Mapping</label>
+                    <select
+                      value={formData.category_id || 1}
+                      onChange={(e) => handleInputChange('category_id', parseInt(e.target.value, 10))}
+                      className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-zinc-200 outline-none focus:border-orange-500"
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.category_name} (ID: {cat.id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Status</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleInputChange('status', 1)}
+                        className={`p-2 text-xs font-bold uppercase tracking-wider transition ${
+                          formData.status === 1 ? 'bg-emerald-600 text-white' : 'bg-zinc-900 text-zinc-500'
+                        }`}
+                      >
+                        Active
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInputChange('status', 0)}
+                        className={`p-2 text-xs font-bold uppercase tracking-wider transition ${
+                          formData.status === 0 ? 'bg-amber-600 text-white' : 'bg-zinc-900 text-zinc-500'
+                        }`}
+                      >
+                        Draft
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-800 space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={!!formData.is_featured}
+                        onChange={(e) => handleInputChange('is_featured', e.target.checked)}
+                        className="accent-orange-600"
+                      />
+                      <span>Featured Cover Story</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={!!formData.is_trending}
+                        onChange={(e) => handleInputChange('is_trending', e.target.checked)}
+                        className="accent-orange-600"
+                      />
+                      <span>Trending News Feed</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: MEDIA & ASSETS */}
+        {activeTab === 'media' && (
+          <div className="space-y-6">
+            <div className="bg-slate-950/60 p-6 border border-slate-800 rounded-xl space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-rose-400" />
+                    Asset Mapping & Image Alt Tags
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Binds directly to <code className="text-rose-400">image</code> and <code className="text-rose-400">alt_tag</code> columns. File path structures (e.g. assets/img/blog/...) remain intact.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowImagePicker(true)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-rose-300 border border-slate-700 rounded-lg transition"
+                >
+                  Browse Image Library
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
+                    Database Image File Path (<code className="text-rose-400">image</code>)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.image || ''}
+                    onChange={(e) => handleInputChange('image', e.target.value)}
+                    placeholder="assets/img/blog/2026/08/sample.jpg"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-rose-500 mb-4"
+                  />
+
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
+                    Image Alt Tag (<code className="text-rose-400">alt_tag</code>)
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.alt_tag || ''}
+                    onChange={(e) => handleInputChange('alt_tag', e.target.value)}
+                    placeholder="Descriptive alt text for accessibility and SEO"
+                    className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Crucial for image SEO & WCAG compliance. Automatically injected into DOM <code className="text-slate-300">alt</code> attribute.
+                  </p>
+                </div>
+
+                {/* Image Live Preview Box */}
+                <div className="border border-slate-800 rounded-xl p-4 bg-slate-900/80 flex flex-col items-center justify-center text-center">
+                  <span className="text-xs text-slate-400 uppercase font-semibold mb-2">Database Image Asset Preview</span>
+                  <div className="relative w-full h-48 rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
+                    {formData.image ? (
+                      <img
+                        src={formData.image}
+                        alt={formData.alt_tag || 'Preview'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // Fallback placeholder
+                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&auto=format&fit=crop&q=80';
+                        }}
+                      />
+                    ) : (
+                      <div className="text-slate-600 text-xs flex flex-col items-center gap-1">
+                        <ImageIcon className="w-8 h-8 stroke-1" />
+                        <span>No image path specified</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400 font-mono truncate max-w-full">
+                    alt="{formData.alt_tag || 'Empty Alt Tag'}"
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: SEO & META */}
+        {activeTab === 'seo' && (
+          <div className="space-y-6">
+            <div className="bg-slate-950/60 p-6 border border-slate-800 rounded-xl space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-rose-400" />
+                  Meta & OpenGraph Programmatic SEO Fields
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Programmatically injected into <code className="text-slate-300">&lt;head&gt;</code> to maintain 100% of legacy Domain Authority (DA).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Standard Search Engine Meta */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-rose-400 border-b border-slate-800 pb-2">
+                    Standard Search Engine Metadata
+                  </h4>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Meta Title (<code className="text-rose-400">meta_title</code>)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.meta_title || ''}
+                      onChange={(e) => handleInputChange('meta_title', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Meta Keywords (<code className="text-rose-400">meta_keyword</code>)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.meta_keyword || ''}
+                      onChange={(e) => handleInputChange('meta_keyword', e.target.value)}
+                      placeholder="comma, separated, keywords"
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Meta Description (<code className="text-rose-400">meta_description</code>)
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={formData.meta_description || ''}
+                      onChange={(e) => handleInputChange('meta_description', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Social OpenGraph Tags */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-rose-400 border-b border-slate-800 pb-2">
+                    OpenGraph & Social Sharing Meta
+                  </h4>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      OG Title (<code className="text-rose-400">og_title</code>)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.og_title || ''}
+                      onChange={(e) => handleInputChange('og_title', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      OG Canonical URL (<code className="text-rose-400">og_url</code>)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.og_url || ''}
+                      onChange={(e) => handleInputChange('og_url', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      OG Image Path (<code className="text-rose-400">og_image</code>)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.og_image || ''}
+                      onChange={(e) => handleInputChange('og_image', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      OG Description (<code className="text-rose-400">og_description</code>)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={formData.og_description || ''}
+                      onChange={(e) => handleInputChange('og_description', e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 4: HEADING TAGS (H2 - H6) */}
+        {activeTab === 'headings' && (
+          <div className="space-y-6">
+            <div className="bg-slate-950/60 p-6 border border-slate-800 rounded-xl space-y-6">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Heading className="w-4 h-4 text-rose-400" />
+                  Structured DOM Heading Hierarchy (H2 - H6)
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Accurately maps legacy <code className="text-slate-300">h2_tag</code> through <code className="text-slate-300">h6_tag</code> fields into the frontend article DOM.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {['h2_tag', 'h3_tag', 'h4_tag', 'h5_tag', 'h6_tag'].map((tagKey) => {
+                  const tagUpper = tagKey.replace('_tag', '').toUpperCase();
+                  return (
+                    <div key={tagKey} className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <span className="w-16 px-3 py-1.5 bg-slate-800 text-rose-300 font-mono text-xs font-bold rounded-lg text-center">
+                        &lt;{tagUpper}&gt;
+                      </span>
+                      <input
+                        type="text"
+                        value={(formData as any)[tagKey] || ''}
+                        onChange={(e) => handleInputChange(tagKey as keyof CIBlog, e.target.value)}
+                        placeholder={`Sub-heading content for ${tagUpper}`}
+                        className="flex-1 px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </form>
+
+      {/* Image Library Selector Modal */}
+      {showImagePicker && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <ImageIcon className="w-5 h-5 text-rose-400" />
+                Select Image from Library
+              </h3>
+              <button
+                onClick={() => setShowImagePicker(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-80 overflow-y-auto">
+              {images.map((img) => (
+                <button
+                  key={img.id}
+                  type="button"
+                  onClick={() => {
+                    handleInputChange('image', img.file_path);
+                    handleInputChange('alt_tag', img.alt_tag);
+                    handleInputChange('og_image', img.file_path);
+                    setShowImagePicker(false);
+                  }}
+                  className="group relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950 hover:border-rose-500 transition text-left"
+                >
+                  <img
+                    src={img.file_path}
+                    alt={img.alt_tag}
+                    className="w-full h-24 object-cover group-hover:scale-105 transition"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400&auto=format&fit=crop&q=80';
+                    }}
+                  />
+                  <div className="p-2 bg-slate-900/90 text-[10px] font-mono text-slate-300 truncate">
+                    {img.file_name}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AdminBlogForm;
