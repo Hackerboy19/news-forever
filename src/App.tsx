@@ -435,6 +435,7 @@ export function App() {
           urlSlug={selectedArticleUrl}
           blogs={blogs}
           ads={ads}
+          isLoading={loading}
           onGoBack={() => setSelectedArticleUrl(null)}
           onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
         />
@@ -444,6 +445,7 @@ export function App() {
           ads={ads}
           categories={categories}
           activeCategory={activeCategory}
+          isLoading={loading}
           onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
           onCategorySelect={(catId) => setActiveCategory(catId)}
         />

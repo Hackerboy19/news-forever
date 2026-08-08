@@ -13,6 +13,7 @@ import {
   initialSetting 
 } from "./src/data/mockData";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
+import { getPublishedBlogs, getBlogByUrlSlug, getActiveCategories } from "./src/lib/db";
 
 async function startServer() {
   const app = express();
@@ -53,34 +54,58 @@ async function startServer() {
   });
 
   // GET /api/blogs (List blogs with optional category & status filter)
-  app.get("/api/blogs", (req, res) => {
-    let result = [...dbBlogs];
-    if (req.query.status !== undefined) {
-      const statusNum = parseInt(req.query.status as string, 10);
-      result = result.filter(b => b.status === statusNum);
+  app.get("/api/blogs", async (req, res) => {
+    try {
+      const categorySlug = req.query.category_slug as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+
+      let dbRows = await getPublishedBlogs(limit, categorySlug);
+      let result = dbRows.length > 0 ? (dbRows as unknown as CIBlog[]) : [...dbBlogs];
+
+      if (req.query.status !== undefined) {
+        const statusNum = parseInt(req.query.status as string, 10);
+        result = result.filter(b => b.status === statusNum);
+      }
+      if (req.query.category_id) {
+        const catId = parseInt(req.query.category_id as string, 10);
+        result = result.filter(b => b.category_id === catId);
+      }
+      if (req.query.search) {
+        const query = (req.query.search as string).toLowerCase();
+        result = result.filter(b => 
+          b.title.toLowerCase().includes(query) || 
+          b.short_content.toLowerCase().includes(query) ||
+          b.url.toLowerCase().includes(query)
+        );
+      }
+      res.json(result);
+    } catch (err) {
+      res.json(dbBlogs);
     }
-    if (req.query.category_id) {
-      const catId = parseInt(req.query.category_id as string, 10);
-      result = result.filter(b => b.category_id === catId);
-    }
-    if (req.query.search) {
-      const query = (req.query.search as string).toLowerCase();
-      result = result.filter(b => 
-        b.title.toLowerCase().includes(query) || 
-        b.short_content.toLowerCase().includes(query) ||
-        b.url.toLowerCase().includes(query)
-      );
-    }
-    res.json(result);
   });
 
   // GET /api/blogs/slug/:url (Dynamic Routing lookup matching exact url column)
-  app.get("/api/blogs/slug/:url", (req, res) => {
+  app.get("/api/blogs/slug/:url", async (req, res) => {
     const { url } = req.params;
-    const article = dbBlogs.find(b => b.url === url);
+    let article: CIBlog | null = null;
+    
+    try {
+      const dbRow = await getBlogByUrlSlug(url);
+      if (dbRow) {
+        article = dbRow as unknown as CIBlog;
+      }
+    } catch (err) {
+      console.warn("Error fetching blog by URL slug:", err);
+    }
+
+    if (!article) {
+      article = dbBlogs.find(b => b.url === url) || null;
+    }
+
     if (!article) {
       return res.status(404).json({ error: "Article not found matching legacy url path" });
     }
+
     // Increment view count
     article.views += 1;
     res.json(article);
@@ -200,8 +225,13 @@ async function startServer() {
   });
 
   // GET /api/categories
-  app.get("/api/categories", (_req, res) => {
-    res.json(dbCategories);
+  app.get("/api/categories", async (_req, res) => {
+    try {
+      const cats = await getActiveCategories();
+      res.json(cats.length > 0 ? cats : dbCategories);
+    } catch (err) {
+      res.json(dbCategories);
+    }
   });
 
   // POST /api/categories

@@ -2,12 +2,85 @@ import React from 'react';
 import { CIBlog, CIAdvertisement, CICategory } from '../types';
 import { TrendingUp, Eye, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react';
 import TrendingSidebar from './TrendingSidebar';
+import Skeleton from './ui/Skeleton';
+
+export const PublicHomeSkeleton: React.FC = () => {
+  return (
+    <div className="space-y-12 animate-fadeIn">
+      {/* HERO SECTION SKELETON */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Featured Banner Skeleton */}
+          <div className="lg:col-span-2 bg-white border border-[#E7E5E4] overflow-hidden flex flex-col">
+            <Skeleton className="h-80 sm:h-96 w-full rounded-none" />
+            <div className="p-6 space-y-4">
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+              <div className="flex items-center justify-between pt-4 border-t border-[#E7E5E4]">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-32" />
+              </div>
+            </div>
+          </div>
+
+          {/* Trending Articles Column Skeleton */}
+          <div className="space-y-4">
+            <Skeleton className="h-3 w-32 pb-2" />
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-3 bg-white border border-[#E7E5E4] flex gap-4">
+                  <Skeleton className="w-20 h-20 shrink-0 rounded-none" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-3 w-16" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* MAIN CONTENT + SIDEBAR GRID SKELETON */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+        <div className="lg:col-span-2 space-y-6">
+          <Skeleton className="h-4 w-36" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-white border border-[#E7E5E4] overflow-hidden space-y-3 p-4">
+                <Skeleton className="h-48 w-full rounded-none" />
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-5 w-full" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* SIDEBAR SKELETON */}
+        <div className="space-y-6">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    </div>
+  );
+};
 
 interface PublicHomeProps {
   blogs: CIBlog[];
   ads: CIAdvertisement[];
   categories: CICategory[];
   activeCategory: number | 'all';
+  isLoading?: boolean;
   onSelectArticle: (urlSlug: string) => void;
   onCategorySelect: (catId: number | 'all') => void;
 }
@@ -17,11 +90,17 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   ads,
   categories,
   activeCategory,
+  isLoading = false,
   onSelectArticle,
   onCategorySelect,
 }) => {
+  if (isLoading) {
+    return <PublicHomeSkeleton />;
+  }
+
   // Filter active published blogs
   const activeBlogs = blogs.filter(b => b.status === 1);
+
 
   // Filter by category if selected
   const categoryFilteredBlogs = activeCategory === 'all'

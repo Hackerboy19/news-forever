@@ -11,17 +11,18 @@ export const NewsNavigation: React.FC<NewsNavigationProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState(activeCategoryName);
 
-  // Tabs extracted directly from the Category List in the admin panel
+  // Tabs matching exact real site category taxonomy
   const tabs = [
     { name: 'Beauty Pageant', url: 'https://newsforever.in/category/beauty-pageant' },
+    { name: 'Miss India', url: 'https://newsforever.in/category/miss-india' },
+    { name: 'Mrs India', url: 'https://newsforever.in/category/mrs-india' },
     { name: 'Forever Star India Awards', url: 'https://newsforever.in/category/forever-star-india-awards' },
-    { name: 'Products', url: 'https://newsforever.in/category/products' },
-    { name: 'Astrology', url: 'https://newsforever.in/category/astrology' },
+    { name: 'Super Woman Award', url: 'https://newsforever.in/category/super-woman-award' },
     { name: 'Business News', url: 'https://newsforever.in/category/business-news' },
+    { name: 'Astrology', url: 'https://newsforever.in/category/astrology' },
+    { name: 'Products & Lifestyle', url: 'https://newsforever.in/category/products' },
     { name: 'Franchise', url: 'https://newsforever.in/category/franchise' },
-    { name: 'Star India Kids Contest', url: 'https://newsforever.in/category/star-india-kids-contest-2026' },
     { name: 'Nominate Yourself', url: 'https://newsforever.in/category/nominate-yourself-award' },
-    { name: 'Forever Star India', url: 'https://newsforever.in/category/forever-star-india' },
   ];
 
   return (

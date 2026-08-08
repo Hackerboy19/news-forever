@@ -16,7 +16,9 @@ import {
   Command,
   FileText,
   Clock,
-  Tag
+  Tag,
+  Newspaper,
+  Globe
 } from 'lucide-react';
 
 interface PublicLayoutProps {
@@ -292,13 +294,23 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           {/* Main Logo and Navigation Container matching NewsForever layout */}
           <div className="py-4 flex flex-col md:flex-row md:items-center justify-between border-b border-stone-100 gap-4">
             {/* Logo: NEWS FOREVER */}
-            <button onClick={onGoHome} className="flex items-center gap-2 text-left group shrink-0">
+            <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#991B1B] to-stone-900 text-white flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300 border border-stone-800">
+                <Newspaper className="w-5.5 h-5.5 text-amber-100" />
+              </div>
+
               <div className="flex flex-col leading-none">
-                <span className="font-serif font-black text-3xl sm:text-4xl tracking-tighter text-[#7A0C0C] group-hover:text-[#5B0909] transition">
-                  NEWS
-                </span>
-                <span className="font-sans font-bold text-[10px] sm:text-[11px] tracking-[0.38em] uppercase text-[#7A0C0C] pl-0.5">
-                  FOREVER
+                <div className="flex items-center gap-1.5">
+                  <span className="font-serif font-black text-2xl sm:text-3xl tracking-tight text-stone-900 group-hover:text-[#991B1B] transition-colors duration-200">
+                    News<span className="text-[#991B1B]">Forever</span>
+                  </span>
+                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-stone-100 text-[#991B1B] border border-[#E7E5E4] font-mono text-[9px] font-bold uppercase rounded-sm tracking-wider">
+                    Live 24x7
+                  </span>
+                </div>
+                <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-stone-500 mt-1 flex items-center gap-1">
+                  <Globe className="w-2.5 h-2.5 text-[#991B1B]" />
+                  {setting.tagline || 'International Organic News 24x7'}
                 </span>
               </div>
             </button>

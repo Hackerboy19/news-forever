@@ -1,147 +1,109 @@
 import React, { useEffect } from 'react';
 import { CIBlog } from '../types';
 
-export interface SEOManagerProps {
+export interface SEOProps {
   article?: CIBlog | null;
-  siteName?: string;
+  title?: string;
+  meta_title?: string;
+  meta_description?: string;
+  meta_keyword?: string;
+  og_title?: string;
+  og_description?: string;
+  og_image?: string;
+  og_url?: string;
+  image?: string;
   defaultTitle?: string;
-  defaultDescription?: string;
-  defaultImage?: string;
-  canonicalUrl?: string;
+  siteName?: string;
 }
 
-/**
- * SEOManager Utility Component
- * Dynamically updates document head tags (title, meta description, og:image, twitter cards, canonical links & JSON-LD schema)
- * for optimal search engine performance and social sharing metadata.
- */
-export const SEOManager: React.FC<SEOManagerProps> = ({
+export type SEOManagerProps = SEOProps;
+
+export const SEOManager: React.FC<SEOProps> = ({
   article,
+  title,
+  meta_title,
+  meta_description,
+  meta_keyword,
+  og_title,
+  og_description,
+  og_image,
+  og_url,
+  image,
+  defaultTitle = 'News Forever - International Organic News 24x7',
   siteName = 'News Forever',
-  defaultTitle = 'News Forever | Official News, Pageantry & FSIA Portal',
-  defaultDescription = 'Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.',
-  defaultImage = 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=1200&auto=format&fit=crop&q=80',
-  canonicalUrl,
 }) => {
   useEffect(() => {
-    // 1. Determine Title
-    let pageTitle = defaultTitle;
-    if (article) {
-      const rawTitle = article.meta_title || article.title;
-      pageTitle = `${rawTitle} | ${siteName}`;
-    }
-    document.title = pageTitle;
+    // Extract props from article object if present, else fallback to individual props
+    const activeTitle = article?.meta_title || article?.title || meta_title || title;
+    const finalTitle = activeTitle ? `${activeTitle} | ${siteName}` : defaultTitle;
+    document.title = finalTitle;
 
-    // Helper function to create or update meta tag
-    const updateMetaTag = (selector: string, attrName: string, attrVal: string, content: string) => {
-      if (!content) return;
-      let element = document.querySelector(selector) as HTMLMetaElement | null;
+    // Helper function to update or create meta tags
+    const setMetaTag = (attribute: 'name' | 'property', attrValue: string, contentValue?: string) => {
+      if (!contentValue) return;
+      let element = document.querySelector(`meta[${attribute}="${attrValue}"]`);
       if (!element) {
         element = document.createElement('meta');
-        element.setAttribute(attrName, attrVal);
+        element.setAttribute(attribute, attrValue);
         document.head.appendChild(element);
       }
-      element.setAttribute('content', content);
+      element.setAttribute('content', contentValue);
     };
 
-    // Helper function to create or update link tag (canonical)
-    const updateLinkTag = (rel: string, href: string) => {
-      if (!href) return;
-      let element = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+    // Helper function to update or create link tags
+    const setLinkTag = (relValue: string, hrefValue?: string) => {
+      if (!hrefValue) return;
+      let element = document.querySelector(`link[rel="${relValue}"]`);
       if (!element) {
         element = document.createElement('link');
-        element.setAttribute('rel', rel);
+        element.setAttribute('rel', relValue);
         document.head.appendChild(element);
       }
-      element.setAttribute('href', href);
+      element.setAttribute('href', hrefValue);
     };
 
-    const currentUrl = canonicalUrl || (article?.og_url ? article.og_url : window.location.href);
-    const description = article?.meta_description || article?.short_content || defaultDescription;
-    const keywords = article?.meta_keyword || 'news forever, beauty pageant, forever star india awards, astrology, business news';
-    const author = article?.author_name || 'News Forever Desk';
-    const image = article?.og_image || article?.image || defaultImage;
-    const ogTitle = article?.og_title || article?.title || pageTitle;
-
     // 2. Standard Meta Tags
-    updateMetaTag('meta[name="description"]', 'name', 'description', description);
-    updateMetaTag('meta[name="keywords"]', 'name', 'keywords', keywords);
-    updateMetaTag('meta[name="author"]', 'name', 'author', author);
-    updateMetaTag('meta[name="robots"]', 'name', 'robots', 'index, follow');
+    const activeDesc = article?.meta_description || article?.short_content || meta_description;
+    const finalDesc = activeDesc || 'News Forever provides 24x7 organic coverage on beauty pageants, national awards, business, and lifestyle news.';
+    setMetaTag('name', 'description', finalDesc);
 
-    // 3. OpenGraph Tags
-    updateMetaTag('meta[property="og:title"]', 'property', 'og:title', ogTitle);
-    updateMetaTag('meta[property="og:description"]', 'property', 'og:description', description);
-    updateMetaTag('meta[property="og:url"]', 'property', 'og:url', currentUrl);
-    updateMetaTag('meta[property="og:image"]', 'property', 'og:image', image);
-    updateMetaTag('meta[property="og:site_name"]', 'property', 'og:site_name', siteName);
-    updateMetaTag('meta[property="og:type"]', 'property', 'og:type', article ? 'article' : 'website');
-
-    if (article) {
-      updateMetaTag('meta[property="article:published_time"]', 'property', 'article:published_time', article.created_at);
-      if (article.category_name) {
-        updateMetaTag('meta[property="article:section"]', 'property', 'article:section', article.category_name);
-      }
+    const activeKeywords = article?.meta_keyword || meta_keyword;
+    if (activeKeywords) {
+      setMetaTag('name', 'keywords', activeKeywords);
     }
 
-    // 4. Twitter Card Tags
-    updateMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
-    updateMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', ogTitle);
-    updateMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', description);
-    updateMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', image);
+    // 3. Open Graph Meta Tags
+    const activeOgTitle = article?.og_title || og_title || activeTitle || finalTitle;
+    setMetaTag('property', 'og:title', activeOgTitle);
 
-    // 5. Canonical Link
-    updateLinkTag('canonical', currentUrl);
+    const activeOgDesc = article?.og_description || og_description || finalDesc;
+    setMetaTag('property', 'og:description', activeOgDesc);
 
-    // 6. JSON-LD Schema.org Structured Data Injection
-    const schemaId = 'seo-manager-jsonld';
-    let schemaScript = document.getElementById(schemaId) as HTMLScriptElement | null;
-    if (!schemaScript) {
-      schemaScript = document.createElement('script');
-      schemaScript.id = schemaId;
-      schemaScript.type = 'application/ld+json';
-      document.head.appendChild(schemaScript);
+    const activeImage = article?.og_image || article?.image || og_image || image || 'https://newsforever.in/assets/img/logo.png';
+    setMetaTag('property', 'og:image', activeImage);
+
+    const activeUrl = article?.og_url || og_url || (typeof window !== 'undefined' ? window.location.href : '');
+    if (activeUrl) {
+      setMetaTag('property', 'og:url', activeUrl);
+      setLinkTag('canonical', activeUrl);
     }
+  }, [
+    article,
+    title,
+    meta_title,
+    meta_description,
+    meta_keyword,
+    og_title,
+    og_description,
+    og_image,
+    og_url,
+    image,
+    defaultTitle,
+    siteName,
+  ]);
 
-    if (article) {
-      const jsonLdData = {
-        '@context': 'https://schema.org',
-        '@type': 'NewsArticle',
-        'headline': article.title,
-        'description': description,
-        'image': [image],
-        'datePublished': article.created_at,
-        'author': {
-          '@type': 'Person',
-          'name': author,
-        },
-        'publisher': {
-          '@type': 'Organization',
-          'name': siteName,
-          'logo': {
-            '@type': 'ImageObject',
-            'url': 'https://newsforever.in/assets/img/logo.png',
-          },
-        },
-        'mainEntityOfPage': {
-          '@type': 'WebPage',
-          '@id': currentUrl,
-        },
-      };
-      schemaScript.textContent = JSON.stringify(jsonLdData);
-    } else {
-      const jsonLdData = {
-        '@context': 'https://schema.org',
-        '@type': 'WebSite',
-        'name': siteName,
-        'url': currentUrl,
-        'description': defaultDescription,
-      };
-      schemaScript.textContent = JSON.stringify(jsonLdData);
-    }
-  }, [article, siteName, defaultTitle, defaultDescription, defaultImage, canonicalUrl]);
-
-  return null;
+  return null; // Purely head-side manager component
 };
 
 export default SEOManager;
+

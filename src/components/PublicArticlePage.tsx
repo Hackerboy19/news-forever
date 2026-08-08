@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CIBlog, CIAdvertisement } from '../types';
 import SEOManager from './SEOManager';
+import Skeleton from './ui/Skeleton';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -16,10 +17,72 @@ import {
   Sparkles
 } from 'lucide-react';
 
+export const PublicArticleSkeleton: React.FC<{ onGoBack?: () => void }> = ({ onGoBack }) => {
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 animate-fadeIn">
+      {/* Back button & Breadcrumb skeleton */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onGoBack}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#E7E5E4] bg-white text-xs font-semibold text-stone-700 hover:text-[#991B1B]"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" /> Back
+        </button>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-4 w-4" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+      </div>
+
+      {/* Header skeleton */}
+      <div className="space-y-4">
+        <Skeleton className="h-5 w-28" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-4/5" />
+        
+        <div className="flex items-center gap-4 pt-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+      </div>
+
+      {/* Hero Image Skeleton */}
+      <Skeleton className="h-96 w-full rounded-none" />
+
+      {/* Paragraph Content Blocks Skeleton */}
+      <div className="space-y-4 pt-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-9/10" />
+      </div>
+
+      {/* Related Articles Grid Skeleton */}
+      <div className="pt-8 border-t border-[#E7E5E4] space-y-4">
+        <Skeleton className="h-6 w-36" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="space-y-2 p-3 bg-white border border-[#E7E5E4]">
+              <Skeleton className="h-32 w-full rounded-none" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface PublicArticlePageProps {
   urlSlug: string;
   blogs: CIBlog[];
   ads: CIAdvertisement[];
+  isLoading?: boolean;
   onGoBack: () => void;
   onSelectArticle: (urlSlug: string) => void;
 }
@@ -33,6 +96,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   urlSlug,
   blogs,
   ads,
+  isLoading = false,
   onGoBack,
   onSelectArticle,
 }) => {
@@ -41,6 +105,11 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
 
   // Find exact article matching url column in ci_blog table
   const article = blogs.find((b) => b.url === urlSlug);
+
+  if (isLoading || (!article && blogs.length === 0)) {
+    return <PublicArticleSkeleton onGoBack={onGoBack} />;
+  }
+
 
   // Sticky Sidebar Ad and In-content Ad
   const sidebarAd = ads.find((a) => a.position === 'sidebar_sticky' && a.status === 1);
