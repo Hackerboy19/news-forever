@@ -17,8 +17,11 @@ export const dbPool = mysql.createPool({
   password: process.env.MYSQL_PASSWORD || '',
   database: process.env.MYSQL_DATABASE || 'jaipurwe_fsianews',
   waitForConnections: true,
-  connectionLimit: 10,
+  // Small pool: each Vercel lambda instance holds its own pool against a
+  // shared-hosting MySQL with a low max_user_connections cap
+  connectionLimit: parseInt(process.env.MYSQL_POOL_LIMIT || '3', 10),
   queueLimit: 0,
+  connectTimeout: 8000,
 });
 
 /** Legacy asset host — image paths in ci_blog are relative (assets/img/blog/...). */
