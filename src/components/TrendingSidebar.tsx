@@ -10,18 +10,14 @@ interface TrendingSidebarProps {
 
 /**
  * TrendingNow Sidebar Component
- * Computes and displays the top 5 articles based on view counts (views) from legacy CI data.
+ * Shows the 5 most recent published articles (ci_blog has no view counter).
  */
 export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
   blogs,
   onSelectArticle,
   title = 'Trending Now',
 }) => {
-  // Sort published articles by view counts in descending order and select top 5
-  const topTrendingArticles = [...blogs]
-    .filter((b) => b.status === 1)
-    .sort((a, b) => (b.views || 0) - (a.views || 0))
-    .slice(0, 5);
+  const topTrendingArticles = blogs.filter((b) => b.status === 1).slice(0, 5);
 
   if (topTrendingArticles.length === 0) return null;
 
@@ -70,10 +66,12 @@ export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
                   <span className="text-[#7A0C0C] font-bold uppercase tracking-wider">
                     {article.category_name || 'News'}
                   </span>
-                  <span className="text-stone-500 flex items-center gap-1">
-                    <Eye className="w-3 h-3 text-stone-400" />
-                    {(article.views || 0).toLocaleString()} views
-                  </span>
+                  {article.views > 0 && (
+                    <span className="text-stone-500 flex items-center gap-1">
+                      <Eye className="w-3 h-3 text-stone-400" />
+                      {article.views.toLocaleString()} views
+                    </span>
+                  )}
                 </div>
 
                 <h4 className="font-serif italic font-bold text-stone-900 group-hover:text-[#7A0C0C] text-xs sm:text-sm leading-snug line-clamp-2 transition">

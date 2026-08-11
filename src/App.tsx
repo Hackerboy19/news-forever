@@ -35,7 +35,8 @@ export function App() {
   // Navigation & View Mode
   const [viewMode, setViewMode] = useState<ViewMode>('public');
   const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<number | 'all'>('all');
+  // number = ci_category id, string = public nav slug (e.g. 'miss-india')
+  const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
 
   // Editing state for Admin Blog Form

@@ -222,9 +222,11 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               <span className="px-3 py-1 bg-[#991B1B] text-white font-bold text-[10px] uppercase tracking-widest shadow-xs">
                 {article.category_name}
               </span>
-              <span className="text-[10px] font-mono text-stone-500 flex items-center gap-1 uppercase tracking-wider font-semibold">
-                <Eye className="w-3.5 h-3.5 text-[#991B1B]" /> {article.views.toLocaleString()} Reads
-              </span>
+              {article.views > 0 && (
+                <span className="text-[10px] font-mono text-stone-500 flex items-center gap-1 uppercase tracking-wider font-semibold">
+                  <Eye className="w-3.5 h-3.5 text-[#991B1B]" /> {article.views.toLocaleString()} Reads
+                </span>
+              )}
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-serif italic font-extrabold text-stone-900 leading-tight tracking-tight">

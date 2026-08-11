@@ -1,5 +1,6 @@
 import React from 'react';
 import { CIBlog, CIAdvertisement, CICategory } from '../types';
+import { resolveCategoryIds } from '../lib/taxonomy';
 import { TrendingUp, Eye, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react';
 import TrendingSidebar from './TrendingSidebar';
 import Skeleton from './ui/Skeleton';
@@ -79,10 +80,10 @@ interface PublicHomeProps {
   blogs: CIBlog[];
   ads: CIAdvertisement[];
   categories: CICategory[];
-  activeCategory: number | 'all';
+  activeCategory: number | string | 'all';
   isLoading?: boolean;
   onSelectArticle: (urlSlug: string) => void;
-  onCategorySelect: (catId: number | 'all') => void;
+  onCategorySelect: (cat: number | string | 'all') => void;
 }
 
 export const PublicHome: React.FC<PublicHomeProps> = ({
@@ -101,11 +102,19 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   // Filter active published blogs
   const activeBlogs = blogs.filter(b => b.status === 1);
 
-
-  // Filter by category if selected
-  const categoryFilteredBlogs = activeCategory === 'all'
-    ? activeBlogs
-    : activeBlogs.filter(b => b.category_id === activeCategory);
+  // Filter by category: numeric ci_category id, or public nav slug
+  // (slugs resolve to real category id sets incl. year variants & children)
+  let categoryFilteredBlogs = activeBlogs;
+  if (activeCategory !== 'all') {
+    const catLikes = categories.map(c => ({ id: c.id, parent_id: c.parent_id, slug: c.slug }));
+    const matchedIds =
+      typeof activeCategory === 'number'
+        ? new Set([activeCategory, ...categories.filter(c => c.parent_id === activeCategory).map(c => c.id)])
+        : resolveCategoryIds(activeCategory, catLikes);
+    categoryFilteredBlogs = activeBlogs.filter(
+      b => matchedIds.has(b.category_id) || (b.sub_category_id != null && matchedIds.has(b.sub_category_id))
+    );
+  }
 
   // Featured Hero Article
   const heroArticle = categoryFilteredBlogs.find(b => b.is_featured) || categoryFilteredBlogs[0];
@@ -169,7 +178,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 <div className="flex items-center justify-between text-[10px] text-stone-500 font-mono pt-4 border-t border-[#E7E5E4]">
                   <span className="text-stone-700 font-bold uppercase tracking-wider">By {heroArticle.author_name}</span>
                   <div className="flex items-center gap-4">
-                    <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5 text-[#991B1B]" /> {heroArticle.views.toLocaleString()}</span>
+                    {heroArticle.views > 0 && (
+                      <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5 text-[#991B1B]" /> {heroArticle.views.toLocaleString()}</span>
+                    )}
                     <span>{heroArticle.created_at.split(' ')[0]}</span>
                   </div>
                 </div>
@@ -205,7 +216,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         {article.title}
                       </h4>
                       <span className="text-[9px] text-stone-500 font-mono block">
-                        {article.views.toLocaleString()} views
+                        {article.created_at ? article.created_at.split(' ')[0] : ''}
                       </span>
                     </div>
                   </div>
@@ -333,7 +344,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
               Explore Topics
             </h3>
             <div className="space-y-1">
-              {categories.map((c) => (
+              {categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0).map((c) => (
                 <button
                   key={c.id}
                   onClick={() => onCategorySelect(c.id)}

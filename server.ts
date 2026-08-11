@@ -1,19 +1,18 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { 
-  initialBlogs, 
-  initialCategories, 
-  initialTags, 
-  initialAdvertisements, 
-  initialActivityLogs, 
-  initialUsers, 
-  initialSubscribers, 
-  initialImages, 
-  initialSetting 
+import {
+  initialTags,
+  initialAdvertisements,
+  initialActivityLogs,
+  initialUsers,
+  initialSubscribers,
+  initialImages,
+  initialSetting
 } from "./src/data/mockData";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
-import { getPublishedBlogs, getBlogByUrlSlug, getActiveCategories } from "./src/lib/db";
+import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories } from "./src/lib/db";
 
 async function startServer() {
   const app = express();
@@ -21,9 +20,10 @@ async function startServer() {
 
   app.use(express.json());
 
-  // In-Memory Database Stores matching CodeIgniter MySQL tables
-  let dbBlogs: CIBlog[] = [...initialBlogs];
-  let dbCategories: CICategory[] = [...initialCategories];
+  // In-memory stores for admin demo mutations only (real reads hit MySQL;
+  // DB access is strictly read-only — admin writes never touch ci_* tables)
+  let dbBlogs: CIBlog[] = [];
+  let dbCategories: CICategory[] = [];
   let dbTags = [...initialTags];
   let dbAds: CIAdvertisement[] = [...initialAdvertisements];
   let dbActivityLogs: CIActivityLog[] = [...initialActivityLogs];
@@ -53,14 +53,13 @@ async function startServer() {
     res.json({ status: "ok", framework: "Express + React Headless CodeIgniter Bridge" });
   });
 
-  // GET /api/blogs (List blogs with optional category & status filter)
+  // GET /api/blogs — real ci_blog rows, optional ?category_slug= & filters
   app.get("/api/blogs", async (req, res) => {
     try {
       const categorySlug = req.query.category_slug as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 200;
 
-      let dbRows = await getPublishedBlogs(limit, categorySlug);
-      let result = dbRows.length > 0 ? (dbRows as unknown as CIBlog[]) : [...dbBlogs];
+      let result = await getPublishedBlogs(limit, categorySlug);
 
       if (req.query.status !== undefined) {
         const statusNum = parseInt(req.query.status as string, 10);
@@ -68,46 +67,29 @@ async function startServer() {
       }
       if (req.query.category_id) {
         const catId = parseInt(req.query.category_id as string, 10);
-        result = result.filter(b => b.category_id === catId);
+        result = result.filter(b => b.category_id === catId || b.sub_category_id === catId);
       }
       if (req.query.search) {
         const query = (req.query.search as string).toLowerCase();
-        result = result.filter(b => 
-          b.title.toLowerCase().includes(query) || 
+        result = result.filter(b =>
+          b.title.toLowerCase().includes(query) ||
           b.short_content.toLowerCase().includes(query) ||
           b.url.toLowerCase().includes(query)
         );
       }
       res.json(result);
     } catch (err) {
-      res.json(dbBlogs);
+      console.error("GET /api/blogs failed:", err);
+      res.status(500).json({ error: "Failed to load articles" });
     }
   });
 
   // GET /api/blogs/slug/:url (Dynamic Routing lookup matching exact url column)
   app.get("/api/blogs/slug/:url", async (req, res) => {
-    const { url } = req.params;
-    let article: CIBlog | null = null;
-    
-    try {
-      const dbRow = await getBlogByUrlSlug(url);
-      if (dbRow) {
-        article = dbRow as unknown as CIBlog;
-      }
-    } catch (err) {
-      console.warn("Error fetching blog by URL slug:", err);
-    }
-
-    if (!article) {
-      article = dbBlogs.find(b => b.url === url) || null;
-    }
-
+    const article = await getBlogByUrlSlug(req.params.url);
     if (!article) {
       return res.status(404).json({ error: "Article not found matching legacy url path" });
     }
-
-    // Increment view count
-    article.views += 1;
     res.json(article);
   });
 
@@ -224,13 +206,13 @@ async function startServer() {
     res.json({ success: true, ids, action });
   });
 
-  // GET /api/categories
+  // GET /api/categories — all active ci_category rows (parents + children)
   app.get("/api/categories", async (_req, res) => {
     try {
-      const cats = await getActiveCategories();
-      res.json(cats.length > 0 ? cats : dbCategories);
+      res.json(await getAllCategories());
     } catch (err) {
-      res.json(dbCategories);
+      console.error("GET /api/categories failed:", err);
+      res.status(500).json({ error: "Failed to load categories" });
     }
   });
 

@@ -8,7 +8,8 @@ export interface CIBlog {
   url: string; // Exact slug column from ci_blog table
   short_content: string;
   content: string;
-  category_id: number;
+  category_id: number; // ci_blog.cat_id
+  sub_category_id?: number; // ci_blog.sub_cat_id
   category_name?: string; // joined
   tag_ids: number[];
   image: string; // Path: e.g. assets/img/blog/2026/08/article-1.jpg
@@ -41,8 +42,9 @@ export interface CIBlog {
 
 export interface CICategory {
   id: number;
-  category_name: string;
-  slug: string;
+  parent_id?: number; // ci_category.parent_id (0 = top level)
+  category_name: string; // ci_category.cat_name
+  slug: string; // ci_category.url
   status: number; // 1 = Active, 0 = Inactive
   article_count?: number;
   meta_title: string;

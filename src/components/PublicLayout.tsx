@@ -26,8 +26,8 @@ interface PublicLayoutProps {
   ads: CIAdvertisement[];
   setting: CISetting;
   blogs?: CIBlog[];
-  activeCategory: number | 'all';
-  onCategorySelect: (catId: number | 'all') => void;
+  activeCategory: number | string | 'all';
+  onCategorySelect: (cat: number | string | 'all') => void;
   onSelectArticle: (urlSlug: string) => void;
   onGoHome: () => void;
   onSwitchToAdmin: () => void;
@@ -35,68 +35,7 @@ interface PublicLayoutProps {
   children: React.ReactNode;
 }
 
-// Subcategory mapping matching exact News Forever taxonomy
-const SUB_CATEGORIES: Record<string, { name: string; slug: string }[]> = {
-  'Beauty Pageant': [
-    { name: 'Miss India', slug: 'miss-india' },
-    { name: 'Mrs India', slug: 'mrs-india' },
-    { name: 'Miss Teen India', slug: 'miss-teen-india' },
-    { name: 'City Finalists', slug: 'city-finalists' },
-    { name: 'State Winners', slug: 'state-winners' },
-  ],
-  'Pageants': [
-    { name: 'Miss India', slug: 'miss-india' },
-    { name: 'Mrs India', slug: 'mrs-india' },
-    { name: 'Miss Teen India', slug: 'miss-teen-india' },
-    { name: 'City Finalists', slug: 'city-finalists' },
-    { name: 'State Winners', slug: 'state-winners' },
-  ],
-  'Forever Star India Awards': [
-    { name: 'Super Woman Award', slug: 'super-woman-award' },
-    { name: 'Super Hero Award', slug: 'super-hero-award' },
-    { name: 'National Achievers', slug: 'national-achiever-award' },
-    { name: 'Nominate Yourself', slug: 'nominate-yourself-award' },
-  ],
-  'Awards': [
-    { name: 'Super Woman Award', slug: 'super-woman-award' },
-    { name: 'Super Hero Award', slug: 'super-hero-award' },
-    { name: 'National Achievers', slug: 'national-achiever-award' },
-    { name: 'Nominate Yourself', slug: 'nominate-yourself-award' },
-  ],
-  'News & Lifestyle': [
-    { name: 'Business News', slug: 'business-news' },
-    { name: 'Astrology', slug: 'astrology' },
-    { name: 'Products & Lifestyle', slug: 'products' },
-    { name: 'Franchise', slug: 'franchise' },
-  ],
-  'Products': [
-    { name: 'Fashion & Apparel', slug: 'fashion-apparel' },
-    { name: 'Cosmetics & Beauty', slug: 'cosmetics-beauty' },
-    { name: 'Pageant Crowns & Sashes', slug: 'crowns-sashes' },
-  ],
-  'Astrology': [
-    { name: 'Daily Horoscope', slug: 'daily-horoscope' },
-    { name: 'Tarot & Star Signs', slug: 'tarot-star-signs' },
-    { name: 'Zodiac Compatibility', slug: 'zodiac-compatibility' },
-  ],
-  'Business News': [
-    { name: 'Corporate Updates', slug: 'corporate-updates' },
-    { name: 'Startups & Leadership', slug: 'startups-leadership' },
-    { name: 'Markets & Finance', slug: 'markets-finance' },
-  ],
-  'Franchise': [
-    { name: 'State Directorship', slug: 'state-directorship' },
-    { name: 'City Franchise Leads', slug: 'city-franchise-leads' },
-  ],
-  'Star India Kids Contest': [
-    { name: 'Kids Modeling', slug: 'kids-modeling' },
-    { name: 'Talent Search 2026', slug: 'talent-search-2026' },
-  ],
-  'Nominate Yourself': [
-    { name: 'Award Nomination', slug: 'award-nomination' },
-    { name: 'Jury Selection Criteria', slug: 'jury-selection' },
-  ],
-};
+import { NAVIGATION_TAXONOMY } from '../lib/taxonomy';
 
 export const PublicLayout: React.FC<PublicLayoutProps> = ({
   categories,
@@ -148,8 +87,13 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   }, [commandPaletteOpen]);
 
   // Real-time filtering over blogs real data
+  const selectedCat = categories.find((c) => c.category_name === selectedCatFilter);
   const filteredArticles = blogs.filter((article) => {
-    const matchesCat = selectedCatFilter === 'all' || article.category_name === selectedCatFilter;
+    const matchesCat =
+      selectedCatFilter === 'all' ||
+      (selectedCat
+        ? article.category_id === selectedCat.id || article.sub_category_id === selectedCat.id
+        : article.category_name === selectedCatFilter);
     if (!matchesCat) return false;
 
     const query = paletteQuery.toLowerCase().trim();
@@ -164,6 +108,9 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     );
   });
 
+  // Top-level ci_category rows that actually have published articles
+  const topCategories = categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0);
+
   // Find top banner ad from ci_advertisement
   const topAd = ads.find(a => a.position === 'top_banner' && a.status === 1);
 
@@ -176,10 +123,13 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     setTimeout(() => setNewsletterMsg(''), 4000);
   };
 
-  const navItems = [
-    { name: 'LATEST NEWS', id: 'all' },
-    ...categories.map(c => ({ name: c.category_name, id: c.id })),
-  ];
+  const handleNavSelect = (slug: string, label: string | null) => {
+    onCategorySelect(slug === 'all' ? 'all' : slug);
+    setActiveSubcatFilter(label);
+    setActiveDropdown(null);
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#1C1917] font-sans flex flex-col selection:bg-[#7A0C0C] selection:text-white">
@@ -315,12 +265,25 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               </div>
             </button>
 
-            {/* Desktop Main Navigation Dropdowns Bar */}
+            {/* Desktop Main Navigation — real News Forever nested taxonomy */}
             <nav className="hidden lg:flex items-center flex-wrap gap-x-5 gap-y-2 text-xs font-bold uppercase tracking-wider text-stone-800">
-              {navItems.map((item) => {
-                const subcats = SUB_CATEGORIES[item.name] || [];
-                const hasSubcats = subcats.length > 0;
-                const isActive = item.id === 'all' ? activeCategory === 'all' : activeCategory === item.id;
+              {NAVIGATION_TAXONOMY.map((item) => {
+                const hasSubcats = !!item.subcategories?.length;
+                const isActive = item.slug === 'all' ? activeCategory === 'all' : activeCategory === item.slug;
+
+                if (item.href) {
+                  return (
+                    <a
+                      key={item.name}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2 text-stone-800 hover:text-[#7A0C0C] transition"
+                    >
+                      {item.name}
+                    </a>
+                  );
+                }
 
                 return (
                   <div
@@ -330,14 +293,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     onMouseLeave={() => setActiveDropdown(null)}
                   >
                     <button
-                      onClick={() => {
-                        if (item.id === 'all') {
-                          onCategorySelect('all');
-                        } else if (typeof item.id === 'number') {
-                          onCategorySelect(item.id);
-                        }
-                        setActiveSubcatFilter(null);
-                      }}
+                      onClick={() => handleNavSelect(item.slug!, item.slug === 'all' ? null : item.name)}
                       className={`flex items-center gap-1 transition ${
                         isActive
                           ? 'text-[#7A0C0C] font-extrabold border-b-2 border-[#7A0C0C] pb-0.5'
@@ -351,17 +307,15 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     {/* Hover Dropdown Menu */}
                     {hasSubcats && (
                       <div className="absolute left-0 top-full hidden group-hover:block w-56 bg-white border border-stone-200 shadow-xl z-50 py-2 animate-fadeIn">
-                        {subcats.map((sub) => (
+                        {item.subcategories!.map((sub) => (
                           <button
                             key={sub.slug}
-                            onClick={() => {
-                              if (typeof item.id === 'number') {
-                                onCategorySelect(item.id);
-                              }
-                              setActiveSubcatFilter(sub.name);
-                              setActiveDropdown(null);
-                            }}
-                            className="w-full text-left px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-[#7A0C0C] transition flex items-center justify-between group/sub"
+                            onClick={() => handleNavSelect(sub.slug!, sub.name)}
+                            className={`w-full text-left px-4 py-2 text-xs font-semibold transition flex items-center justify-between group/sub ${
+                              activeCategory === sub.slug
+                                ? 'text-[#7A0C0C] bg-stone-50'
+                                : 'text-stone-700 hover:bg-stone-50 hover:text-[#7A0C0C]'
+                            }`}
                           >
                             <span>{sub.name}</span>
                             <ChevronRight className="w-3 h-3 text-stone-300 group-hover/sub:text-[#7A0C0C]" />
@@ -387,45 +341,44 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           </div>
         </div>
 
-        {/* Mobile Navigation Drawer */}
+        {/* Mobile Navigation Drawer — same nested taxonomy */}
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-stone-200 bg-white p-4 space-y-3 max-h-[80vh] overflow-y-auto">
-            <button
-              onClick={() => {
-                onCategorySelect('all');
-                setActiveSubcatFilter(null);
-                setMobileMenuOpen(false);
-              }}
-              className={`block w-full text-left px-3 py-2 text-xs font-bold uppercase tracking-wider ${
-                activeCategory === 'all' ? 'text-[#7A0C0C] bg-[#7A0C0C]/10 font-bold' : 'text-stone-800'
-              }`}
-            >
-              LATEST NEWS
-            </button>
+            {NAVIGATION_TAXONOMY.map((item) => {
+              if (item.href) {
+                return (
+                  <a
+                    key={item.name}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-3 py-2 text-xs font-bold uppercase tracking-wider text-stone-800 hover:text-[#7A0C0C]"
+                  >
+                    {item.name}
+                  </a>
+                );
+              }
 
-            {categories.map((cat) => {
-              const subcats = SUB_CATEGORIES[cat.category_name] || [];
-              const isExpanded = activeDropdown === cat.category_name;
+              const subcats = item.subcategories || [];
+              const isExpanded = activeDropdown === item.name;
+              const isActive = item.slug === 'all' ? activeCategory === 'all' : activeCategory === item.slug;
 
               return (
-                <div key={cat.id} className="space-y-1 border-b border-stone-100 pb-2">
+                <div key={item.name} className="space-y-1 border-b border-stone-100 pb-2">
                   <div className="flex items-center justify-between">
                     <button
-                      onClick={() => {
-                        onCategorySelect(cat.id);
-                        setActiveSubcatFilter(null);
-                        setMobileMenuOpen(false);
-                      }}
-                      className={`text-left text-xs font-bold uppercase tracking-wider ${
-                        activeCategory === cat.id ? 'text-[#7A0C0C]' : 'text-stone-800'
+                      onClick={() => handleNavSelect(item.slug!, item.slug === 'all' ? null : item.name)}
+                      className={`text-left text-xs font-bold uppercase tracking-wider px-3 py-2 ${
+                        isActive ? 'text-[#7A0C0C] bg-[#7A0C0C]/10' : 'text-stone-800'
                       }`}
                     >
-                      {cat.category_name}
+                      {item.name}
                     </button>
                     {subcats.length > 0 && (
                       <button
-                        onClick={() => setActiveDropdown(isExpanded ? null : cat.category_name)}
+                        onClick={() => setActiveDropdown(isExpanded ? null : item.name)}
                         className="p-1 text-stone-500"
+                        aria-label={`Toggle ${item.name} subcategories`}
                       >
                         <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                       </button>
@@ -438,11 +391,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                       {subcats.map((sub) => (
                         <button
                           key={sub.slug}
-                          onClick={() => {
-                            onCategorySelect(cat.id);
-                            setActiveSubcatFilter(sub.name);
-                            setMobileMenuOpen(false);
-                          }}
+                          onClick={() => handleNavSelect(sub.slug!, sub.name)}
                           className="block w-full text-left text-xs text-stone-600 hover:text-[#7A0C0C] py-1"
                         >
                           • {sub.name}
@@ -521,7 +470,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             <div className="space-y-2">
               <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">Category Index</h4>
               <ul className="space-y-1.5 text-xs">
-                {categories.map((c) => (
+                {topCategories.map((c) => (
                   <li key={c.id}>
                     <button
                       onClick={() => {
@@ -624,7 +573,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               >
                 All ({blogs.length})
               </button>
-              {categories.map((cat) => (
+              {topCategories.map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCatFilter(cat.category_name)}
