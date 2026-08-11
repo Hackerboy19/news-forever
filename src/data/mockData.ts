@@ -1,4 +1,4 @@
-import { CIBlog, CICategory, CITag, CIAdvertisement, CIActivityLog, CIUser, CISubscriber, CIImageLibrary, CISetting } from '../types';
+import { CIBlog, CICategory, CITag, CIAdvertisement, CIActivityLog, CIUser, CISubscriber, CIImageLibrary, CISetting } from '../types.js';
 
 export const initialCategories: CICategory[] = [
   {

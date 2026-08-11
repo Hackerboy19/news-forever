@@ -3,7 +3,7 @@
  * production. Public reads hit the live MySQL database via src/lib/db.ts
  * (strictly read-only); admin-panel collections return static demo data.
  */
-import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories } from '../src/lib/db';
+import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories } from '../src/lib/db.js';
 import {
   initialTags,
   initialAdvertisements,
@@ -12,7 +12,7 @@ import {
   initialSubscribers,
   initialImages,
   initialSetting,
-} from '../src/data/mockData';
+} from '../src/data/mockData.js';
 
 export default async function handler(req: any, res: any) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);

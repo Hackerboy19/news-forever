@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise';
-import { CIBlog, CICategory } from '../types';
-import { resolveCategoryIds } from './taxonomy';
+import { CIBlog, CICategory } from '../types.js';
+import { resolveCategoryIds } from './taxonomy.js';
 
 /**
  * MySQL data provider for the legacy jaipurwe_fsianews CodeIgniter database.
