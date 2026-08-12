@@ -35,7 +35,6 @@ interface PublicLayoutProps {
   children: React.ReactNode;
 }
 
-import { NAVIGATION_TAXONOMY } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
 import NewsTicker from './NewsTicker';
 
@@ -126,6 +125,37 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   // Top-level ci_category rows that actually have published articles
   const topCategories = categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0);
 
+  // Dynamic navigation mirroring the FULL live ci_category tree — every
+  // top-level category with articles becomes a tab, children become
+  // dropdown items. Nothing hardcoded, so new CMS categories appear
+  // automatically.
+  interface DynNavItem {
+    name: string;
+    id?: number | 'all';
+    href?: string;
+    subs: { name: string; id: number }[];
+  }
+  const navItems: DynNavItem[] = [
+    { name: 'Home', id: 'all', subs: [] },
+    ...topCategories.map((cat) => ({
+      name: cat.category_name,
+      id: cat.id,
+      subs: categories
+        .filter((c) => c.parent_id === cat.id && (c.article_count ?? 0) > 0)
+        .map((c) => ({ name: c.category_name, id: c.id })),
+    })),
+    { name: 'About Us', href: 'https://newsforever.in/about-us', subs: [] },
+    { name: 'Contact Us', href: 'https://newsforever.in/contact-us', subs: [] },
+  ];
+
+  const handleCatSelect = (id: number | 'all', label: string | null) => {
+    onCategorySelect(id);
+    setActiveSubcatFilter(label);
+    setActiveDropdown(null);
+    setMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSubscribeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newsletterEmail || !newsletterEmail.includes('@')) return;
@@ -133,14 +163,6 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     setNewsletterMsg('Thank you for subscribing to News Forever updates!');
     setNewsletterEmail('');
     setTimeout(() => setNewsletterMsg(''), 4000);
-  };
-
-  const handleNavSelect = (slug: string, label: string | null) => {
-    onCategorySelect(slug === 'all' ? 'all' : slug);
-    setActiveSubcatFilter(label);
-    setActiveDropdown(null);
-    setMobileMenuOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -252,11 +274,11 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               </div>
             </button>
 
-            {/* Desktop Main Navigation — real News Forever nested taxonomy */}
-            <nav className="hidden lg:flex items-center flex-wrap gap-x-5 gap-y-2 text-xs font-bold uppercase tracking-wider text-stone-800">
-              {NAVIGATION_TAXONOMY.map((item) => {
-                const hasSubcats = !!item.subcategories?.length;
-                const isActive = item.slug === 'all' ? activeCategory === 'all' : activeCategory === item.slug;
+            {/* Desktop Main Navigation — full live ci_category tree */}
+            <nav className="hidden lg:flex items-center flex-wrap gap-x-4 gap-y-1 text-xs font-bold uppercase tracking-wider text-stone-800">
+              {navItems.map((item) => {
+                const hasSubcats = item.subs.length > 0;
+                const isActive = item.id !== undefined && activeCategory === item.id;
 
                 if (item.href) {
                   return (
@@ -280,7 +302,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     onMouseLeave={() => setActiveDropdown(null)}
                   >
                     <button
-                      onClick={() => handleNavSelect(item.slug!, item.slug === 'all' ? null : item.name)}
+                      onClick={() => handleCatSelect(item.id!, item.id === 'all' ? null : item.name)}
                       className={`flex items-center gap-1 transition ${
                         isActive
                           ? 'text-[#7A0C0C] font-extrabold border-b-2 border-[#7A0C0C] pb-0.5'
@@ -293,13 +315,13 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
                     {/* Hover Dropdown Menu */}
                     {hasSubcats && (
-                      <div className="absolute left-0 top-full hidden group-hover:block w-56 bg-white border border-stone-200 shadow-xl z-50 py-2 animate-fadeIn">
-                        {item.subcategories!.map((sub) => (
+                      <div className="absolute left-0 top-full hidden group-hover:block w-56 bg-white border border-stone-200 shadow-xl z-50 py-2 animate-fadeIn max-h-80 overflow-y-auto">
+                        {item.subs.map((sub) => (
                           <button
-                            key={sub.slug}
-                            onClick={() => handleNavSelect(sub.slug!, sub.name)}
+                            key={sub.id}
+                            onClick={() => handleCatSelect(sub.id, sub.name)}
                             className={`w-full text-left px-4 py-2 text-xs font-semibold transition flex items-center justify-between group/sub ${
-                              activeCategory === sub.slug
+                              activeCategory === sub.id
                                 ? 'text-[#7A0C0C] bg-stone-50'
                                 : 'text-stone-700 hover:bg-stone-50 hover:text-[#7A0C0C]'
                             }`}
@@ -352,7 +374,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
 
             <nav className="flex-1 overflow-y-auto p-5 space-y-1.5">
-              {NAVIGATION_TAXONOMY.map((item) => {
+              {navItems.map((item) => {
                 if (item.href) {
                   return (
                     <a
@@ -367,15 +389,15 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                   );
                 }
 
-                const subcats = item.subcategories || [];
+                const subcats = item.subs;
                 const isExpanded = activeDropdown === item.name;
-                const isActive = item.slug === 'all' ? activeCategory === 'all' : activeCategory === item.slug;
+                const isActive = item.id !== undefined && activeCategory === item.id;
 
                 return (
                   <div key={item.name} className="border-b border-stone-100">
                     <div className="flex items-center justify-between">
                       <button
-                        onClick={() => handleNavSelect(item.slug!, item.slug === 'all' ? null : item.name)}
+                        onClick={() => handleCatSelect(item.id!, item.id === 'all' ? null : item.name)}
                         className={`flex-1 text-left text-sm font-bold uppercase tracking-wider px-3 py-3 transition ${
                           isActive ? 'text-[#7A0C0C]' : 'text-stone-800 hover:text-[#7A0C0C]'
                         }`}
@@ -397,16 +419,16 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     {/* Smooth accordion sub-menu */}
                     <div
                       className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                        isExpanded && subcats.length > 0 ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'
+                        isExpanded && subcats.length > 0 ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
                       }`}
                     >
-                      <div className="pl-5 pb-3 space-y-0.5 border-l-2 border-[#7A0C0C]/30 ml-3">
+                      <div className="pl-5 pb-3 space-y-0.5 border-l-2 border-[#7A0C0C]/30 ml-3 max-h-80 overflow-y-auto">
                         {subcats.map((sub) => (
                           <button
-                            key={sub.slug}
-                            onClick={() => handleNavSelect(sub.slug!, sub.name)}
+                            key={sub.id}
+                            onClick={() => handleCatSelect(sub.id, sub.name)}
                             className={`block w-full text-left text-xs py-2 px-2 transition ${
-                              activeCategory === sub.slug
+                              activeCategory === sub.id
                                 ? 'text-[#7A0C0C] font-bold'
                                 : 'text-stone-600 hover:text-[#7A0C0C]'
                             }`}
