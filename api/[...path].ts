@@ -5,6 +5,8 @@
  */
 import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories } from '../src/lib/db.js';
 import {
+  initialBlogs,
+  initialCategories,
   initialTags,
   initialAdvertisements,
   initialActivityLogs,
@@ -30,6 +32,8 @@ export default async function handler(req: any, res: any) {
       const categorySlug = url.searchParams.get('category_slug') || undefined;
       const limit = parseInt(url.searchParams.get('limit') || '200', 10);
       let result = await getPublishedBlogs(limit, categorySlug);
+      // Dummy-content fallback while the live database is not connected
+      if (result.length === 0 && !categorySlug) result = initialBlogs;
 
       const search = url.searchParams.get('search');
       if (search) {
@@ -58,7 +62,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (route === 'categories') {
-      return res.json(await getAllCategories());
+      const cats = await getAllCategories();
+      return res.json(cats.length > 0 ? cats : initialCategories);
     }
 
     // Static collections — admin demo data, no DB writes ever
