@@ -160,19 +160,20 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-stone-950/20 to-transparent" />
-                <div className="absolute top-4 left-4 flex gap-2">
-                  <span className="px-3 py-1 bg-[#991B1B] text-white font-bold text-[10px] uppercase tracking-widest shadow-md">
-                    {heroArticle.category_name || 'Featured'}
-                  </span>
-                  <span className="px-3 py-1 bg-white/90 backdrop-blur text-stone-900 font-bold text-[10px] uppercase tracking-widest border border-stone-200">
-                    Lead Editorial
-                  </span>
-                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-stone-950/60 via-transparent to-transparent" />
               </div>
 
-              <div className="p-6 space-y-4 flex-1 flex flex-col justify-between">
-                <div className="space-y-2">
+              <div className="p-6 flex-1 flex flex-col justify-between gap-3">
+                {/* Badges live in normal flow (no absolute overlay) so they never collide with text */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-row flex-wrap gap-2 items-center mt-2">
+                    <span className="px-3 py-1 text-xs font-bold tracking-wider uppercase bg-[#991B1B] text-white rounded-sm shadow-xs">
+                      {heroArticle.category_name || 'Featured'}
+                    </span>
+                    <span className="px-3 py-1 text-xs font-bold tracking-wider uppercase bg-stone-100 text-stone-700 border border-stone-200 rounded-sm">
+                      Lead Editorial
+                    </span>
+                  </div>
                   <h1 className="text-2xl sm:text-4xl font-serif italic font-extrabold text-stone-900 group-hover:text-[#991B1B] transition leading-tight">
                     {heroArticle.title}
                   </h1>
@@ -340,13 +341,15 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                       fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80"
                     />
-                    <div className="absolute top-3 left-3 px-2.5 py-1 bg-white/95 backdrop-blur text-[#991B1B] text-[9px] font-bold uppercase tracking-widest border border-stone-200 shadow-xs">
-                      {article.category_name}
-                    </div>
                   </div>
 
-                  <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
-                    <div className="space-y-2">
+                  <div className="p-5 flex-1 flex flex-col justify-between gap-3">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-row flex-wrap gap-2 items-center">
+                        <span className="px-3 py-1 text-[10px] font-bold tracking-wider uppercase bg-stone-100 text-[#991B1B] border border-stone-200 rounded-sm">
+                          {article.category_name}
+                        </span>
+                      </div>
                       <h3 className="text-lg font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug line-clamp-2">
                         {article.title}
                       </h3>
