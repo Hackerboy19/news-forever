@@ -4,17 +4,35 @@
  * (strictly read-only); admin-panel collections return static demo data.
  */
 import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds } from '../src/lib/db.js';
+import { resolveCategoryIds } from '../src/lib/taxonomy.js';
+import { CIBlog, CICategory, CIAdvertisement } from '../src/types.js';
 import {
-  initialBlogs,
-  initialCategories,
   initialTags,
-  initialAdvertisements,
   initialActivityLogs,
   initialUsers,
   initialSubscribers,
   initialImages,
   initialSetting,
 } from '../src/data/mockData.js';
+// Real-data snapshot exported from the production jaipurwe_fsianews dump —
+// served whenever the live MySQL host is unreachable (regenerate with
+// `npx tsx scripts/export-snapshot.ts`).
+import snapshot from '../src/data/snapshot.json';
+
+const snapBlogs = snapshot.blogs as unknown as CIBlog[];
+const snapCategories = snapshot.categories as unknown as CICategory[];
+const snapAds = snapshot.ads as unknown as CIAdvertisement[];
+
+function snapshotBlogsByCategory(slug?: string): CIBlog[] {
+  if (!slug || slug === 'all') return snapBlogs;
+  const ids = resolveCategoryIds(
+    slug,
+    snapCategories.map((c) => ({ id: c.id, parent_id: c.parent_id, slug: c.slug }))
+  );
+  return snapBlogs.filter(
+    (b) => ids.has(b.category_id) || (b.sub_category_id != null && ids.has(b.sub_category_id))
+  );
+}
 
 export default async function handler(req: any, res: any) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
@@ -32,8 +50,8 @@ export default async function handler(req: any, res: any) {
       const categorySlug = url.searchParams.get('category_slug') || undefined;
       const limit = parseInt(url.searchParams.get('limit') || '200', 10);
       let result = await getPublishedBlogs(limit, categorySlug);
-      // Dummy-content fallback while the live database is not connected
-      if (result.length === 0 && !categorySlug) result = initialBlogs;
+      // Real-data snapshot fallback while the live database is not connected
+      if (result.length === 0) result = snapshotBlogsByCategory(categorySlug).slice(0, limit);
 
       const search = url.searchParams.get('search');
       if (search) {
@@ -54,7 +72,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (segments[0] === 'blogs' && segments[1] === 'slug' && segments[2]) {
-      const article = await getBlogByUrlSlug(decodeURIComponent(segments[2]));
+      const slug = decodeURIComponent(segments[2]).trim();
+      const article = (await getBlogByUrlSlug(slug)) || snapBlogs.find((b) => b.url === slug) || null;
       if (!article) {
         return res.status(404).json({ error: 'Article not found matching legacy url path' });
       }
@@ -63,14 +82,14 @@ export default async function handler(req: any, res: any) {
 
     if (route === 'categories') {
       const cats = await getAllCategories();
-      return res.json(cats.length > 0 ? cats : initialCategories);
+      return res.json(cats.length > 0 ? cats : snapCategories);
     }
 
     // Static collections — admin demo data, no DB writes ever
     if (route === 'tags') return res.json(initialTags);
     if (route === 'advertisements') {
       const realAds = await getActiveAds();
-      return res.json(realAds.length > 0 ? realAds : initialAdvertisements);
+      return res.json(realAds.length > 0 ? realAds : snapAds);
     }
     if (route === 'activity-logs') return res.json(initialActivityLogs);
     if (route === 'users') return res.json(initialUsers);
