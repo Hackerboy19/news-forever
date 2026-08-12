@@ -75,7 +75,15 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (route === 'health') {
-      return res.json({ status: 'ok', framework: 'Vercel Serverless + Headless CodeIgniter Bridge' });
+      let db = 'not_configured';
+      try {
+        const { dbPool } = await import('../src/lib/db.js');
+        await dbPool.query('SELECT 1');
+        db = 'connected';
+      } catch (err: any) {
+        db = `error: ${err?.code || err?.message || 'unknown'}`;
+      }
+      return res.json({ status: 'ok', db, host: process.env.MYSQL_HOST || null });
     }
 
     // ---- Admin authentication & real ci_blog writes ----
