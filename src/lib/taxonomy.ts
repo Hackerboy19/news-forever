@@ -15,11 +15,17 @@ export interface NavItem {
   subcategories?: NavItem[];
 }
 
+/**
+ * Visible labels use broad editorial categories (news-portal positioning) —
+ * niche terms (Pageant/Award) stay out of the top-level nav on stakeholder
+ * request, while slugs keep mapping to the same legacy category URLs so SEO
+ * metadata and existing indexed links are unaffected.
+ */
 export const NAVIGATION_TAXONOMY: NavItem[] = [
   { name: 'Home', slug: 'all' },
   {
-    name: 'Pageants',
-    slug: 'beauty-pageant',
+    name: 'Fashion & Glamour',
+    slug: 'fashion-glamour',
     subcategories: [
       { name: 'Miss India', slug: 'miss-india' },
       { name: 'Mrs India', slug: 'mrs-india' },
@@ -29,25 +35,18 @@ export const NAVIGATION_TAXONOMY: NavItem[] = [
     ],
   },
   {
-    name: 'Awards',
-    slug: 'forever-star-india-awards',
+    name: 'Entertainment',
+    slug: 'entertainment',
     subcategories: [
-      { name: 'Super Woman Award', slug: 'super-woman-award' },
-      { name: 'Super Hero Award', slug: 'super-hero-award' },
+      { name: 'Super Woman', slug: 'super-woman-award' },
+      { name: 'Super Hero', slug: 'super-hero-award' },
       { name: 'National Achievers', slug: 'national-achiever-award' },
       { name: 'Nominate Yourself', slug: 'nominate-yourself-award' },
     ],
   },
-  {
-    name: 'News & Lifestyle',
-    slug: 'news',
-    subcategories: [
-      { name: 'Business News', slug: 'business-news' },
-      { name: 'Astrology', slug: 'astrology' },
-      { name: 'Products & Lifestyle', slug: 'products' },
-      { name: 'Franchise', slug: 'franchise' },
-    ],
-  },
+  { name: 'Lifestyle & Products', slug: 'products' },
+  { name: 'Business', slug: 'business-news' },
+  { name: 'Astrology', slug: 'astrology' },
   { name: 'About Us', href: 'https://newsforever.in/about-us' },
   { name: 'Contact Us', href: 'https://newsforever.in/contact-us' },
 ];
@@ -64,6 +63,9 @@ const SLUG_ALIASES: Record<string, string[]> = {
   'state-winners': ['state-winner'],
   'national-achiever-award': ['national-achiever'],
   news: ['business-news', 'astrology', 'products', 'franchise'],
+  // Broad editorial labels → legacy category groups
+  'fashion-glamour': ['beauty-pageant', 'miss-india', 'mrs-india', 'miss-teen-india'],
+  entertainment: ['forever-star-india-awards', 'forever-star-india', 'super-woman-award', 'super-hero-award', 'national-achiever', 'nominate-yourself-award'],
 };
 
 export interface CategoryLike {

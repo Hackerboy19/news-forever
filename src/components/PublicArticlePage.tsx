@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CIBlog, CIAdvertisement } from '../types';
 import SEOManager from './SEOManager';
+import SidebarAd from './SidebarAd';
 import Skeleton from './ui/Skeleton';
 import { 
   ArrowLeft, 
@@ -111,9 +112,8 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   }
 
 
-  // Sticky Sidebar Ad and In-content Ad
-  const sidebarAd = ads.find((a) => a.position === 'sidebar_sticky' && a.status === 1);
-  const inContentAd = ads.find((a) => a.position === 'in_content' && a.status === 1);
+  // In-content ad ('blog' = article-page zone in the legacy CMS)
+  const inContentAd = ads.find((a) => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
 
   // Related articles in same category
   const relatedArticles = article
@@ -349,17 +349,27 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
 
           {/* In-Article Native Banner Ad */}
           {inContentAd && (
-            <div className="my-8 p-4 bg-[#FAF8F5] border border-[#E7E5E4] text-center space-y-2">
-              <span className="text-[10px] uppercase tracking-widest text-stone-500 font-mono block font-semibold">
-                SPONSORED ADVERTISEMENT ZONE
-              </span>
-              <a href={inContentAd.url} target="_blank" rel="noopener noreferrer">
+            <div className="my-8 bg-white border border-[#E7E5E4] shadow-xs">
+              <div className="px-4 pt-3 pb-2 border-b border-stone-100 text-center">
+                <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-stone-400 font-semibold">
+                  Advertisement
+                </span>
+              </div>
+              <a
+                href={inContentAd.url}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                title={inContentAd.title}
+                className="block p-4 hover:opacity-95 transition"
+              >
                 <img
                   src={inContentAd.advertisement_image}
                   alt={inContentAd.alt_tag}
-                  className="max-h-52 mx-auto object-contain border border-stone-300"
+                  className="max-h-52 mx-auto object-contain"
+                  loading="lazy"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&auto=format&fit=crop&q=80';
+                    const panel = (e.target as HTMLImageElement).closest('div.my-8') as HTMLElement | null;
+                    if (panel) panel.style.display = 'none';
                   }}
                 />
               </a>
@@ -367,26 +377,9 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
           )}
         </article>
 
-        {/* Sticky Sidebar Ads & Related Articles */}
+        {/* Sponsored Sidebar Panels & Related Articles */}
         <div className="space-y-8">
-          {/* Sticky Sidebar Ad Zone */}
-          {sidebarAd && (
-            <div className="sticky top-20 bg-white border border-[#E7E5E4] p-4 text-center space-y-3 shadow-xs">
-              <span className="text-[10px] uppercase tracking-widest text-stone-500 font-mono block font-semibold">
-                ADVERTISEMENT | 300x600 ZONE
-              </span>
-              <a href={sidebarAd.url} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={sidebarAd.advertisement_image}
-                  alt={sidebarAd.alt_tag}
-                  className="w-full object-contain mx-auto border border-stone-200"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600&auto=format&fit=crop&q=80';
-                  }}
-                />
-              </a>
-            </div>
-          )}
+          <SidebarAd ads={ads} max={2} sticky />
 
           {/* Related Stories */}
           {relatedArticles.length > 0 && (

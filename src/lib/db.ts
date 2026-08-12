@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { CIBlog, CICategory } from '../types.js';
+import { CIBlog, CICategory, CIAdvertisement } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
 
 /**
@@ -251,4 +251,46 @@ export async function getAllCategories(): Promise<CICategory[]> {
 export async function getActiveCategories(): Promise<CICategory[]> {
   const all = await getAllCategories();
   return all.filter((c) => !c.parent_id && (c.article_count ?? 0) > 0);
+}
+
+interface RawAdRow {
+  id: number;
+  advertisement_title: string;
+  advertisement_url: string;
+  advertisement_image: string;
+  alt_tag: string;
+  priority: number;
+  position: string;
+  status: number;
+  created_at: string;
+}
+
+/** Fetch active promotional ads from ci_advertisement, most prominent first. */
+export async function getActiveAds(): Promise<CIAdvertisement[]> {
+  try {
+    const query = `
+      SELECT id, advertisement_title, advertisement_url, advertisement_image,
+             alt_tag, priority, position, status, created_at
+      FROM ci_advertisement
+      WHERE status = 1
+      ORDER BY priority ASC, id DESC
+    `;
+    const [rows] = await dbPool.query(query);
+    return (rows as RawAdRow[]).map((row) => ({
+      id: row.id,
+      title: row.advertisement_title,
+      advertisement_image: assetUrl(row.advertisement_image),
+      alt_tag: row.alt_tag || row.advertisement_title,
+      url: row.advertisement_url,
+      position: row.position,
+      priority: row.priority,
+      status: row.status,
+      click_count: 0,
+      impressions: 0,
+      created_at: row.created_at || '',
+    }));
+  } catch (err) {
+    handleDbError('getActiveAds', err);
+    return [];
+  }
 }

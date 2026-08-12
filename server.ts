@@ -12,7 +12,7 @@ import {
   initialSetting
 } from "./src/data/mockData";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
-import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories } from "./src/lib/db";
+import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds } from "./src/lib/db";
 
 async function startServer() {
   const app = express();
@@ -262,9 +262,10 @@ async function startServer() {
     res.json(dbTags);
   });
 
-  // GET /api/advertisements
-  app.get("/api/advertisements", (_req, res) => {
-    res.json(dbAds);
+  // GET /api/advertisements — real ci_advertisement rows, demo fallback
+  app.get("/api/advertisements", async (_req, res) => {
+    const realAds = await getActiveAds();
+    res.json(realAds.length > 0 ? realAds : dbAds);
   });
 
   // POST /api/advertisements

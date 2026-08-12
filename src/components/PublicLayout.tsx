@@ -36,6 +36,7 @@ interface PublicLayoutProps {
 }
 
 import { NAVIGATION_TAXONOMY } from '../lib/taxonomy';
+import LeaderboardAd from './LeaderboardAd';
 
 export const PublicLayout: React.FC<PublicLayoutProps> = ({
   categories,
@@ -111,9 +112,6 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   // Top-level ci_category rows that actually have published articles
   const topCategories = categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0);
 
-  // Find top banner ad from ci_advertisement
-  const topAd = ads.find(a => a.position === 'top_banner' && a.status === 1);
-
   const handleSubscribeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newsletterEmail || !newsletterEmail.includes('@')) return;
@@ -133,35 +131,6 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#1C1917] font-sans flex flex-col selection:bg-[#7A0C0C] selection:text-white">
-      {/* Top Banner Ad Zone */}
-      {topAd && (
-        <div className="bg-[#F4F1EA] border-b border-[#E7E5E4] py-2 px-4 text-center">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-widest font-mono text-stone-500 font-bold">
-              SPONSORED ADVERTISEMENT
-            </span>
-            <a
-              href={topAd.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block hover:opacity-90 transition max-h-[80px] overflow-hidden"
-            >
-              <img
-                src={topAd.advertisement_image}
-                alt={topAd.alt_tag}
-                className="max-h-14 mx-auto object-contain border border-stone-300"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1000&auto=format&fit=crop&q=80';
-                }}
-              />
-            </a>
-            <div className="hidden lg:block text-[10px] uppercase tracking-widest font-mono text-stone-500">
-              728x90 Banner
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Top Utility Header with Search, Subscribe & Social Icons */}
       <div className="bg-white border-b border-stone-200 py-1.5 px-4 sm:px-8 text-xs text-stone-600">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -405,6 +374,9 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           </div>
         )}
       </header>
+
+      {/* Leaderboard Ad Strip — between header and hero, ci_advertisement-backed */}
+      <LeaderboardAd ads={ads} />
 
       {/* Main Page Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">

@@ -87,6 +87,40 @@ export const SEOManager: React.FC<SEOProps> = ({
       setMetaTag('property', 'og:url', activeUrl);
       setLinkTag('canonical', activeUrl);
     }
+
+    // 4. JSON-LD structured data — keeps the rich niche keywords (beauty
+    // pageant, awards) for ranking even though the visible nav uses broad
+    // editorial labels.
+    const ldId = 'seo-jsonld';
+    let ldScript = document.getElementById(ldId) as HTMLScriptElement | null;
+    if (!ldScript) {
+      ldScript = document.createElement('script');
+      ldScript.type = 'application/ld+json';
+      ldScript.id = ldId;
+      document.head.appendChild(ldScript);
+    }
+    const jsonLd = article
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'NewsArticle',
+          headline: article.meta_title || article.title,
+          description: activeDesc,
+          image: [activeImage],
+          keywords: article.meta_keyword || 'beauty pageant, miss india, forever star india awards, news',
+          datePublished: (article.created_at || '').split(' ')[0],
+          author: { '@type': 'Person', name: article.author_name || 'News Forever Bureau' },
+          publisher: { '@type': 'NewsMediaOrganization', name: siteName, url: 'https://newsforever.in/' },
+          mainEntityOfPage: activeUrl,
+        }
+      : {
+          '@context': 'https://schema.org',
+          '@type': 'NewsMediaOrganization',
+          name: siteName,
+          url: 'https://newsforever.in/',
+          description: finalDesc,
+          knowsAbout: ['Beauty Pageants', 'Miss India', 'Mrs India', 'Forever Star India Awards', 'Business News', 'Astrology', 'Lifestyle'],
+        };
+    ldScript.textContent = JSON.stringify(jsonLd);
   }, [
     article,
     title,

@@ -61,11 +61,14 @@ export interface CITag {
 
 export interface CIAdvertisement {
   id: number;
-  title: string;
-  advertisement_image: string; // Path: e.g. assets/img/ads/banner-728x90.jpg
+  title: string; // ci_advertisement.advertisement_title
+  advertisement_image: string; // ci_advertisement.advertisement_image
   alt_tag: string;
-  url: string;
-  position: 'top_banner' | 'sidebar_sticky' | 'in_content' | 'footer_banner';
+  url: string; // ci_advertisement.advertisement_url (promotional backlink)
+  // Real ci_advertisement uses 'blog' | 'left' | 'right'; legacy demo data
+  // uses the older zone names — components accept both.
+  position: 'blog' | 'left' | 'right' | 'top_banner' | 'sidebar_sticky' | 'in_content' | 'footer_banner' | string;
+  priority?: number; // ci_advertisement.priority (lower = more prominent)
   status: number; // 1 = Active, 0 = Inactive
   click_count: number;
   impressions: number;

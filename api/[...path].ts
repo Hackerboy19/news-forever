@@ -3,7 +3,7 @@
  * production. Public reads hit the live MySQL database via src/lib/db.ts
  * (strictly read-only); admin-panel collections return static demo data.
  */
-import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories } from '../src/lib/db.js';
+import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds } from '../src/lib/db.js';
 import {
   initialBlogs,
   initialCategories,
@@ -68,7 +68,10 @@ export default async function handler(req: any, res: any) {
 
     // Static collections — admin demo data, no DB writes ever
     if (route === 'tags') return res.json(initialTags);
-    if (route === 'advertisements') return res.json(initialAdvertisements);
+    if (route === 'advertisements') {
+      const realAds = await getActiveAds();
+      return res.json(realAds.length > 0 ? realAds : initialAdvertisements);
+    }
     if (route === 'activity-logs') return res.json(initialActivityLogs);
     if (route === 'users') return res.json(initialUsers);
     if (route === 'image-library') return res.json(initialImages);

@@ -3,6 +3,7 @@ import { CIBlog, CIAdvertisement, CICategory } from '../types';
 import { resolveCategoryIds } from '../lib/taxonomy';
 import { TrendingUp, Eye, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react';
 import TrendingSidebar from './TrendingSidebar';
+import SidebarAd from './SidebarAd';
 import Skeleton from './ui/Skeleton';
 
 export const PublicHomeSkeleton: React.FC = () => {
@@ -121,9 +122,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   const trendingArticles = categoryFilteredBlogs.filter(b => b.is_trending && b.id !== heroArticle?.id).slice(0, 3);
   const remainingArticles = categoryFilteredBlogs.filter(b => b.id !== heroArticle?.id && !trendingArticles.some(t => t.id === b.id));
 
-  // Find Sticky Sidebar Ad from ci_advertisement
-  const sidebarAd = ads.find(a => a.position === 'sidebar_sticky' && a.status === 1);
-  const nativeAd = ads.find(a => a.position === 'in_content' && a.status === 1);
+  // In-feed native ad from ci_advertisement ('blog' = article-page zone in legacy CMS)
+  const nativeAd = ads.find(a => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
 
   return (
     <div className="space-y-12">
@@ -314,29 +314,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           {/* Trending Now Component */}
           <TrendingSidebar blogs={blogs} onSelectArticle={onSelectArticle} />
 
-          {/* Sticky Sidebar Ad Zone */}
-          {sidebarAd && (
-            <div className="sticky top-20 bg-white border border-[#E7E5E4] p-4 text-center space-y-3 shadow-xs">
-              <span className="text-[10px] uppercase tracking-widest text-stone-500 font-mono block font-semibold">
-                ADVERTISEMENT | 300x600 STICKY ZONE
-              </span>
-              <a
-                href={sidebarAd.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block hover:opacity-95 transition"
-              >
-                <img
-                  src={sidebarAd.advertisement_image}
-                  alt={sidebarAd.alt_tag}
-                  className="w-full object-contain mx-auto border border-stone-200"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600&auto=format&fit=crop&q=80';
-                  }}
-                />
-              </a>
-            </div>
-          )}
+          {/* Sponsored Sidebar Panels — ci_advertisement left/right zones */}
+          <SidebarAd ads={ads} max={2} />
 
           {/* Quick Categories Navigation */}
           <div className="bg-white border border-[#E7E5E4] p-5 space-y-3 shadow-xs">
