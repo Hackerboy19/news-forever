@@ -180,9 +180,15 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
       <div className="bg-white border-b border-stone-200 py-1.5 px-4 sm:px-8 text-xs text-stone-600">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 font-mono text-[11px] text-stone-500">
-              <Calendar className="w-3.5 h-3.5 text-[#7A0C0C]" />
-              {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+            <span className="flex items-center gap-1.5 font-mono text-[11px] text-stone-500 whitespace-nowrap">
+              <Calendar className="w-3.5 h-3.5 text-[#7A0C0C] shrink-0" />
+              {/* Compact date on mobile so the utility bar never wraps */}
+              <span className="sm:hidden">
+                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+              <span className="hidden sm:inline">
+                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
             </span>
             {activeSubcatFilter && (
               <span className="bg-[#7A0C0C]/10 text-[#7A0C0C] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider font-mono flex items-center gap-1">
@@ -193,15 +199,16 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           </div>
 
           {/* Right Header Controls: Persistent Search Button, Subscribe, Socials */}
-          <div className="flex items-center gap-4">
-            {/* Persistent Command Palette Search Button */}
+          <div className="flex items-center gap-2.5 sm:gap-4">
+            {/* Persistent Command Palette Search Button — comfortable tap target on mobile */}
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center gap-2 px-2.5 py-1 bg-stone-100 hover:bg-stone-200/80 border border-stone-300 text-stone-700 hover:text-[#7A0C0C] font-medium transition text-xs group"
+              className="flex items-center gap-2 px-3 py-1.5 sm:px-2.5 sm:py-1 bg-stone-100 hover:bg-stone-200/80 border border-stone-300 text-stone-700 hover:text-[#7A0C0C] font-medium transition text-xs group rounded-full sm:rounded-none"
               title="Search news articles (Cmd+K)"
+              aria-label="Search news articles"
             >
-              <Search className="w-3.5 h-3.5 text-stone-600 group-hover:text-[#7A0C0C] transition" />
-              <span className="hidden sm:inline text-xs font-sans">Search news...</span>
+              <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-stone-600 group-hover:text-[#7A0C0C] transition" />
+              <span className="text-xs font-sans">Search</span>
               <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-white text-stone-500 border border-stone-300 font-mono text-[9px] font-bold shadow-2xs">⌘K</kbd>
             </button>
 
@@ -584,27 +591,27 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
       {/* COMMAND PALETTE SEARCH OVERLAY MODAL */}
       {commandPaletteOpen && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center pt-10 sm:pt-20 px-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-start justify-center sm:pt-20 sm:px-4 animate-in fade-in duration-150">
           {/* Backdrop Click Handler */}
           <div className="fixed inset-0" onClick={() => setCommandPaletteOpen(false)} />
 
-          {/* Command Palette Dialog Box */}
-          <div className="relative z-10 bg-white w-full max-w-2xl border border-stone-300 shadow-2xl overflow-hidden rounded-none flex flex-col max-h-[85vh]">
+          {/* Command Palette Dialog — full-screen on mobile, centered card on larger screens */}
+          <div className="relative z-10 bg-white w-full h-full sm:h-auto max-w-full sm:max-w-2xl border-0 sm:border border-stone-300 shadow-2xl overflow-hidden rounded-none flex flex-col max-h-full sm:max-h-[85vh]">
             {/* Top Search Input Bar */}
-            <div className="p-4 border-b border-stone-200 flex items-center gap-3 bg-stone-50/80">
+            <div className="p-3 sm:p-4 border-b border-stone-200 flex items-center gap-2.5 sm:gap-3 bg-stone-50/80">
               <Search className="w-5 h-5 text-[#7A0C0C] shrink-0" />
               <input
                 ref={paletteInputRef}
-                type="text"
+                type="search"
                 value={paletteQuery}
                 onChange={(e) => setPaletteQuery(e.target.value)}
-                placeholder="Search by title, keyword, category, or tag... (e.g. Miss India, Awards, Astrology)"
-                className="w-full text-sm font-medium text-stone-900 placeholder-stone-400 bg-transparent focus:outline-none"
+                placeholder="Search news, categories, tags…"
+                className="w-full text-base sm:text-sm font-medium text-stone-900 placeholder-stone-400 bg-transparent focus:outline-none"
               />
               {paletteQuery && (
                 <button
                   onClick={() => setPaletteQuery('')}
-                  className="p-1 text-stone-400 hover:text-stone-700 text-xs font-mono font-bold"
+                  className="p-1 text-stone-400 hover:text-stone-700 text-xs font-mono font-bold shrink-0"
                   title="Clear input"
                 >
                   CLEAR
@@ -616,9 +623,10 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 </kbd>
                 <button
                   onClick={() => setCommandPaletteOpen(false)}
-                  className="p-1 text-stone-500 hover:text-stone-900"
+                  className="p-2 sm:p-1 -mr-1 sm:mr-0 text-stone-500 hover:text-stone-900"
+                  aria-label="Close search"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-6 h-6 sm:w-5 sm:h-5" />
                 </button>
               </div>
             </div>
@@ -730,8 +738,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               )}
             </div>
 
-            {/* Modal Command Palette Footer */}
-            <div className="p-3 bg-stone-100 border-t border-stone-200 flex items-center justify-between text-[10px] font-mono text-stone-500">
+            {/* Modal Command Palette Footer (desktop only) */}
+            <div className="hidden sm:flex p-3 bg-stone-100 border-t border-stone-200 items-center justify-between text-[10px] font-mono text-stone-500">
               <span className="flex items-center gap-1.5 font-bold">
                 <Sparkles className="w-3.5 h-3.5 text-[#7A0C0C]" />
                 News Forever Command Palette
