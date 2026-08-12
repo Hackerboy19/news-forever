@@ -16,8 +16,11 @@ import {
 } from '../src/data/mockData.js';
 // Real-data snapshot exported from the production jaipurwe_fsianews dump —
 // served whenever the live MySQL host is unreachable (regenerate with
-// `npx tsx scripts/export-snapshot.ts`).
-import snapshot from '../src/data/snapshot.json';
+// `npx tsx scripts/export-snapshot.ts`). Loaded via createRequire: the
+// Vercel Node ESM runtime rejects bare JSON imports without attributes.
+import { createRequire } from 'module';
+const requireJson = createRequire(import.meta.url);
+const snapshot = requireJson('../src/data/snapshot.json');
 
 const snapBlogs = snapshot.blogs as unknown as CIBlog[];
 const snapCategories = snapshot.categories as unknown as CICategory[];
