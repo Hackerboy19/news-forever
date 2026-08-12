@@ -26,12 +26,12 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
   return (
     <div className={`space-y-6 ${sticky ? 'sticky top-24' : ''}`}>
       {panelAds.map((ad) => (
-        <div key={ad.id} className="bg-white border border-[#E7E5E4] shadow-xs">
-          <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-stone-100">
-            <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-stone-400 font-semibold">
+        <div key={ad.id} data-ad-panel className="bg-slate-50 border border-slate-200/80 rounded-sm shadow-xs">
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-slate-200/60">
+            <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-slate-400 font-semibold">
               Sponsored
             </span>
-            <span className="w-1.5 h-1.5 rounded-full bg-stone-200" />
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
           </div>
           <a
             href={ad.url}
@@ -40,19 +40,19 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
             title={ad.title}
             className="block p-3 hover:opacity-95 transition"
           >
-            <div className="aspect-square w-full bg-slate-50 border border-stone-100 overflow-hidden flex items-center justify-center">
+            <div className="aspect-square w-full bg-white border border-slate-200/60 rounded-sm overflow-hidden flex items-center justify-center">
               <img
                 src={ad.advertisement_image}
                 alt={ad.alt_tag}
                 className="w-full h-full object-contain"
                 loading="lazy"
                 onError={(e) => {
-                  const panel = (e.target as HTMLImageElement).closest('div.bg-white') as HTMLElement | null;
+                  const panel = (e.target as HTMLImageElement).closest('[data-ad-panel]') as HTMLElement | null;
                   if (panel) panel.style.display = 'none';
                 }}
               />
             </div>
-            <p className="pt-2.5 text-[11px] font-semibold text-stone-700 text-center leading-snug line-clamp-1">
+            <p className="pt-2.5 text-[11px] font-semibold text-slate-600 text-center leading-snug line-clamp-1">
               {ad.title}
             </p>
           </a>

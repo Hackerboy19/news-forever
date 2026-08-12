@@ -506,6 +506,7 @@ export function App() {
           blogs={blogs}
           ads={ads}
           categories={categories}
+          tags={tags}
           activeCategory={activeCategory}
           isLoading={loading}
           onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}

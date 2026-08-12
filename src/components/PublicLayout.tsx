@@ -175,7 +175,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#1C1917] font-sans flex flex-col selection:bg-[#7A0C0C] selection:text-white">
+    <div className="min-h-screen bg-[#FAFAFA] text-slate-700 font-sans flex flex-col selection:bg-[#7A0C0C] selection:text-white">
       {/* Top Utility Header with Search, Subscribe & Social Icons */}
       <div className="bg-white border-b border-stone-200 py-1.5 px-4 sm:px-8 text-xs text-stone-600">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

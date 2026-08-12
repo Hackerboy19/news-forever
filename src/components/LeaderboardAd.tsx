@@ -19,11 +19,11 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
   if (!ad) return null;
 
   return (
-    <div className="bg-white border-b border-[#E7E5E4]">
+    <div className="bg-slate-50 border-b border-slate-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         <div className="text-center mb-1.5">
-          <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-stone-400 font-semibold">
-            Advertisement
+          <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-slate-400 font-semibold">
+            Sponsored
           </span>
         </div>
         <a
@@ -31,7 +31,7 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
           target="_blank"
           rel="noopener noreferrer sponsored"
           title={ad.title}
-          className="block mx-auto max-w-3xl border border-stone-200 hover:border-stone-300 bg-slate-50 overflow-hidden transition shadow-xs hover:shadow-editorial"
+          className="block mx-auto max-w-3xl border border-slate-200 hover:border-slate-300 bg-white rounded-sm overflow-hidden transition shadow-xs hover:shadow-editorial"
         >
           <img
             src={ad.advertisement_image}
@@ -40,7 +40,7 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
             loading="lazy"
             onError={(e) => {
               // Broken asset: collapse the whole strip instead of showing a broken image
-              const strip = (e.target as HTMLImageElement).closest('div.bg-white') as HTMLElement | null;
+              const strip = (e.target as HTMLImageElement).closest('div.border-b') as HTMLElement | null;
               if (strip) strip.style.display = 'none';
             }}
           />

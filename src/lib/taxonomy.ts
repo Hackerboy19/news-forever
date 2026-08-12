@@ -63,6 +63,7 @@ const SLUG_ALIASES: Record<string, string[]> = {
   'state-winners': ['state-winner'],
   'national-achiever-award': ['national-achiever'],
   news: ['business-news', 'astrology', 'products', 'franchise'],
+  lifestyle: ['products', 'astrology', 'franchise'],
   // Broad editorial labels → legacy category groups
   'fashion-glamour': ['beauty-pageant', 'miss-india', 'mrs-india', 'miss-teen-india'],
   entertainment: [
@@ -89,10 +90,8 @@ export const NAV_UMBRELLAS: { name: string; slug: string; covers: string[] }[] =
     slug: 'entertainment',
     covers: ['forever-star-india-awards', 'star-india-kids-contest-2026', 'nominate-yourself-award', 'forever-star-india'],
   },
-  { name: 'Lifestyle & Products', slug: 'products', covers: ['products'] },
+  { name: 'Lifestyle', slug: 'lifestyle', covers: ['products', 'astrology', 'franchise'] },
   { name: 'Business', slug: 'business-news', covers: ['business-news'] },
-  { name: 'Astrology', slug: 'astrology', covers: ['astrology'] },
-  { name: 'Franchise', slug: 'franchise', covers: ['franchise'] },
 ];
 
 export interface CategoryLike {
