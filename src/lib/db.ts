@@ -271,6 +271,153 @@ export async function getActiveTags(): Promise<CITag[]> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Admin authentication + ci_blog write support
+// ---------------------------------------------------------------------------
+
+export interface AdminUser {
+  admin_id: number;
+  username: string;
+  name: string;
+}
+
+/** Verify credentials against the real ci_admin table (legacy plaintext scheme). */
+export async function verifyAdmin(username: string, password: string): Promise<AdminUser | null> {
+  if (!username || !password) return null;
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT admin_id, username, firstname, lastname FROM ci_admin
+       WHERE username = ? AND password = ? AND is_active = 1 LIMIT 1`,
+      [username, password]
+    );
+    const list = rows as any[];
+    if (list.length === 0) return null;
+    const a = list[0];
+    return {
+      admin_id: a.admin_id,
+      username: a.username,
+      name: [a.firstname, a.lastname].filter(Boolean).join(' ').trim() || a.username,
+    };
+  } catch (err) {
+    handleDbError('verifyAdmin', err);
+    return null;
+  }
+}
+
+/** Legacy CodeIgniter created_at format: 'YYYY-MM-DD : HH:MM:SS' */
+function legacyNow(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} : ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** Strip the asset host so stored paths keep the legacy relative form. */
+function toLegacyAssetPath(url: string | undefined): string {
+  return (url || '').replace(/^https?:\/\/[^/]+\//i, '').trim();
+}
+
+/** Map a frontend CIBlog partial onto real ci_blog columns. */
+function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number> {
+  const cols: Record<string, string | number> = {};
+  if (payload.title !== undefined) cols.title = payload.title;
+  if (payload.category_id !== undefined) cols.cat_id = payload.category_id;
+  if (payload.sub_category_id !== undefined) cols.sub_cat_id = payload.sub_category_id;
+  if (payload.tag_ids !== undefined) cols.tag_id = payload.tag_ids.join(',');
+  if (payload.image !== undefined) cols.image = toLegacyAssetPath(payload.image);
+  if (payload.alt_tag !== undefined) cols.alt_tag = payload.alt_tag;
+  if (payload.url !== undefined) cols.url = payload.url.trim();
+  if (payload.meta_title !== undefined) cols.meta_title = payload.meta_title;
+  if (payload.meta_keyword !== undefined) cols.meta_keyword = payload.meta_keyword;
+  if (payload.meta_description !== undefined) cols.meta_description = payload.meta_description;
+  if (payload.h2_tag !== undefined) cols.h2_tag = payload.h2_tag;
+  if (payload.h3_tag !== undefined) cols.h3_tag = payload.h3_tag;
+  if (payload.h4_tag !== undefined) cols.h4_tag = payload.h4_tag;
+  if (payload.h5_tag !== undefined) cols.h5_tag = payload.h5_tag;
+  if (payload.h6_tag !== undefined) cols.h6_tag = payload.h6_tag;
+  if (payload.og_title !== undefined) cols.og_title = payload.og_title;
+  if (payload.og_url !== undefined) cols.og_url = payload.og_url;
+  if (payload.og_description !== undefined) cols.og_description = payload.og_description;
+  if (payload.og_image !== undefined) cols.og_image = toLegacyAssetPath(payload.og_image);
+  if (payload.content !== undefined) cols.description = payload.content;
+  if (payload.status !== undefined) cols.status = payload.status;
+  return cols;
+}
+
+/** Fetch one blog (any status) by id, mapped to the frontend shape. */
+export async function getBlogByIdAdmin(id: number): Promise<CIBlog | null> {
+  const [rows] = await dbPool.query(`${BLOG_SELECT} WHERE b.id = ? LIMIT 1`, [id]);
+  const list = rows as RawBlogRow[];
+  return list.length > 0 ? mapBlogRow(list[0]) : null;
+}
+
+/** INSERT a new article into ci_blog. Returns the created row. */
+export async function createBlog(payload: Partial<CIBlog>, adminId: number): Promise<CIBlog> {
+  const cols = toBlogColumns(payload);
+  // NOT NULL varchar columns need explicit empty-string defaults
+  const defaults: Record<string, string | number> = {
+    title: '', cat_id: 0, sub_cat_id: 0, type: 0, tag_id: '', image: '', alt_tag: '',
+    video_type: '', video_name: '', youtube_video_link: '', amazon_webserver_video_link: '',
+    url: '', meta_title: '', meta_keyword: '', meta_description: '',
+    h2_tag: '', h3_tag: '', h4_tag: '', h5_tag: '', h6_tag: '',
+    og_title: '', og_url: '', og_description: '', og_image: '', description: '', status: 1,
+  };
+  const row = { ...defaults, ...cols, user_created_by: adminId, created_at: legacyNow() };
+  const names = Object.keys(row);
+  const [result] = await dbPool.query(
+    `INSERT INTO ci_blog (${names.map((n) => `\`${n}\``).join(',')}) VALUES (${names.map(() => '?').join(',')})`,
+    names.map((n) => row[n as keyof typeof row])
+  );
+  const created = await getBlogByIdAdmin((result as any).insertId);
+  if (!created) throw new Error('Insert succeeded but row not found');
+  return created;
+}
+
+/** UPDATE an existing ci_blog row (only provided fields). */
+export async function updateBlog(id: number, payload: Partial<CIBlog>): Promise<CIBlog | null> {
+  const cols = toBlogColumns(payload);
+  const names = Object.keys(cols);
+  if (names.length > 0) {
+    await dbPool.query(
+      `UPDATE ci_blog SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`,
+      [...names.map((n) => cols[n]), id]
+    );
+  }
+  return getBlogByIdAdmin(id);
+}
+
+/** DELETE a ci_blog row. */
+export async function deleteBlog(id: number): Promise<boolean> {
+  const [result] = await dbPool.query(`DELETE FROM ci_blog WHERE id = ?`, [id]);
+  return (result as any).affectedRows > 0;
+}
+
+/** Bulk activate / deactivate / delete. */
+export async function bulkBlogAction(ids: number[], action: 'activate' | 'deactivate' | 'delete'): Promise<number> {
+  if (ids.length === 0) return 0;
+  const placeholders = ids.map(() => '?').join(',');
+  if (action === 'delete') {
+    const [r] = await dbPool.query(`DELETE FROM ci_blog WHERE id IN (${placeholders})`, ids);
+    return (r as any).affectedRows;
+  }
+  const status = action === 'activate' ? 1 : 0;
+  const [r] = await dbPool.query(`UPDATE ci_blog SET status = ? WHERE id IN (${placeholders})`, [status, ...ids]);
+  return (r as any).affectedRows;
+}
+
+/** Admin list: all statuses (drafts included). */
+export async function getAllBlogsAdmin(limit = 500): Promise<CIBlog[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `${BLOG_SELECT} ORDER BY b.created_at DESC, b.id DESC LIMIT ?`,
+      [limit]
+    );
+    return (rows as RawBlogRow[]).map((row, i) => mapBlogRow(row, i));
+  } catch (err) {
+    handleDbError('getAllBlogsAdmin', err);
+    return [];
+  }
+}
+
 interface RawAdRow {
   id: number;
   advertisement_title: string;

@@ -539,8 +539,14 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
           </div>
 
-          <div className="border-t border-stone-200 pt-6 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
-            © 2026 News Forever. All rights reserved. Zero Data Loss Headless CMS.
+          <div className="border-t border-stone-200 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
+            <span>© 2026 News Forever. All rights reserved.</span>
+            <button
+              onClick={onSwitchToAdmin}
+              className="text-stone-400 hover:text-[#7A0C0C] transition underline underline-offset-2"
+            >
+              Admin Login
+            </button>
           </div>
         </div>
       </footer>

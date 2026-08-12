@@ -23,6 +23,8 @@ interface AdminLayoutProps {
   currentTab: string;
   onTabChange: (tab: string) => void;
   onSwitchToPublic: () => void;
+  adminName?: string;
+  onLogout?: () => void;
   children: React.ReactNode;
 }
 
@@ -35,6 +37,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   currentTab,
   onTabChange,
   onSwitchToPublic,
+  adminName = 'Administrator',
+  onLogout,
   children,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -190,15 +194,24 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
               Preview Public Site
             </button>
 
-            {/* Admin Profile */}
+            {/* Admin Profile (real ci_admin account) */}
             <div className="flex items-center gap-3 pl-4 border-l border-[#E7E5E4]">
-              <div className="w-8 h-8 rounded-full bg-[#991B1B] flex items-center justify-center font-bold text-white text-xs">
-                ER
+              <div className="w-8 h-8 rounded-full bg-[#991B1B] flex items-center justify-center font-bold text-white text-xs uppercase">
+                {adminName.split(' ').map((w) => w[0]).slice(0, 2).join('')}
               </div>
               <div className="hidden md:block leading-tight text-left">
-                <span className="block text-xs font-bold text-stone-900">Elena Rostova</span>
-                <span className="block text-[10px] text-stone-500 uppercase tracking-wider font-mono">Super Administrator</span>
+                <span className="block text-xs font-bold text-stone-900">{adminName}</span>
+                <span className="block text-[10px] text-stone-500 uppercase tracking-wider font-mono">ci_admin editor</span>
               </div>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="ml-1 text-[10px] font-mono font-bold uppercase tracking-wider text-stone-500 hover:text-[#991B1B] transition"
+                  title="Sign out"
+                >
+                  Logout
+                </button>
+              )}
             </div>
           </div>
         </header>

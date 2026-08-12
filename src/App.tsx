@@ -20,6 +20,14 @@ import SEOManager from './components/SEOManager';
 
 // Admin Components
 import AdminLayout from './components/AdminLayout';
+import AdminLogin from './components/admin/AdminLogin';
+import {
+  AdminCredentials,
+  loadAdminSession,
+  saveAdminSession,
+  clearAdminSession,
+  adminHeaders,
+} from './lib/adminAuth';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AdminBlogList from './components/admin/AdminBlogList';
 import AdminBlogForm from './components/admin/AdminBlogForm';
@@ -38,6 +46,7 @@ export function App() {
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
   const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
+  const [adminAuth, setAdminAuth] = useState<AdminCredentials | null>(() => loadAdminSession());
 
   // Editing state for Admin Blog Form
   const [editingBlog, setEditingBlog] = useState<CIBlog | null>(null);
@@ -101,33 +110,73 @@ export function App() {
 
   useEffect(() => {
     fetchData();
+    // Direct admin entry via https://<host>/#admin
+    if (window.location.hash === '#admin') setViewMode('admin');
   }, []);
 
-  // --- BLOG CRUD OPERATIONS ---
+  // --- ADMIN SESSION ---
+  const handleAdminLogin = (creds: AdminCredentials) => {
+    saveAdminSession(creds);
+    setAdminAuth(creds);
+    refreshAdminBlogs(creds);
+  };
+
+  const handleAdminLogout = () => {
+    clearAdminSession();
+    setAdminAuth(null);
+    setViewMode('public');
+    fetchData(); // back to the published-only list
+  };
+
+  /** Admin blog list includes drafts (status=all, auth required). */
+  const refreshAdminBlogs = async (creds: AdminCredentials | null = adminAuth) => {
+    if (!creds) return;
+    try {
+      const res = await fetch('/api/blogs?status=all', { headers: adminHeaders(creds) });
+      if (res.ok) setBlogs(await res.json());
+    } catch (err) {
+      console.error('Failed to refresh admin blog list', err);
+    }
+  };
+
+  const writeHeaders = (): Record<string, string> => ({
+    'Content-Type': 'application/json',
+    ...adminHeaders(adminAuth),
+  });
+
+  const handleWriteError = async (res: Response) => {
+    if (res.status === 401) {
+      alert('Session expired or unauthorized — please sign in again.');
+      handleAdminLogout();
+      return true;
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.error || 'Request failed');
+      return true;
+    }
+    return false;
+  };
+
+  // --- BLOG CRUD OPERATIONS (real ci_blog writes) ---
   const handleSaveBlog = async (formData: Partial<CIBlog>) => {
     setIsSavingBlog(true);
     try {
-      if (formData.id) {
-        // PUT update
-        const res = await fetch(`/api/blogs/${formData.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        });
-        const updated = await res.json();
-        setBlogs(prev => prev.map(b => b.id === updated.id ? updated : b));
-      } else {
-        // POST create
-        const res = await fetch('/api/blogs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        });
-        const created = await res.json();
-        setBlogs(prev => [created, ...prev]);
-      }
+      const res = formData.id
+        ? await fetch(`/api/blogs/${formData.id}`, {
+            method: 'PUT',
+            headers: writeHeaders(),
+            body: JSON.stringify(formData),
+          })
+        : await fetch('/api/blogs', {
+            method: 'POST',
+            headers: writeHeaders(),
+            body: JSON.stringify(formData),
+          });
 
-      // Refresh activity log
+      if (await handleWriteError(res)) return;
+      await refreshAdminBlogs();
+
       const resLogs = await fetch('/api/activity-logs').then(r => r.json());
       setActivityLogs(resLogs);
 
@@ -143,9 +192,10 @@ export function App() {
   };
 
   const handleDeleteBlog = async (id: number) => {
-    if (!confirm(`Are you sure you want to delete article #${id}?`)) return;
+    if (!confirm(`Permanently delete article #${id} from the live ci_blog table?`)) return;
     try {
-      await fetch(`/api/blogs/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/blogs/${id}`, { method: 'DELETE', headers: writeHeaders() });
+      if (await handleWriteError(res)) return;
       setBlogs(prev => prev.filter(b => b.id !== id));
       const resLogs = await fetch('/api/activity-logs').then(r => r.json());
       setActivityLogs(resLogs);
@@ -155,13 +205,15 @@ export function App() {
   };
 
   const handleBulkAction = async (ids: number[], action: 'activate' | 'deactivate' | 'delete') => {
+    if (action === 'delete' && !confirm(`Permanently delete ${ids.length} articles from the live ci_blog table?`)) return;
     try {
-      await fetch('/api/blogs/bulk-action', {
+      const res = await fetch('/api/blogs/bulk-action', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: writeHeaders(),
         body: JSON.stringify({ ids, action }),
       });
-      fetchData();
+      if (await handleWriteError(res)) return;
+      await refreshAdminBlogs();
     } catch (err) {
       alert('Bulk action failed');
     }
@@ -172,9 +224,10 @@ export function App() {
     try {
       const res = await fetch(`/api/blogs/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: writeHeaders(),
         body: JSON.stringify({ status: newStatus }),
       });
+      if (await handleWriteError(res)) return;
       const updated = await res.json();
       setBlogs(prev => prev.map(b => b.id === id ? updated : b));
     } catch (err) {
@@ -288,6 +341,9 @@ export function App() {
 
   // RENDER ADMIN PANEL VIEW
   if (viewMode === 'admin') {
+    if (!adminAuth) {
+      return <AdminLogin onLogin={handleAdminLogin} onBackToSite={() => setViewMode('public')} />;
+    }
     return (
       <AdminLayout
         currentTab={adminTab}
@@ -296,7 +352,12 @@ export function App() {
           setIsBlogFormOpen(false);
           setEditingBlog(null);
         }}
-        onSwitchToPublic={() => setViewMode('public')}
+        onSwitchToPublic={() => {
+          setViewMode('public');
+          fetchData();
+        }}
+        adminName={adminAuth.name}
+        onLogout={handleAdminLogout}
       >
         {isBlogFormOpen ? (
           <AdminBlogForm

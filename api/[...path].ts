@@ -3,7 +3,19 @@
  * production. Public reads hit the live MySQL database via src/lib/db.ts
  * (strictly read-only); admin-panel collections return static demo data.
  */
-import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds, getActiveTags } from '../src/lib/db.js';
+import {
+  getPublishedBlogs,
+  getBlogByUrlSlug,
+  getAllCategories,
+  getActiveAds,
+  getActiveTags,
+  verifyAdmin,
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  bulkBlogAction,
+  getAllBlogsAdmin,
+} from '../src/lib/db.js';
 import { resolveCategoryIds } from '../src/lib/taxonomy.js';
 import { CIBlog, CICategory, CIAdvertisement, CITag } from '../src/types.js';
 import { siteSetting } from '../src/data/siteConfig.js';
@@ -31,21 +43,94 @@ function snapshotBlogsByCategory(slug?: string): CIBlog[] {
   );
 }
 
+/** Read the JSON request body (Vercel may or may not have pre-parsed it). */
+async function readBody(req: any): Promise<any> {
+  if (req.body !== undefined) {
+    return typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString('utf8');
+  return raw ? JSON.parse(raw) : {};
+}
+
+/** Authenticate a write request against ci_admin via headers. */
+async function requireAdmin(req: any) {
+  const user = req.headers['x-admin-user'];
+  const pass = req.headers['x-admin-pass'];
+  return verifyAdmin(String(user || ''), String(pass || ''));
+}
+
 export default async function handler(req: any, res: any) {
   const url = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
   const segments = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
   const route = segments.join('/');
+  const method = (req.method || 'GET').toUpperCase();
 
-  res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+  if (method === 'GET') {
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+  } else {
+    res.setHeader('Cache-Control', 'no-store');
+  }
 
   try {
     if (route === 'health') {
       return res.json({ status: 'ok', framework: 'Vercel Serverless + Headless CodeIgniter Bridge' });
     }
 
+    // ---- Admin authentication & real ci_blog writes ----
+
+    if (route === 'admin/login' && method === 'POST') {
+      const { username, password } = await readBody(req);
+      const admin = await verifyAdmin(String(username || ''), String(password || ''));
+      if (!admin) return res.status(401).json({ error: 'Invalid credentials or database unreachable' });
+      return res.json(admin);
+    }
+
+    if (route === 'blogs' && method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const created = await createBlog(await readBody(req), admin.admin_id);
+      return res.status(201).json(created);
+    }
+
+    if (route === 'blogs/bulk-action' && method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const { ids, action } = await readBody(req);
+      if (!Array.isArray(ids) || !['activate', 'deactivate', 'delete'].includes(action)) {
+        return res.status(400).json({ error: 'Invalid bulk action payload' });
+      }
+      const affected = await bulkBlogAction(ids.map(Number), action);
+      return res.json({ success: true, affected, ids, action });
+    }
+
+    if (segments[0] === 'blogs' && segments.length === 2 && /^\d+$/.test(segments[1]) && (method === 'PUT' || method === 'DELETE')) {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const id = parseInt(segments[1], 10);
+      if (method === 'DELETE') {
+        const ok = await deleteBlog(id);
+        return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Blog not found' });
+      }
+      const updated = await updateBlog(id, await readBody(req));
+      return updated ? res.json(updated) : res.status(404).json({ error: 'Blog not found' });
+    }
+
+    // ---- Public reads ----
+
     if (route === 'blogs') {
       const categorySlug = url.searchParams.get('category_slug') || undefined;
       const limit = parseInt(url.searchParams.get('limit') || '200', 10);
+
+      // Admin list (drafts included) — requires valid ci_admin credentials
+      if (url.searchParams.get('status') === 'all') {
+        const admin = await requireAdmin(req);
+        if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json(await getAllBlogsAdmin(limit));
+      }
+
       let result = await getPublishedBlogs(limit, categorySlug);
       // Real-data snapshot fallback while the live database is not connected
       if (result.length === 0) result = snapshotBlogsByCategory(categorySlug).slice(0, limit);
