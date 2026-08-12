@@ -24,7 +24,7 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
   if (panelAds.length === 0) return null;
 
   return (
-    <div className={`space-y-6 ${sticky ? 'sticky top-24' : ''}`}>
+    <div className={`space-y-6 ${sticky ? 'lg:sticky lg:top-24' : ''}`}>
       {panelAds.map((ad) => (
         <div key={ad.id} data-ad-panel className="bg-slate-50 border border-slate-200/80 rounded-sm shadow-xs">
           <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-slate-200/60">
@@ -40,11 +40,11 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
             title={ad.title}
             className="block p-3 hover:opacity-95 transition"
           >
-            <div className="aspect-square w-full bg-white border border-slate-200/60 rounded-sm overflow-hidden flex items-center justify-center">
+            <div className="w-full bg-white border border-slate-200/60 rounded-sm overflow-hidden flex items-center justify-center">
               <img
                 src={ad.advertisement_image}
                 alt={ad.alt_tag}
-                className="w-full h-full object-contain"
+                className="w-full h-auto max-h-80 object-contain"
                 loading="lazy"
                 onError={(e) => {
                   const panel = (e.target as HTMLImageElement).closest('[data-ad-panel]') as HTMLElement | null;
