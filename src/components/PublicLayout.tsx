@@ -35,6 +35,7 @@ interface PublicLayoutProps {
   children: React.ReactNode;
 }
 
+import { NAV_UMBRELLAS } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
 import NewsTicker from './NewsTicker';
 
@@ -125,30 +126,38 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   // Top-level ci_category rows that actually have published articles
   const topCategories = categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0);
 
-  // Dynamic navigation mirroring the FULL live ci_category tree — every
-  // top-level category with articles becomes a tab, children become
-  // dropdown items. Nothing hardcoded, so new CMS categories appear
-  // automatically.
+  // Broad umbrella navigation (no "Pageant"/"Awards" wording at top level)
+  // covering the FULL live ci_category tree — every real category stays
+  // reachable through the dropdowns, and legacy /category/ URLs are unchanged.
   interface DynNavItem {
     name: string;
-    id?: number | 'all';
+    id?: number | string | 'all';
     href?: string;
     subs: { name: string; id: number }[];
   }
   const navItems: DynNavItem[] = [
     { name: 'Home', id: 'all', subs: [] },
-    ...topCategories.map((cat) => ({
-      name: cat.category_name,
-      id: cat.id,
-      subs: categories
-        .filter((c) => c.parent_id === cat.id && (c.article_count ?? 0) > 0)
-        .map((c) => ({ name: c.category_name, id: c.id })),
-    })),
+    ...NAV_UMBRELLAS.map((umbrella) => {
+      const covered = topCategories.filter((cat) =>
+        umbrella.covers.some((slug) => cat.slug.toLowerCase() === slug || cat.slug.toLowerCase().startsWith(slug))
+      );
+      // Single covered category → expose its children; several → expose the
+      // covered categories themselves (each expands to its children on click)
+      const subs =
+        covered.length === 1
+          ? categories
+              .filter((c) => c.parent_id === covered[0].id && (c.article_count ?? 0) > 0)
+              .map((c) => ({ name: c.category_name, id: c.id }))
+          : covered.map((c) => ({ name: c.category_name, id: c.id }));
+      return { name: umbrella.name, id: umbrella.slug, subs, hasContent: covered.length > 0 };
+    })
+      .filter((item) => item.hasContent)
+      .map(({ hasContent, ...item }) => item),
     { name: 'About Us', href: 'https://newsforever.in/about-us', subs: [] },
     { name: 'Contact Us', href: 'https://newsforever.in/contact-us', subs: [] },
   ];
 
-  const handleCatSelect = (id: number | 'all', label: string | null) => {
+  const handleCatSelect = (id: number | string | 'all', label: string | null) => {
     onCategorySelect(id);
     setActiveSubcatFilter(label);
     setActiveDropdown(null);

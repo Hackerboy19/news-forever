@@ -65,8 +65,35 @@ const SLUG_ALIASES: Record<string, string[]> = {
   news: ['business-news', 'astrology', 'products', 'franchise'],
   // Broad editorial labels → legacy category groups
   'fashion-glamour': ['beauty-pageant', 'miss-india', 'mrs-india', 'miss-teen-india'],
-  entertainment: ['forever-star-india-awards', 'forever-star-india', 'super-woman-award', 'super-hero-award', 'national-achiever', 'nominate-yourself-award'],
+  entertainment: [
+    'forever-star-india-awards',
+    'forever-star-india',
+    'super-woman-award',
+    'super-hero-award',
+    'national-achiever',
+    'nominate-yourself-award',
+    'star-india-kids-contest',
+  ],
 };
+
+/**
+ * Broad umbrella nav (stakeholder voice note): top-level labels avoid the
+ * words "Pageant"/"Awards" entirely, while `covers` lists the real
+ * top-level ci_category slugs grouped underneath — so every live category
+ * stays reachable and legacy /category/ URLs and SEO stay untouched.
+ */
+export const NAV_UMBRELLAS: { name: string; slug: string; covers: string[] }[] = [
+  { name: 'Fashion & Glamour', slug: 'fashion-glamour', covers: ['beauty-pageant'] },
+  {
+    name: 'Entertainment',
+    slug: 'entertainment',
+    covers: ['forever-star-india-awards', 'star-india-kids-contest-2026', 'nominate-yourself-award', 'forever-star-india'],
+  },
+  { name: 'Lifestyle & Products', slug: 'products', covers: ['products'] },
+  { name: 'Business', slug: 'business-news', covers: ['business-news'] },
+  { name: 'Astrology', slug: 'astrology', covers: ['astrology'] },
+  { name: 'Franchise', slug: 'franchise', covers: ['franchise'] },
+];
 
 export interface CategoryLike {
   id: number;
