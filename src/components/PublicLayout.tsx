@@ -37,6 +37,7 @@ interface PublicLayoutProps {
 
 import { NAVIGATION_TAXONOMY } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
+import NewsTicker from './NewsTicker';
 
 export const PublicLayout: React.FC<PublicLayoutProps> = ({
   categories,
@@ -53,6 +54,19 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Scroll-hide header: hides scrolling down (reading space), reappears on scroll-up
+  const [headerHidden, setHeaderHidden] = useState(false);
+  const lastScrollY = useRef(0);
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      setHeaderHidden(y > 300 && y > lastScrollY.current);
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterMsg, setNewsletterMsg] = useState('');
   const [activeSubcatFilter, setActiveSubcatFilter] = useState<string | null>(null);
@@ -207,8 +221,12 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
         </div>
       </div>
 
-      {/* Main Brand Logo Header & Navigation Header Bar */}
-      <header className="bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs">
+      {/* Main Brand Logo Header & Navigation Header Bar (sticky, scroll-hide) */}
+      <header
+        className={`bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs transition-transform duration-300 ${
+          headerHidden && !mobileMenuOpen ? '-translate-y-full' : 'translate-y-0'
+        }`}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Main Logo and Navigation Container matching NewsForever layout */}
           <div className="py-4 flex flex-col md:flex-row md:items-center justify-between border-b border-stone-100 gap-4">
@@ -310,70 +328,108 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           </div>
         </div>
 
-        {/* Mobile Navigation Drawer — same nested taxonomy */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-stone-200 bg-white p-4 space-y-3 max-h-[80vh] overflow-y-auto">
-            {NAVIGATION_TAXONOMY.map((item) => {
-              if (item.href) {
-                return (
-                  <a
-                    key={item.name}
-                    href={item.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block px-3 py-2 text-xs font-bold uppercase tracking-wider text-stone-800 hover:text-[#7A0C0C]"
-                  >
-                    {item.name}
-                  </a>
-                );
-              }
+      </header>
 
-              const subcats = item.subcategories || [];
-              const isExpanded = activeDropdown === item.name;
-              const isActive = item.slug === 'all' ? activeCategory === 'all' : activeCategory === item.slug;
+      {/* Full-screen slide-out mobile drawer with accordion sub-menus */}
+      {mobileMenuOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div
+            className="drawer-backdrop absolute inset-0 bg-stone-950/50 backdrop-blur-xs"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="drawer-panel absolute inset-y-0 right-0 w-full sm:w-96 bg-white shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-200 bg-[#FAF8F5]">
+              <span className="font-serif font-black text-xl text-stone-900">
+                News<span className="text-[#991B1B]">Forever</span>
+              </span>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-2 rounded-full hover:bg-stone-200/70 text-stone-700"
+                aria-label="Close navigation menu"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
 
-              return (
-                <div key={item.name} className="space-y-1 border-b border-stone-100 pb-2">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => handleNavSelect(item.slug!, item.slug === 'all' ? null : item.name)}
-                      className={`text-left text-xs font-bold uppercase tracking-wider px-3 py-2 ${
-                        isActive ? 'text-[#7A0C0C] bg-[#7A0C0C]/10' : 'text-stone-800'
-                      }`}
+            <nav className="flex-1 overflow-y-auto p-5 space-y-1.5">
+              {NAVIGATION_TAXONOMY.map((item) => {
+                if (item.href) {
+                  return (
+                    <a
+                      key={item.name}
+                      href={item.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block px-3 py-3 text-sm font-bold uppercase tracking-wider text-stone-800 hover:text-[#7A0C0C] border-b border-stone-100"
                     >
                       {item.name}
-                    </button>
-                    {subcats.length > 0 && (
-                      <button
-                        onClick={() => setActiveDropdown(isExpanded ? null : item.name)}
-                        className="p-1 text-stone-500"
-                        aria-label={`Toggle ${item.name} subcategories`}
-                      >
-                        <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                      </button>
-                    )}
-                  </div>
+                    </a>
+                  );
+                }
 
-                  {/* Subcategory List in Mobile Drawer */}
-                  {isExpanded && subcats.length > 0 && (
-                    <div className="pl-4 pt-1 space-y-1.5 border-l-2 border-[#7A0C0C]/30 ml-2">
-                      {subcats.map((sub) => (
+                const subcats = item.subcategories || [];
+                const isExpanded = activeDropdown === item.name;
+                const isActive = item.slug === 'all' ? activeCategory === 'all' : activeCategory === item.slug;
+
+                return (
+                  <div key={item.name} className="border-b border-stone-100">
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => handleNavSelect(item.slug!, item.slug === 'all' ? null : item.name)}
+                        className={`flex-1 text-left text-sm font-bold uppercase tracking-wider px-3 py-3 transition ${
+                          isActive ? 'text-[#7A0C0C]' : 'text-stone-800 hover:text-[#7A0C0C]'
+                        }`}
+                      >
+                        {item.name}
+                      </button>
+                      {subcats.length > 0 && (
                         <button
-                          key={sub.slug}
-                          onClick={() => handleNavSelect(sub.slug!, sub.name)}
-                          className="block w-full text-left text-xs text-stone-600 hover:text-[#7A0C0C] py-1"
+                          onClick={() => setActiveDropdown(isExpanded ? null : item.name)}
+                          className="p-3 text-stone-500 hover:text-[#7A0C0C]"
+                          aria-label={`Toggle ${item.name} subcategories`}
+                          aria-expanded={isExpanded}
                         >
-                          • {sub.name}
+                          <ChevronDown className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
                         </button>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+
+                    {/* Smooth accordion sub-menu */}
+                    <div
+                      className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                        isExpanded && subcats.length > 0 ? 'max-h-72 opacity-100' : 'max-h-0 opacity-0'
+                      }`}
+                    >
+                      <div className="pl-5 pb-3 space-y-0.5 border-l-2 border-[#7A0C0C]/30 ml-3">
+                        {subcats.map((sub) => (
+                          <button
+                            key={sub.slug}
+                            onClick={() => handleNavSelect(sub.slug!, sub.name)}
+                            className={`block w-full text-left text-xs py-2 px-2 transition ${
+                              activeCategory === sub.slug
+                                ? 'text-[#7A0C0C] font-bold'
+                                : 'text-stone-600 hover:text-[#7A0C0C]'
+                            }`}
+                          >
+                            {sub.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </nav>
+
+            <div className="px-5 py-4 border-t border-stone-200 bg-[#FAF8F5] text-[10px] font-mono uppercase tracking-widest text-stone-500 text-center">
+              International Organic News 24x7
+            </div>
           </div>
-        )}
-      </header>
+        </div>
+      )}
+
+      {/* Breaking News Ticker — 5 most recent ci_blog titles */}
+      <NewsTicker blogs={blogs} onSelectArticle={(slug) => { onSelectArticle(slug); }} />
 
       {/* Leaderboard Ad Strip — between header and hero, ci_advertisement-backed */}
       <LeaderboardAd ads={ads} />

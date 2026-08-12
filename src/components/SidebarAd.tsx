@@ -40,7 +40,7 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
             title={ad.title}
             className="block p-3 hover:opacity-95 transition"
           >
-            <div className="aspect-square w-full bg-[#FAFAFA] border border-stone-100 overflow-hidden flex items-center justify-center">
+            <div className="aspect-square w-full bg-slate-50 border border-stone-100 overflow-hidden flex items-center justify-center">
               <img
                 src={ad.advertisement_image}
                 alt={ad.alt_tag}

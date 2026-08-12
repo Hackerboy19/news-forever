@@ -27,3 +27,40 @@
   border-bottom: 1px solid #E7E5E4;
 }
 
+
+/* Breaking-news ticker marquee */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll 45s linear infinite;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* Mobile drawer slide-in */
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.drawer-panel {
+  animation: drawer-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.drawer-backdrop {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Horizontal snap carousels (mobile category rails) */
+.snap-rail {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.snap-rail > * {
+  scroll-snap-align: start;
+}

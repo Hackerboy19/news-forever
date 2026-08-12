@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { CIBlog, CIAdvertisement } from '../types';
 import SEOManager from './SEOManager';
 import SidebarAd from './SidebarAd';
+import InArticleAd from './InArticleAd';
 import Skeleton from './ui/Skeleton';
+import { splitHtmlAtParagraphs } from '../lib/injectAds';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -112,8 +114,9 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   }
 
 
-  // In-content ad ('blog' = article-page zone in the legacy CMS)
-  const inContentAd = ads.find((a) => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
+  // In-content ads ('blog' = article-page zone in the legacy CMS) — injected
+  // dynamically after the 3rd and 6th paragraphs of the description HTML
+  const inContentAds = ads.filter((a) => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
 
   // Related articles in same category
   const relatedArticles = article
@@ -341,40 +344,16 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             </div>
           </div>
 
-          {/* HTML Article Body */}
-          <div 
-            className="prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
-            dangerouslySetInnerHTML={{ __html: article.content }}
-          />
-
-          {/* In-Article Native Banner Ad */}
-          {inContentAd && (
-            <div className="my-8 bg-white border border-[#E7E5E4] shadow-xs">
-              <div className="px-4 pt-3 pb-2 border-b border-stone-100 text-center">
-                <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-stone-400 font-semibold">
-                  Advertisement
-                </span>
-              </div>
-              <a
-                href={inContentAd.url}
-                target="_blank"
-                rel="noopener noreferrer sponsored"
-                title={inContentAd.title}
-                className="block p-4 hover:opacity-95 transition"
-              >
-                <img
-                  src={inContentAd.advertisement_image}
-                  alt={inContentAd.alt_tag}
-                  className="max-h-52 mx-auto object-contain"
-                  loading="lazy"
-                  onError={(e) => {
-                    const panel = (e.target as HTMLImageElement).closest('div.my-8') as HTMLElement | null;
-                    if (panel) panel.style.display = 'none';
-                  }}
-                />
-              </a>
-            </div>
-          )}
+          {/* HTML Article Body — ads injected after the 3rd and 6th paragraphs */}
+          {splitHtmlAtParagraphs(article.content, [3, 6]).map((segment, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <InArticleAd ad={inContentAds[i - 1]} />}
+              <div
+                className="prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
+                dangerouslySetInnerHTML={{ __html: segment }}
+              />
+            </React.Fragment>
+          ))}
         </article>
 
         {/* Sponsored Sidebar Panels & Related Articles */}

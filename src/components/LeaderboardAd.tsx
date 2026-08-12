@@ -31,7 +31,7 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
           target="_blank"
           rel="noopener noreferrer sponsored"
           title={ad.title}
-          className="block mx-auto max-w-3xl border border-stone-200 hover:border-stone-300 bg-[#FAFAFA] overflow-hidden transition shadow-xs hover:shadow-editorial"
+          className="block mx-auto max-w-3xl border border-stone-200 hover:border-stone-300 bg-slate-50 overflow-hidden transition shadow-xs hover:shadow-editorial"
         >
           <img
             src={ad.advertisement_image}

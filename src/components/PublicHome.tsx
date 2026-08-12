@@ -1,10 +1,17 @@
 import React from 'react';
 import { CIBlog, CIAdvertisement, CICategory } from '../types';
 import { resolveCategoryIds } from '../lib/taxonomy';
+
+/** Editorial blocks below the hero — broad labels, legacy category groups */
+const CATEGORY_BLOCKS = [
+  { name: 'Fashion & Glamour', slug: 'fashion-glamour' },
+  { name: 'Entertainment', slug: 'entertainment' },
+];
 import { TrendingUp, Eye, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react';
 import TrendingSidebar from './TrendingSidebar';
 import SidebarAd from './SidebarAd';
 import Skeleton from './ui/Skeleton';
+import BlurImage from './ui/BlurImage';
 
 export const PublicHomeSkeleton: React.FC = () => {
   return (
@@ -16,9 +23,9 @@ export const PublicHomeSkeleton: React.FC = () => {
           <Skeleton className="h-3 w-28" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Main Featured Banner Skeleton */}
-          <div className="lg:col-span-2 bg-white border border-[#E7E5E4] overflow-hidden flex flex-col">
+          <div className="lg:col-span-3 bg-white border border-[#E7E5E4] overflow-hidden flex flex-col">
             <Skeleton className="h-80 sm:h-96 w-full rounded-none" />
             <div className="p-6 space-y-4">
               <Skeleton className="h-8 w-3/4" />
@@ -32,7 +39,7 @@ export const PublicHomeSkeleton: React.FC = () => {
           </div>
 
           {/* Trending Articles Column Skeleton */}
-          <div className="space-y-4">
+          <div className="lg:col-span-2 space-y-4">
             <Skeleton className="h-3 w-32 pb-2" />
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
@@ -138,21 +145,20 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             <span className="text-[10px] uppercase tracking-widest font-mono text-stone-500 font-semibold">Live News Digest</span>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Asymmetric magazine hero: 60% featured / 40% trending stack */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
             {/* Main Featured Banner */}
-            <div 
+            <div
               onClick={() => onSelectArticle(heroArticle.url)}
-              className="lg:col-span-2 group cursor-pointer bg-white border border-[#E7E5E4] overflow-hidden shadow-xs hover:border-[#991B1B]/50 transition flex flex-col"
+              className="lg:col-span-3 group cursor-pointer bg-white border border-[#E7E5E4] overflow-hidden shadow-xs hover:border-[#991B1B]/50 transition flex flex-col"
             >
               <div className="relative h-80 sm:h-96 w-full overflow-hidden bg-stone-100">
                 {/* Asset Mapping: src={heroArticle.image}, alt={heroArticle.alt_tag} */}
-                <img
+                <BlurImage
                   src={heroArticle.image}
                   alt={heroArticle.alt_tag}
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80';
-                  }}
+                  fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-950/80 via-stone-950/20 to-transparent" />
                 <div className="absolute top-4 left-4 flex gap-2">
@@ -188,7 +194,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             </div>
 
             {/* Trending Articles Column */}
-            <div className="space-y-4">
+            <div className="lg:col-span-2 space-y-4">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-600 border-b border-[#E7E5E4] pb-2">
                 Most Read Headlines
               </h3>
@@ -200,13 +206,11 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     onClick={() => onSelectArticle(article.url)}
                     className="group cursor-pointer p-3 bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 flex gap-4 transition shadow-xs"
                   >
-                    <img
+                    <BlurImage
                       src={article.image}
                       alt={article.alt_tag}
-                      className="w-20 h-20 object-cover bg-stone-100 shrink-0 border border-stone-200 group-hover:scale-105 transition"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=300&auto=format&fit=crop&q=80';
-                      }}
+                      className="w-24 h-24 object-cover bg-stone-100 shrink-0 border border-stone-200 group-hover:scale-105 transition"
+                      fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=300&auto=format&fit=crop&q=80"
                     />
                     <div className="space-y-1 my-auto">
                       <span className="text-[9px] font-bold text-[#991B1B] uppercase font-mono tracking-widest">
@@ -226,6 +230,63 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </div>
         </section>
       )}
+
+      {/* EDITORIAL CATEGORY BLOCKS — mobile carousels, desktop 4-col grids */}
+      {activeCategory === 'all' &&
+        CATEGORY_BLOCKS.map((block) => {
+          const catLikes = categories.map(c => ({ id: c.id, parent_id: c.parent_id, slug: c.slug }));
+          const ids = resolveCategoryIds(block.slug, catLikes);
+          const blockArticles = activeBlogs
+            .filter(b => ids.has(b.category_id) || (b.sub_category_id != null && ids.has(b.sub_category_id)))
+            .slice(0, 8);
+          if (blockArticles.length === 0) return null;
+
+          return (
+            <section key={block.slug} className="space-y-5">
+              <div className="flex items-center justify-between border-b-2 border-stone-900 pb-2.5">
+                <h2 className="text-lg sm:text-xl font-serif font-black text-stone-900 tracking-tight">
+                  {block.name}
+                </h2>
+                <button
+                  onClick={() => onCategorySelect(block.slug)}
+                  className="text-[10px] font-bold uppercase tracking-widest text-[#991B1B] hover:text-stone-900 transition flex items-center gap-1"
+                >
+                  View All <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              <div className="flex overflow-x-auto snap-rail gap-5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-4 lg:overflow-visible lg:pb-0 hide-scrollbar">
+                {blockArticles.map((article) => (
+                  <div
+                    key={article.id}
+                    onClick={() => onSelectArticle(article.url)}
+                    className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col shrink-0 w-64 lg:w-auto"
+                  >
+                    <div className="relative h-40 w-full overflow-hidden bg-stone-100">
+                      <BlurImage
+                        src={article.image}
+                        alt={article.alt_tag}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                        fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80"
+                      />
+                    </div>
+                    <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                      <h3 className="text-sm font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug line-clamp-2">
+                        {article.title}
+                      </h3>
+                      <div className="flex items-center justify-between text-[9px] text-stone-500 font-mono pt-2 border-t border-stone-100">
+                        <span className="text-[#991B1B] font-bold uppercase tracking-wider line-clamp-1">
+                          {article.category_name}
+                        </span>
+                        <span>{article.created_at ? article.created_at.split(' ')[0] : ''}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
 
       {/* CATEGORICAL SECTIONS & MASONRY FEED */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
@@ -273,13 +334,11 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                   className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between"
                 >
                   <div className="relative h-48 w-full overflow-hidden bg-stone-100">
-                    <img
+                    <BlurImage
                       src={article.image}
                       alt={article.alt_tag}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80';
-                      }}
+                      fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80"
                     />
                     <div className="absolute top-3 left-3 px-2.5 py-1 bg-white/95 backdrop-blur text-[#991B1B] text-[9px] font-bold uppercase tracking-widest border border-stone-200 shadow-xs">
                       {article.category_name}
