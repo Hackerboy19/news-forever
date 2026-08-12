@@ -3,17 +3,10 @@
  * production. Public reads hit the live MySQL database via src/lib/db.ts
  * (strictly read-only); admin-panel collections return static demo data.
  */
-import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds } from '../src/lib/db.js';
+import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds, getActiveTags } from '../src/lib/db.js';
 import { resolveCategoryIds } from '../src/lib/taxonomy.js';
-import { CIBlog, CICategory, CIAdvertisement } from '../src/types.js';
-import {
-  initialTags,
-  initialActivityLogs,
-  initialUsers,
-  initialSubscribers,
-  initialImages,
-  initialSetting,
-} from '../src/data/mockData.js';
+import { CIBlog, CICategory, CIAdvertisement, CITag } from '../src/types.js';
+import { siteSetting } from '../src/data/siteConfig.js';
 // Real-data snapshot exported from the production jaipurwe_fsianews dump —
 // served whenever the live MySQL host is unreachable (regenerate with
 // `npx tsx scripts/export-snapshot.ts`). Loaded via createRequire: the
@@ -25,6 +18,7 @@ const snapshot = requireJson('../src/data/snapshot.json');
 const snapBlogs = snapshot.blogs as unknown as CIBlog[];
 const snapCategories = snapshot.categories as unknown as CICategory[];
 const snapAds = snapshot.ads as unknown as CIAdvertisement[];
+const snapTags = (snapshot.tags || []) as unknown as CITag[];
 
 function snapshotBlogsByCategory(slug?: string): CIBlog[] {
   if (!slug || slug === 'all') return snapBlogs;
@@ -88,16 +82,21 @@ export default async function handler(req: any, res: any) {
       return res.json(cats.length > 0 ? cats : snapCategories);
     }
 
-    // Static collections — admin demo data, no DB writes ever
-    if (route === 'tags') return res.json(initialTags);
+    if (route === 'tags') {
+      const tags = await getActiveTags();
+      return res.json(tags.length > 0 ? tags : snapTags);
+    }
     if (route === 'advertisements') {
       const realAds = await getActiveAds();
       return res.json(realAds.length > 0 ? realAds : snapAds);
     }
-    if (route === 'activity-logs') return res.json(initialActivityLogs);
-    if (route === 'users') return res.json(initialUsers);
-    if (route === 'image-library') return res.json(initialImages);
-    if (route === 'settings') return res.json(initialSetting);
+
+    // Admin-only collections — no demo data; real values come from the live
+    // DB once admin write support exists (out of scope, read-only mapping)
+    if (route === 'activity-logs') return res.json([]);
+    if (route === 'users') return res.json([]);
+    if (route === 'image-library') return res.json([]);
+    if (route === 'settings') return res.json(siteSetting);
 
     if (route === 'subscribers') {
       if (req.method === 'POST') {
@@ -108,7 +107,7 @@ export default async function handler(req: any, res: any) {
           subscriber: { id: 0, email, status: 'subscribed', subscribed_at: new Date().toISOString() },
         });
       }
-      return res.json(initialSubscribers);
+      return res.json([]);
     }
 
     return res.status(404).json({ error: `Unknown API route: ${route}` });

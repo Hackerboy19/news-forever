@@ -2,17 +2,9 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import {
-  initialTags,
-  initialAdvertisements,
-  initialActivityLogs,
-  initialUsers,
-  initialSubscribers,
-  initialImages,
-  initialSetting
-} from "./src/data/mockData";
+import { siteSetting } from "./src/data/siteConfig";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
-import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds } from "./src/lib/db";
+import { getPublishedBlogs, getBlogByUrlSlug, getAllCategories, getActiveAds, getActiveTags } from "./src/lib/db";
 
 async function startServer() {
   const app = express();
@@ -24,13 +16,12 @@ async function startServer() {
   // DB access is strictly read-only — admin writes never touch ci_* tables)
   let dbBlogs: CIBlog[] = [];
   let dbCategories: CICategory[] = [];
-  let dbTags = [...initialTags];
-  let dbAds: CIAdvertisement[] = [...initialAdvertisements];
-  let dbActivityLogs: CIActivityLog[] = [...initialActivityLogs];
-  let dbUsers = [...initialUsers];
-  let dbSubscribers: CISubscriber[] = [...initialSubscribers];
-  let dbImages: CIImageLibrary[] = [...initialImages];
-  let dbSetting: CISetting = { ...initialSetting };
+  let dbAds: CIAdvertisement[] = [];
+  let dbActivityLogs: CIActivityLog[] = [];
+  let dbUsers: any[] = [];
+  let dbSubscribers: CISubscriber[] = [];
+  let dbImages: CIImageLibrary[] = [];
+  let dbSetting: CISetting = { ...siteSetting };
 
   // Helper log activity
   const logActivity = (userName: string, userId: number, activity: string, moduleName: string) => {
@@ -257,12 +248,12 @@ async function startServer() {
     res.json({ success: true, id });
   });
 
-  // GET /api/tags
-  app.get("/api/tags", (_req, res) => {
-    res.json(dbTags);
+  // GET /api/tags — real ci_tag rows
+  app.get("/api/tags", async (_req, res) => {
+    res.json(await getActiveTags());
   });
 
-  // GET /api/advertisements — real ci_advertisement rows, demo fallback
+  // GET /api/advertisements — real ci_advertisement rows
   app.get("/api/advertisements", async (_req, res) => {
     const realAds = await getActiveAds();
     res.json(realAds.length > 0 ? realAds : dbAds);

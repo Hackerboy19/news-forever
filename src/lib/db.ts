@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { CIBlog, CICategory, CIAdvertisement } from '../types.js';
+import { CIBlog, CICategory, CIAdvertisement, CITag } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
 
 /**
@@ -251,6 +251,24 @@ export async function getAllCategories(): Promise<CICategory[]> {
 export async function getActiveCategories(): Promise<CICategory[]> {
   const all = await getAllCategories();
   return all.filter((c) => !c.parent_id && (c.article_count ?? 0) > 0);
+}
+
+/** Fetch active tags from ci_tag (url column is the slug). */
+export async function getActiveTags(): Promise<CITag[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT id, tag_name, url, created_at FROM ci_tag WHERE status = 1 ORDER BY id ASC`
+    );
+    return (rows as any[]).map((row) => ({
+      id: row.id,
+      tag_name: row.tag_name,
+      slug: (row.url || '').trim(),
+      created_at: row.created_at || '',
+    }));
+  } catch (err) {
+    handleDbError('getActiveTags', err);
+    return [];
+  }
 }
 
 interface RawAdRow {

@@ -9,13 +9,14 @@
  */
 import 'dotenv/config';
 import { writeFileSync } from 'fs';
-import { getPublishedBlogs, getAllCategories, getActiveAds } from '../src/lib/db';
+import { getPublishedBlogs, getAllCategories, getActiveAds, getActiveTags } from '../src/lib/db';
 
 async function main() {
-  const [blogs, categories, ads] = await Promise.all([
+  const [blogs, categories, ads, tags] = await Promise.all([
     getPublishedBlogs(1000),
     getAllCategories(),
     getActiveAds(),
+    getActiveTags(),
   ]);
 
   if (blogs.length === 0) {
@@ -28,10 +29,11 @@ async function main() {
     blogs,
     categories,
     ads,
+    tags,
   };
 
   writeFileSync('src/data/snapshot.json', JSON.stringify(snapshot));
-  console.log(`Snapshot written: ${blogs.length} blogs, ${categories.length} categories, ${ads.length} ads`);
+  console.log(`Snapshot written: ${blogs.length} blogs, ${categories.length} categories, ${ads.length} ads, ${tags.length} tags`);
   process.exit(0);
 }
 
