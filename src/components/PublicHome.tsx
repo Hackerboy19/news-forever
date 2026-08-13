@@ -12,6 +12,7 @@ import TrendingSidebar from './TrendingSidebar';
 import SidebarAd from './SidebarAd';
 import Skeleton from './ui/Skeleton';
 import BlurImage from './ui/BlurImage';
+import { useI18n } from '../lib/i18n';
 
 export const PublicHomeSkeleton: React.FC = () => {
   return (
@@ -112,6 +113,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   onSelectArticle,
   onCategorySelect,
 }) => {
+  const { t } = useI18n();
   if (isLoading) {
     return <PublicHomeSkeleton />;
   }
@@ -161,9 +163,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
             <h2 className="text-xs font-bold uppercase tracking-widest text-[#991B1B] flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Featured Cover Story
+              {t('featuredCover')}
             </h2>
-            <span className="text-[10px] uppercase tracking-widest font-mono text-stone-500 font-semibold">Live News Digest</span>
+            <span className="text-[10px] uppercase tracking-widest font-mono text-stone-500 font-semibold">{t('liveDigest')}</span>
           </div>
 
           {/* Asymmetric magazine hero: 60% featured / 40% trending stack */}
@@ -218,7 +220,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             {/* Trending Articles Column */}
             <div className="lg:col-span-2 space-y-4">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-600 border-b border-[#E7E5E4] pb-2">
-                Most Read Headlines
+                {t('mostRead')}
               </h3>
 
               <div className="space-y-4">
@@ -273,7 +275,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                   onClick={() => onCategorySelect(block.slug)}
                   className="text-[10px] font-bold uppercase tracking-widest text-[#991B1B] hover:text-stone-900 transition flex items-center gap-1"
                 >
-                  View All <ArrowRight className="w-3 h-3" />
+                  {t('viewAll')} <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
 
@@ -317,10 +319,10 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
             <h2 className="text-xs font-bold text-stone-900 uppercase tracking-widest flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#991B1B]" />
-              {activeCategory === 'all' ? 'Latest News & Highlights' : 'Category Feed'}
+              {activeCategory === 'all' ? t('latestNews') : t('categoryFeed')}
             </h2>
             <span className="text-[10px] text-stone-500 font-mono whitespace-nowrap shrink-0 pl-3">
-              Showing {categoryFilteredBlogs.length} articles
+              {t('showingArticles', { n: categoryFilteredBlogs.length })}
             </span>
           </div>
 
@@ -382,7 +384,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     <div className="flex items-center justify-between text-[10px] text-stone-500 font-mono pt-3 border-t border-[#E7E5E4]">
                       <span>{article.created_at.split(' ')[0]}</span>
                       <span className="text-[#991B1B] font-bold uppercase tracking-widest text-[10px] flex items-center gap-1 group-hover:translate-x-1 transition">
-                        Read Story <ChevronRight className="w-3.5 h-3.5" />
+                        {t('readStory')} <ChevronRight className="w-3.5 h-3.5" />
                       </span>
                     </div>
                   </div>

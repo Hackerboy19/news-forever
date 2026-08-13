@@ -18,6 +18,8 @@ import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
 import SEOManager from './components/SEOManager';
 
+import { I18nProvider } from './lib/i18n';
+
 // Admin Components
 import AdminLayout from './components/AdminLayout';
 import AdminLogin from './components/admin/AdminLogin';
@@ -468,6 +470,7 @@ export function App() {
 
   // RENDER PUBLIC FRONTEND VIEW
   return (
+    <I18nProvider>
     <PublicLayout
       categories={categories}
       ads={ads}
@@ -518,6 +521,7 @@ export function App() {
         />
       )}
     </PublicLayout>
+    </I18nProvider>
   );
 }
 

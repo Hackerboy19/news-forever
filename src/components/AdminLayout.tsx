@@ -16,6 +16,7 @@ import {
   LogOut,
   Bell,
   Search,
+  Menu,
   ShieldCheck
 } from 'lucide-react';
 
@@ -42,6 +43,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   children,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
+  // Mobile: sidebar lives off-canvas and opens as an overlay drawer
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  const handleTabChange = (tab: string) => {
+    onTabChange(tab);
+    setMobileSidebarOpen(false);
+  };
 
   const managementItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
@@ -63,16 +71,25 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#1C1917] flex font-sans">
-      {/* Sidebar */}
+      {/* Mobile sidebar backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-30 bg-stone-950/50 backdrop-blur-xs"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — fixed drawer on mobile, static column on lg+ */}
       <aside
-        className={`bg-white border-r border-[#E7E5E4] flex flex-col justify-between transition-all duration-300 z-30 shadow-xs ${
-          collapsed ? 'w-20' : 'w-64'
-        }`}
+        className={`bg-white border-r border-[#E7E5E4] flex flex-col justify-between transition-all duration-300 z-40 shadow-xs
+          fixed inset-y-0 left-0 lg:static lg:translate-x-0 overflow-y-auto
+          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${collapsed ? 'lg:w-20 w-64' : 'w-64'}`}
       >
         <div>
           {/* Brand Header */}
           <div className="h-16 flex items-center justify-between px-6 border-b border-[#E7E5E4]">
-            {!collapsed && (
+            {(!collapsed || mobileSidebarOpen) && (
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-[#991B1B] flex items-center justify-center font-bold text-white text-base shadow-sm">
                   P
@@ -83,7 +100,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                 </div>
               </div>
             )}
-            {collapsed && (
+            {collapsed && !mobileSidebarOpen && (
               <div className="w-9 h-9 mx-auto bg-[#991B1B] flex items-center justify-center font-bold text-white text-lg shadow-sm">
                 P
               </div>
@@ -101,7 +118,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           {/* Menu Items */}
           <nav className="py-4 px-3 space-y-4">
             <div>
-              {!collapsed && (
+              {(!collapsed || mobileSidebarOpen) && (
                 <div className="text-[10px] uppercase tracking-widest text-stone-500 font-bold px-3 py-1.5 mb-1 font-mono">
                   Management
                 </div>
@@ -113,7 +130,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   return (
                     <button
                       key={item.name}
-                      onClick={() => onTabChange(item.name)}
+                      onClick={() => handleTabChange(item.name)}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition group ${
                         isActive
                           ? 'text-[#991B1B] bg-[#991B1B]/10 border-r-2 border-[#991B1B] font-bold'
@@ -122,7 +139,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                       title={collapsed ? item.name : undefined}
                     >
                       <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#991B1B]' : 'text-stone-400 group-hover:text-stone-700'}`} />
-                      {!collapsed && <span className="truncate">{item.name}</span>}
+                      {(!collapsed || mobileSidebarOpen) && <span className="truncate">{item.name}</span>}
                     </button>
                   );
                 })}
@@ -130,7 +147,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             </div>
 
             <div>
-              {!collapsed && (
+              {(!collapsed || mobileSidebarOpen) && (
                 <div className="text-[10px] uppercase tracking-widest text-stone-500 font-bold px-3 py-1.5 mb-1 font-mono">
                   System
                 </div>
@@ -142,7 +159,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                   return (
                     <button
                       key={item.name}
-                      onClick={() => onTabChange(item.name)}
+                      onClick={() => handleTabChange(item.name)}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition group ${
                         isActive
                           ? 'text-[#991B1B] bg-[#991B1B]/10 border-r-2 border-[#991B1B] font-bold'
@@ -151,7 +168,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
                       title={collapsed ? item.name : undefined}
                     >
                       <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#991B1B]' : 'text-stone-400 group-hover:text-stone-700'}`} />
-                      {!collapsed && <span className="truncate">{item.name}</span>}
+                      {(!collapsed || mobileSidebarOpen) && <span className="truncate">{item.name}</span>}
                     </button>
                   );
                 })}
@@ -168,7 +185,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
             title="View Public Frontend"
           >
             <ExternalLink className="w-4 h-4 shrink-0" />
-            {!collapsed && <span>Live Public Site</span>}
+            {(!collapsed || mobileSidebarOpen) && <span>Live Public Site</span>}
           </button>
         </div>
       </aside>
@@ -176,9 +193,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#FAF8F5]">
         {/* Top Navbar */}
-        <header className="h-16 bg-white/95 backdrop-blur border-b border-[#E7E5E4] px-8 flex items-center justify-between sticky top-0 z-20 shadow-xs">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-stone-500 uppercase tracking-widest font-mono">
+        <header className="h-16 bg-white/95 backdrop-blur border-b border-[#E7E5E4] px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="lg:hidden p-2 -ml-2 text-stone-600 hover:text-[#991B1B]"
+              aria-label="Open admin menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <span className="hidden sm:inline text-xs font-bold text-stone-500 uppercase tracking-widest font-mono">
               Admin Panel
             </span>
             <span className="text-stone-300">/</span>

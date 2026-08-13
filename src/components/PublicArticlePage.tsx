@@ -6,6 +6,7 @@ import InArticleAd from './InArticleAd';
 import PeopleAlsoAsk from './PeopleAlsoAsk';
 import Skeleton from './ui/Skeleton';
 import { splitHtmlAtParagraphs } from '../lib/injectAds';
+import { useI18n } from '../lib/i18n';
 import { 
   ArrowLeft, 
   Calendar, 
@@ -104,6 +105,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   onGoBack,
   onSelectArticle,
 }) => {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
 
@@ -370,7 +372,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
           {relatedArticles.length > 0 && (
             <div className="bg-white border border-[#E7E5E4] p-5 space-y-4 shadow-xs">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-900 border-b border-[#E7E5E4] pb-2">
-                Related Stories in {article.category_name}
+                {t('relatedStories')} {article.category_name}
               </h3>
               <div className="space-y-3">
                 {relatedArticles.map((rel) => (

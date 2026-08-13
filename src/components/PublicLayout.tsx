@@ -41,14 +41,9 @@ import { NAV_UMBRELLAS } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
 import NewsTicker from './NewsTicker';
 import PromotionalModal from './PromotionalModal';
+import { useI18n } from '../lib/i18n';
 
 export type DateFilter = 'all' | 'today' | 'week' | 'month';
-
-/** Minimal bilingual chrome labels (content itself stays as authored in the CMS). */
-const UI_LABELS = {
-  en: { search: 'Search', subscribe: 'Subscribe', tagline: 'National & International News Portal' },
-  hi: { search: 'खोजें', subscribe: 'सदस्यता लें', tagline: 'राष्ट्रीय एवं अंतर्राष्ट्रीय समाचार पोर्टल' },
-};
 
 export const PublicLayout: React.FC<PublicLayoutProps> = ({
   categories,
@@ -67,36 +62,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Bilingual chrome toggle (EN | HI) — persisted, sets <html lang> + hreflang
-  const [lang, setLang] = useState<'en' | 'hi'>(() => {
-    try {
-      return (localStorage.getItem('nf_lang') as 'en' | 'hi') || 'en';
-    } catch {
-      return 'en';
-    }
-  });
-  const L = UI_LABELS[lang];
-  useEffect(() => {
-    document.documentElement.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
-    try {
-      localStorage.setItem('nf_lang', lang);
-    } catch {
-      /* ignore */
-    }
-    // hreflang alternates for dual-language indexing
-    for (const code of ['en-IN', 'hi-IN', 'x-default']) {
-      const id = `hreflang-${code}`;
-      let link = document.getElementById(id) as HTMLLinkElement | null;
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'alternate';
-        link.id = id;
-        document.head.appendChild(link);
-      }
-      link.hreflang = code;
-      link.href = window.location.origin + window.location.pathname;
-    }
-  }, [lang]);
+  // Bilingual chrome (EN | HI) — shared app-wide via I18nProvider
+  const { lang, setLang, t } = useI18n();
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   // Scroll-hide header: hides scrolling down (reading space), reappears on scroll-up
@@ -242,10 +209,10 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 className="bg-stone-100 border border-stone-300 text-[10px] sm:text-[11px] font-mono text-stone-600 px-1 sm:px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#7A0C0C] cursor-pointer max-w-[92px] sm:max-w-none"
                 aria-label="Filter news by date"
               >
-                <option value="all">All dates</option>
-                <option value="today">Today</option>
-                <option value="week">This week</option>
-                <option value="month">This month</option>
+                <option value="all">{t('allDates')}</option>
+                <option value="today">{t('today')}</option>
+                <option value="week">{t('thisWeek')}</option>
+                <option value="month">{t('thisMonth')}</option>
               </select>
             )}
             {activeSubcatFilter && (
@@ -266,7 +233,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               aria-label="Search news articles"
             >
               <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-stone-600 group-hover:text-[#7A0C0C] transition" />
-              <span className="hidden min-[420px]:inline text-xs font-sans">{L.search}</span>
+              <span className="hidden min-[420px]:inline text-xs font-sans">{t('search')}</span>
               <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-white text-stone-500 border border-stone-300 font-mono text-[9px] font-bold shadow-2xs">⌘K</kbd>
             </button>
 
@@ -298,7 +265,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               }}
               className="hidden sm:inline text-stone-700 hover:text-[#7A0C0C] font-semibold tracking-tight transition"
             >
-              {L.subscribe}
+              {t('subscribe')}
             </button>
 
             {/* Social Media Icons (desktop only — mobile bar stays uncluttered) */}
@@ -361,7 +328,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 </div>
                 <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-stone-500 mt-1 flex items-center gap-1">
                   <Globe className="w-2.5 h-2.5 text-[#991B1B]" />
-                  {L.tagline}
+                  {t('tagline')}
                 </span>
               </div>
             </button>
@@ -381,7 +348,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                       rel="noopener noreferrer"
                       className="py-2 text-stone-800 hover:text-[#7A0C0C] transition"
                     >
-                      {item.name}
+                      {t(item.name)}
                     </a>
                   );
                 }
@@ -401,7 +368,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                           : 'text-stone-800 hover:text-[#7A0C0C]'
                       }`}
                     >
-                      <span>{item.name}</span>
+                      <span>{t(item.name)}</span>
                       {hasSubcats && <ChevronDown className="w-3 h-3 text-stone-500 group-hover:text-[#7A0C0C] transition-transform duration-200 group-hover:rotate-180" />}
                     </button>
 
@@ -431,7 +398,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             {/* Mobile Hamburger Menu Button */}
             <div className="lg:hidden flex items-center justify-between w-full md:w-auto">
-              <span className="text-xs font-mono font-bold uppercase text-stone-500">Navigation Menu</span>
+              <span className="text-xs font-mono font-bold uppercase text-stone-500">{t('navMenu')}</span>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 text-stone-800 hover:text-[#7A0C0C]"
@@ -476,7 +443,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                       rel="noopener noreferrer"
                       className="block px-3 py-3 text-sm font-bold uppercase tracking-wider text-stone-800 hover:text-[#7A0C0C] border-b border-stone-100"
                     >
-                      {item.name}
+                      {t(item.name)}
                     </a>
                   );
                 }
@@ -494,7 +461,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                           isActive ? 'text-[#7A0C0C]' : 'text-stone-800 hover:text-[#7A0C0C]'
                         }`}
                       >
-                        {item.name}
+                        {t(item.name)}
                       </button>
                       {subcats.length > 0 && (
                         <button
@@ -561,10 +528,10 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             <div className="space-y-1.5 text-center md:text-left">
               <h3 className="text-xl font-serif italic font-bold text-stone-900 flex items-center gap-2 justify-center md:justify-start">
                 <Mail className="w-5 h-5 text-[#7A0C0C]" />
-                Subscribe to News Forever Updates
+                {t('newsletterTitle')}
               </h3>
               <p className="text-xs text-stone-600">
-                Receive coronation scoring breakdowns, pageant highlights, award nominations, and breaking news directly to your inbox.
+                {t('newsletterDesc')}
               </p>
             </div>
 
@@ -574,7 +541,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 required
                 value={newsletterEmail}
                 onChange={(e) => setNewsletterEmail(e.target.value)}
-                placeholder="Enter your email address..."
+                placeholder={t('emailPlaceholder')}
                 className="px-4 py-2.5 bg-stone-50 border border-stone-300 text-stone-900 text-xs focus:outline-none focus:border-[#7A0C0C] w-full md:w-72"
               />
               <button
@@ -605,12 +572,12 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 </span>
               </div>
               <p className="text-stone-600 leading-relaxed text-xs">
-                Independent national &amp; international news — politics, fashion &amp; glamour, entertainment, business, lifestyle and astrology coverage.
+                {t('footerBlurb')}
               </p>
             </div>
 
             <div className="space-y-2">
-              <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">Category Index</h4>
+              <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">{t('categoryIndex')}</h4>
               <ul className="space-y-1.5 text-xs">
                 {topCategories.map((c) => (
                   <li key={c.id}>
@@ -630,7 +597,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
 
             <div className="space-y-2">
-              <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">Top Subcategories</h4>
+              <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">{t('topSubcategories')}</h4>
               <ul className="space-y-1 text-stone-600 text-[11px]">
                 <li>• Fashion &amp; Glamour</li>
                 <li>• Entertainment</li>
@@ -641,9 +608,9 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
 
             <div className="space-y-2">
-              <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">Editorial Office</h4>
+              <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">{t('editorialOffice')}</h4>
               <p className="text-stone-600 text-xs leading-relaxed">
-                News Forever Bureau • Independent national &amp; international journalism.
+                {t('editorialBlurb')}
               </p>
               <div className="flex items-center gap-3 pt-2 text-stone-700">
                 <a href={setting.facebook_url || "#"} className="hover:text-[#7A0C0C]"><Facebook className="w-4 h-4 fill-current stroke-none" /></a>
@@ -659,7 +626,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               onClick={onSwitchToAdmin}
               className="text-stone-400 hover:text-[#7A0C0C] transition underline underline-offset-2"
             >
-              Admin Login
+              {t('adminLogin')}
             </button>
           </div>
         </div>

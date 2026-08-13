@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
 import { CIBlog } from '../types';
+import { useI18n } from '../lib/i18n';
 
 interface PeopleAlsoAskProps {
   article: CIBlog;
@@ -24,6 +25,7 @@ const OFFER_KEYWORDS = /nominat|award|register|registration|franchise|contest|au
  * headings) — nothing is fabricated. Renders nothing when too little data.
  */
 export const PeopleAlsoAsk: React.FC<PeopleAlsoAskProps> = ({ article }) => {
+  const { t } = useI18n();
   const [open, setOpen] = useState<number | null>(0);
 
   const qas = useMemo<QA[]>(() => {
@@ -70,7 +72,7 @@ export const PeopleAlsoAsk: React.FC<PeopleAlsoAskProps> = ({ article }) => {
       <div className="px-5 py-4 border-b border-stone-100 flex items-center gap-2">
         <HelpCircle className="w-4 h-4 text-[#991B1B]" />
         <h2 className="text-xs font-bold uppercase tracking-widest text-stone-900">
-          Quick Answers — People Also Ask
+          {t('quickAnswers')}
         </h2>
       </div>
       <div className="divide-y divide-stone-100">

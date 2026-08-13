@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIBlog } from '../types';
 import { Zap } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
 
 interface NewsTickerProps {
   blogs: CIBlog[];
@@ -12,6 +13,7 @@ interface NewsTickerProps {
  * ci_blog titles in an infinite marquee (pauses on hover).
  */
 export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle }) => {
+  const { t } = useI18n();
   const latest = blogs.filter((b) => b.status === 1).slice(0, 5);
   if (latest.length === 0) return null;
 
@@ -23,7 +25,7 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle }
       <div className="max-w-none flex items-stretch">
         <div className="shrink-0 flex items-center gap-1.5 bg-[#991B1B] px-4 py-2 z-10">
           <Zap className="w-3.5 h-3.5 text-amber-300" />
-          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">Breaking</span>
+          <span className="text-[10px] font-mono font-bold uppercase tracking-[0.2em]">{t('breaking')}</span>
         </div>
         <div className="relative flex-1 overflow-hidden">
           <div className="ticker-track flex items-center whitespace-nowrap py-2 w-max">

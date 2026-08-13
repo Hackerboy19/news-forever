@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIBlog } from '../types';
 import { TrendingUp, Eye, Flame, ChevronRight } from 'lucide-react';
+import { useI18n } from '../lib/i18n';
 
 interface TrendingSidebarProps {
   blogs: CIBlog[];
@@ -15,8 +16,10 @@ interface TrendingSidebarProps {
 export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
   blogs,
   onSelectArticle,
-  title = 'Trending Now',
+  title,
 }) => {
+  const { t } = useI18n();
+  const heading = title || t('trendingNow');
   const topTrendingArticles = blogs.filter((b) => b.status === 1).slice(0, 5);
 
   if (topTrendingArticles.length === 0) return null;
@@ -27,10 +30,10 @@ export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
       <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
         <h3 className="text-xs font-bold uppercase tracking-widest text-stone-900 flex items-center gap-2">
           <Flame className="w-4 h-4 text-[#7A0C0C]" />
-          {title}
+          {heading}
         </h3>
         <span className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-semibold flex items-center gap-1">
-          <TrendingUp className="w-3 h-3 text-[#7A0C0C]" /> Top Viewed
+          <TrendingUp className="w-3 h-3 text-[#7A0C0C]" /> {t('topViewed')}
         </span>
       </div>
 
