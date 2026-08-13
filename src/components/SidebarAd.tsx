@@ -1,5 +1,6 @@
 import React from 'react';
 import { CIAdvertisement } from '../types';
+import { useI18n } from '../lib/i18n';
 
 interface SidebarAdProps {
   ads: CIAdvertisement[];
@@ -17,6 +18,7 @@ const SIDEBAR_POSITIONS = ['left', 'right', 'sidebar_sticky'];
  * Ordered by the table's priority column; renders nothing when empty.
  */
 export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = false }) => {
+  const { t } = useI18n();
   const panelAds = ads
     .filter((a) => a.status === 1 && SIDEBAR_POSITIONS.includes(a.position))
     .slice(0, max);
@@ -29,7 +31,7 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
         <div key={ad.id} data-ad-panel className="bg-slate-50 border border-slate-200/80 rounded-sm shadow-xs">
           <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b border-slate-200/60">
             <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-slate-400 font-semibold">
-              Sponsored
+              {t('sponsored')}
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
           </div>

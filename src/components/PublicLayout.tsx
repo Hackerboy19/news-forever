@@ -180,7 +180,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     e.preventDefault();
     if (!newsletterEmail || !newsletterEmail.includes('@')) return;
     onSubscribe(newsletterEmail);
-    setNewsletterMsg('Thank you for subscribing to News Forever updates!');
+    setNewsletterMsg(t('subscribeThanks'));
     setNewsletterEmail('');
     setTimeout(() => setNewsletterMsg(''), 4000);
   };
@@ -195,10 +195,10 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               <Calendar className="w-3.5 h-3.5 text-[#7A0C0C] shrink-0" />
               {/* Compact date on mobile so the utility bar never wraps */}
               <span className="sm:hidden">
-                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                {new Date().toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
               </span>
               <span className="hidden sm:inline">
-                {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                {new Date().toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </span>
             {/* Date-based news filter */}
@@ -323,7 +323,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     News<span className="text-[#991B1B]">Forever</span>
                   </span>
                   <span className="hidden sm:inline-block px-1.5 py-0.5 bg-stone-100 text-[#991B1B] border border-[#E7E5E4] font-mono text-[9px] font-bold uppercase rounded-sm tracking-wider">
-                    Live 24x7
+                    {t('live247')}
                   </span>
                 </div>
                 <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-stone-500 mt-1 flex items-center gap-1">
@@ -651,7 +651,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 type="search"
                 value={paletteQuery}
                 onChange={(e) => setPaletteQuery(e.target.value)}
-                placeholder="Search news, categories, tags…"
+                placeholder={t('searchPlaceholder')}
                 className="w-full text-base sm:text-sm font-medium text-stone-900 placeholder-stone-400 bg-transparent focus:outline-none"
               />
               {paletteQuery && (
@@ -680,7 +680,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             {/* Quick Category Filter Pills */}
             <div className="px-4 py-2.5 bg-stone-100/70 border-b border-stone-200 flex items-center gap-1.5 overflow-x-auto hide-scrollbar text-xs">
               <span className="text-[10px] font-mono font-bold uppercase text-stone-500 shrink-0 mr-1 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-[#7A0C0C]" /> Filter:
+                <Tag className="w-3 h-3 text-[#7A0C0C]" /> {t('filterLabel')}
               </span>
               <button
                 onClick={() => setSelectedCatFilter('all')}
@@ -690,7 +690,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-200'
                 }`}
               >
-                All ({blogs.length})
+                {t('allCount')} ({blogs.length})
               </button>
               {topCategories.map((cat) => (
                 <button
@@ -712,9 +712,9 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               <span>
                 {paletteQuery.trim()
                   ? `Found ${filteredArticles.length} matching article${filteredArticles.length === 1 ? '' : 's'}`
-                  : `Trending & Latest News Stories (${filteredArticles.length})`}
+                  : `${t('trendingStories')} (${filteredArticles.length})`}
               </span>
-              <span className="hidden sm:inline text-stone-400">Click result to view full article</span>
+              <span className="hidden sm:inline text-stone-400">{t('clickResult')}</span>
             </div>
 
             {/* Results List */}

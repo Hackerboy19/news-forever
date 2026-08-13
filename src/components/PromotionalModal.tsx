@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { CIAdvertisement } from '../types';
+import { useI18n } from '../lib/i18n';
 
 interface PromotionalModalProps {
   ads: CIAdvertisement[];
@@ -17,6 +18,7 @@ const STORAGE_KEY = 'nf_promo_last_shown';
  * Frequency-capped via localStorage so returning readers aren't nagged.
  */
 export const PromotionalModal: React.FC<PromotionalModalProps> = ({ ads, delayMs = 6000, capHours = 24 }) => {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
 
   const ad = ads.find((a) => a.status === 1 && (a.position === 'blog' || a.position === 'top_banner'));
@@ -48,7 +50,7 @@ export const PromotionalModal: React.FC<PromotionalModalProps> = ({ ads, delayMs
       <div className="relative z-10 w-full max-w-md bg-slate-50 border border-slate-200 rounded-sm shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/70 bg-white">
           <span className="text-[9px] uppercase tracking-[0.3em] font-mono text-slate-400 font-semibold">
-            Sponsored
+            {t('sponsored')}
           </span>
           <button
             onClick={() => setVisible(false)}

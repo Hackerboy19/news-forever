@@ -1,5 +1,6 @@
 import React from 'react';
 import { CIAdvertisement } from '../types';
+import { useI18n } from '../lib/i18n';
 
 interface LeaderboardAdProps {
   ads: CIAdvertisement[];
@@ -15,6 +16,7 @@ const LEADERBOARD_POSITIONS = ['blog', 'top_banner', 'in_content'];
  * Renders nothing when no matching active ad exists.
  */
 export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
+  const { t } = useI18n();
   const ad = ads.find((a) => a.status === 1 && LEADERBOARD_POSITIONS.includes(a.position));
   if (!ad) return null;
 
@@ -23,7 +25,7 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
         <div className="text-center mb-1.5">
           <span className="text-[9px] uppercase tracking-[0.25em] font-mono text-slate-400 font-semibold">
-            Sponsored
+            {t('sponsored')}
           </span>
         </div>
         <a

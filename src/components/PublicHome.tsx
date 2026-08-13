@@ -194,7 +194,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       {heroArticle.category_name || 'Featured'}
                     </span>
                     <span className="px-3 py-1 text-xs font-bold tracking-wider uppercase bg-stone-100 text-stone-700 border border-stone-200 rounded-sm">
-                      Lead Editorial
+                      {t('leadEditorial')}
                     </span>
                   </div>
                   <h1 className="text-2xl sm:text-4xl font-serif italic font-extrabold text-stone-900 group-hover:text-[#991B1B] transition leading-[1.15] border-l-4 border-[#991B1B] pl-4">
@@ -333,7 +333,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 {idx === 2 && nativeAd && (
                   <div className="md:col-span-2 p-4 bg-white border border-[#E7E5E4] text-center space-y-2 shadow-xs">
                     <span className="text-[10px] uppercase tracking-widest text-stone-500 font-mono block font-semibold">
-                      SPONSORED ANNOUNCEMENT
+                      {t('sponsored').toUpperCase()}
                     </span>
                     <a
                       href={nativeAd.url}
@@ -405,7 +405,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           {/* Quick Categories Navigation */}
           <div className="bg-white border border-[#E7E5E4] p-5 space-y-3 shadow-xs">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-stone-900 border-b border-[#E7E5E4] pb-2">
-              Explore Topics
+              {t('exploreTopics')}
             </h3>
             <div className="space-y-1">
               {categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0).map((c) => (

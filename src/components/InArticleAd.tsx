@@ -1,5 +1,6 @@
 import React from 'react';
 import { CIAdvertisement } from '../types';
+import { useI18n } from '../lib/i18n';
 
 interface InArticleAdProps {
   ad?: CIAdvertisement;
@@ -11,13 +12,14 @@ interface InArticleAdProps {
  * Renders nothing when no ad is available.
  */
 export const InArticleAd: React.FC<InArticleAdProps> = ({ ad }) => {
+  const { t } = useI18n();
   if (!ad) return null;
 
   return (
     <aside className="my-8 bg-slate-50 border border-slate-200/80 rounded-sm">
       <div className="text-center pt-3 pb-2">
         <span className="text-[9px] uppercase tracking-[0.3em] font-mono text-slate-400 font-semibold">
-          Advertisement
+          {t('advertisement')}
         </span>
       </div>
       <a

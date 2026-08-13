@@ -34,22 +34,22 @@ export const PeopleAlsoAsk: React.FC<PeopleAlsoAskProps> = ({ article }) => {
     const summary = article.meta_description?.trim() || article.short_content || text.slice(0, 260);
 
     if (summary) {
-      list.push({ q: `What is this story about?`, a: summary });
+      list.push({ q: t('paqAbout'), a: summary });
     }
 
     // Surface the article's own H2/H3 headings as quick-answer anchors
     const headings = [article.h2_tag, article.h3_tag, article.h4_tag].map((h) => (h || '').trim()).filter(Boolean);
     if (headings.length > 0) {
       list.push({
-        q: 'What are the key highlights?',
+        q: t('paqHighlights'),
         a: headings.join(' • '),
       });
     }
 
     if (article.category_name) {
       list.push({
-        q: `Where can I read more ${article.category_name} coverage?`,
-        a: `Browse the ${article.category_name} section of News Forever for all related stories, winner announcements and updates.`,
+        q: t('paqMore', { cat: article.category_name }),
+        a: t('paqMoreAnswer', { cat: article.category_name }),
       });
     }
 
@@ -57,13 +57,13 @@ export const PeopleAlsoAsk: React.FC<PeopleAlsoAskProps> = ({ article }) => {
     const isOffer = OFFER_KEYWORDS.test(`${article.title} ${article.category_name || ''} ${article.meta_keyword || ''}`);
     if (isOffer) {
       list.push({
-        q: 'Are there fees or extra charges to participate?',
-        a: 'Registration, nomination and participation fees are set and collected only through the official Forever Star India channels. Verify current fee levels, what they include and accepted payment methods on the official registration page or by contacting the organisers directly before paying anyone. News Forever never collects payments.',
+        q: t('paqFees'),
+        a: t('paqFeesAnswer'),
       });
     }
 
     return list.filter((qa) => qa.a && qa.a.length > 10);
-  }, [article]);
+  }, [article, t]);
 
   if (qas.length < 2) return null;
 

@@ -205,7 +205,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             title="Share via Native Web Share API"
           >
             <Share2 className="w-3.5 h-3.5" />
-            <span>{shareSuccess ? 'Shared!' : 'Web Share'}</span>
+            <span>{shareSuccess ? '✓' : t('webShare')}</span>
           </button>
 
           <button
@@ -214,7 +214,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             title="Copy URL to Clipboard"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Link Copied' : 'Copy URL'}</span>
+            <span>{copied ? '✓' : t('copyUrl')}</span>
           </button>
         </div>
       </div>
@@ -248,7 +248,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 text-[#991B1B]" />
-                <span>Published: {article.created_at}</span>
+                <span>{t('published')} {article.created_at}</span>
               </div>
             </div>
           </div>
@@ -278,7 +278,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               <div>
                 <h3 className="text-xs font-bold text-stone-900 uppercase tracking-widest flex items-center gap-2">
                   <Share2 className="w-4 h-4 text-[#991B1B]" />
-                  Share This Editorial
+                  {t('shareEditorial')}
                 </h3>
                 <p className="text-[11px] text-stone-600 mt-0.5">
                   Distribute this article directly via Web Share API or platform social feeds.
