@@ -120,24 +120,16 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
+    // Chrome-only toggle: crawlers always see the EN default; article
+    // content, titles, meta and URLs never change with the toggle.
+    // NOTE: deliberately NO hreflang tags — hreflang requires distinct
+    // per-language URLs; emitting alternates that point to the same URL
+    // is a malformed signal that can hurt rather than help rankings.
     document.documentElement.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
     try {
       localStorage.setItem('nf_lang', lang);
     } catch {
       /* ignore */
-    }
-    // hreflang alternates for dual-language indexing
-    for (const code of ['en-IN', 'hi-IN', 'x-default']) {
-      const id = `hreflang-${code}`;
-      let link = document.getElementById(id) as HTMLLinkElement | null;
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'alternate';
-        link.id = id;
-        document.head.appendChild(link);
-      }
-      link.hreflang = code;
-      link.href = window.location.origin + window.location.pathname;
     }
   }, [lang]);
 
