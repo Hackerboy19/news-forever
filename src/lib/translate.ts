@@ -83,7 +83,7 @@ async function translateHtml(html: string): Promise<string> {
   });
 
   // Translate in small parallel batches to stay polite to the endpoint
-  const BATCH = 6;
+  const BATCH = 12;
   for (let i = 0; i < jobs.length; i += BATCH) {
     const slice = jobs.slice(i, i + BATCH);
     const results = await Promise.all(
