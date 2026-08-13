@@ -185,14 +185,14 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
 
       {/* Breadcrumbs & Native Web Share Toolbar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-stone-600 border-b border-[#E7E5E4] pb-4">
-        <div className="flex items-center gap-2 font-mono">
-          <button onClick={onGoBack} className="hover:text-[#991B1B] transition flex items-center gap-1 font-semibold">
+        <div className="flex items-center gap-2 font-mono min-w-0">
+          <button onClick={onGoBack} className="hover:text-[#991B1B] transition flex items-center gap-1 font-semibold shrink-0">
             <ArrowLeft className="w-3.5 h-3.5" /> Home
           </button>
-          <span>/</span>
-          <span className="text-stone-800 font-semibold">{article.category_name || 'News'}</span>
-          <span>/</span>
-          <span className="text-stone-500 truncate max-w-xs">{article.title}</span>
+          <span className="shrink-0">/</span>
+          <span className="text-stone-800 font-semibold whitespace-nowrap shrink-0">{article.category_name || 'News'}</span>
+          <span className="shrink-0">/</span>
+          <span className="text-stone-500 truncate min-w-0">{article.title}</span>
         </div>
 
         {/* Quick Share Controls */}
@@ -233,7 +233,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               )}
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-serif italic font-extrabold text-stone-900 leading-[1.15] tracking-tight border-l-4 border-[#991B1B] pl-4 sm:pl-5">
+            <h1 className="text-2xl sm:text-5xl font-serif italic font-extrabold text-stone-900 leading-[1.2] sm:leading-[1.15] tracking-tight border-l-4 border-[#991B1B] pl-3 sm:pl-5">
               {article.title}
             </h1>
 
