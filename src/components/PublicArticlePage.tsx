@@ -3,6 +3,7 @@ import { CIBlog, CIAdvertisement } from '../types';
 import SEOManager from './SEOManager';
 import SidebarAd from './SidebarAd';
 import InArticleAd from './InArticleAd';
+import PeopleAlsoAsk from './PeopleAlsoAsk';
 import Skeleton from './ui/Skeleton';
 import { splitHtmlAtParagraphs } from '../lib/injectAds';
 import { 
@@ -232,7 +233,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               )}
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-serif italic font-extrabold text-stone-900 leading-tight tracking-tight">
+            <h1 className="text-3xl sm:text-5xl font-serif italic font-extrabold text-stone-900 leading-[1.15] tracking-tight border-l-4 border-[#991B1B] pl-4 sm:pl-5">
               {article.title}
             </h1>
 
@@ -354,6 +355,11 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               />
             </React.Fragment>
           ))}
+
+          {/* Quick Answers / People Also Ask — derived from the article's own fields */}
+          <div className="mt-10">
+            <PeopleAlsoAsk article={article} />
+          </div>
         </article>
 
         {/* Sponsored Sidebar Panels & Related Articles */}

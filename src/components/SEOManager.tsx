@@ -29,7 +29,7 @@ export const SEOManager: React.FC<SEOProps> = ({
   og_image,
   og_url,
   image,
-  defaultTitle = 'News Forever - International Organic News 24x7',
+  defaultTitle = 'News Forever | National & International News Portal',
   siteName = 'News Forever',
 }) => {
   useEffect(() => {

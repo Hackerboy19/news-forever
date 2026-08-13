@@ -1,5 +1,5 @@
 import React from 'react';
-import { CIBlog, CIAdvertisement, CICategory } from '../types';
+import { CIBlog, CIAdvertisement, CICategory, CITag } from '../types';
 import { resolveCategoryIds } from '../lib/taxonomy';
 
 /** Editorial blocks below the hero — broad labels, legacy category groups */
@@ -88,10 +88,18 @@ interface PublicHomeProps {
   blogs: CIBlog[];
   ads: CIAdvertisement[];
   categories: CICategory[];
+  tags?: CITag[];
   activeCategory: number | string | 'all';
+  dateFilter?: 'all' | 'today' | 'week' | 'month';
   isLoading?: boolean;
   onSelectArticle: (urlSlug: string) => void;
   onCategorySelect: (cat: number | string | 'all') => void;
+}
+
+/** Parse the legacy 'YYYY-MM-DD : HH:MM:SS' varchar into a Date (date part only). */
+function articleDate(createdAt: string | undefined): Date | null {
+  const m = (createdAt || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
 
 export const PublicHome: React.FC<PublicHomeProps> = ({
@@ -99,6 +107,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   ads,
   categories,
   activeCategory,
+  dateFilter = 'all',
   isLoading = false,
   onSelectArticle,
   onCategorySelect,
@@ -108,7 +117,19 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   }
 
   // Filter active published blogs
-  const activeBlogs = blogs.filter(b => b.status === 1);
+  let activeBlogs = blogs.filter(b => b.status === 1);
+
+  // Date-based filter from the top utility bar
+  if (dateFilter !== 'all') {
+    const now = new Date();
+    const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (dateFilter === 'week') cutoff.setDate(cutoff.getDate() - 7);
+    if (dateFilter === 'month') cutoff.setMonth(cutoff.getMonth() - 1);
+    activeBlogs = activeBlogs.filter(b => {
+      const d = articleDate(b.created_at);
+      return d !== null && d >= cutoff;
+    });
+  }
 
   // Filter by category: numeric ci_category id, or public nav slug
   // (slugs resolve to real category id sets incl. year variants & children)
@@ -174,7 +195,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       Lead Editorial
                     </span>
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-serif italic font-extrabold text-stone-900 group-hover:text-[#991B1B] transition leading-tight">
+                  <h1 className="text-2xl sm:text-4xl font-serif italic font-extrabold text-stone-900 group-hover:text-[#991B1B] transition leading-[1.15] border-l-4 border-[#991B1B] pl-4">
                     {heroArticle.title}
                   </h1>
                   <p className="text-sm font-serif text-stone-700 line-clamp-2 leading-relaxed">

@@ -45,6 +45,7 @@ export function App() {
   const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(null);
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
   const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
   const [adminAuth, setAdminAuth] = useState<AdminCredentials | null>(() => loadAdminSession());
 
@@ -484,11 +485,13 @@ export function App() {
       }}
       onSwitchToAdmin={() => setViewMode('admin')}
       onSubscribe={handleSubscribe}
+      dateFilter={dateFilter}
+      onDateFilterChange={setDateFilter}
     >
       {!selectedArticleUrl && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
-          defaultTitle="News Forever | Official News, Pageantry & FSIA Portal"
+          defaultTitle="News Forever | National & International News Portal"
           defaultDescription={setting?.site_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
         />
       )}
@@ -508,6 +511,7 @@ export function App() {
           categories={categories}
           tags={tags}
           activeCategory={activeCategory}
+          dateFilter={dateFilter}
           isLoading={loading}
           onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
           onCategorySelect={(catId) => setActiveCategory(catId)}

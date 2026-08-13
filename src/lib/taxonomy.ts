@@ -63,7 +63,8 @@ const SLUG_ALIASES: Record<string, string[]> = {
   'state-winners': ['state-winner'],
   'national-achiever-award': ['national-achiever'],
   news: ['business-news', 'astrology', 'products', 'franchise'],
-  lifestyle: ['products', 'astrology', 'franchise'],
+  lifestyle: ['products', 'franchise'],
+  'political-news': ['political-news', 'politics', 'political'],
   // Broad editorial labels → legacy category groups
   'fashion-glamour': ['beauty-pageant', 'miss-india', 'mrs-india', 'miss-teen-india'],
   entertainment: [
@@ -84,14 +85,17 @@ const SLUG_ALIASES: Record<string, string[]> = {
  * stays reachable and legacy /category/ URLs and SEO stay untouched.
  */
 export const NAV_UMBRELLAS: { name: string; slug: string; covers: string[] }[] = [
+  // Appears automatically once a Political News category exists in the CMS
+  { name: 'Political News', slug: 'political-news', covers: ['political-news', 'politics', 'political'] },
   { name: 'Fashion & Glamour', slug: 'fashion-glamour', covers: ['beauty-pageant'] },
   {
     name: 'Entertainment',
     slug: 'entertainment',
     covers: ['forever-star-india-awards', 'star-india-kids-contest-2026', 'nominate-yourself-award', 'forever-star-india'],
   },
-  { name: 'Lifestyle', slug: 'lifestyle', covers: ['products', 'astrology', 'franchise'] },
   { name: 'Business', slug: 'business-news', covers: ['business-news'] },
+  { name: 'Lifestyle & Products', slug: 'lifestyle', covers: ['products', 'franchise'] },
+  { name: 'Astrology', slug: 'astrology', covers: ['astrology'] },
 ];
 
 export interface CategoryLike {

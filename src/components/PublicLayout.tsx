@@ -32,12 +32,23 @@ interface PublicLayoutProps {
   onGoHome: () => void;
   onSwitchToAdmin: () => void;
   onSubscribe: (email: string) => void;
+  dateFilter?: DateFilter;
+  onDateFilterChange?: (f: DateFilter) => void;
   children: React.ReactNode;
 }
 
 import { NAV_UMBRELLAS } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
 import NewsTicker from './NewsTicker';
+import PromotionalModal from './PromotionalModal';
+
+export type DateFilter = 'all' | 'today' | 'week' | 'month';
+
+/** Minimal bilingual chrome labels (content itself stays as authored in the CMS). */
+const UI_LABELS = {
+  en: { search: 'Search', subscribe: 'Subscribe', tagline: 'National & International News Portal' },
+  hi: { search: 'खोजें', subscribe: 'सदस्यता लें', tagline: 'राष्ट्रीय एवं अंतर्राष्ट्रीय समाचार पोर्टल' },
+};
 
 export const PublicLayout: React.FC<PublicLayoutProps> = ({
   categories,
@@ -50,9 +61,42 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   onGoHome,
   onSwitchToAdmin,
   onSubscribe,
+  dateFilter = 'all',
+  onDateFilterChange,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Bilingual chrome toggle (EN | HI) — persisted, sets <html lang> + hreflang
+  const [lang, setLang] = useState<'en' | 'hi'>(() => {
+    try {
+      return (localStorage.getItem('nf_lang') as 'en' | 'hi') || 'en';
+    } catch {
+      return 'en';
+    }
+  });
+  const L = UI_LABELS[lang];
+  useEffect(() => {
+    document.documentElement.lang = lang === 'hi' ? 'hi-IN' : 'en-IN';
+    try {
+      localStorage.setItem('nf_lang', lang);
+    } catch {
+      /* ignore */
+    }
+    // hreflang alternates for dual-language indexing
+    for (const code of ['en-IN', 'hi-IN', 'x-default']) {
+      const id = `hreflang-${code}`;
+      let link = document.getElementById(id) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'alternate';
+        link.id = id;
+        document.head.appendChild(link);
+      }
+      link.hreflang = code;
+      link.href = window.location.origin + window.location.pathname;
+    }
+  }, [lang]);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   // Scroll-hide header: hides scrolling down (reading space), reappears on scroll-up
@@ -190,8 +234,22 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </span>
+            {/* Date-based news filter */}
+            {onDateFilterChange && (
+              <select
+                value={dateFilter}
+                onChange={(e) => onDateFilterChange(e.target.value as DateFilter)}
+                className="bg-stone-100 border border-stone-300 text-[11px] font-mono text-stone-600 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#7A0C0C] cursor-pointer"
+                aria-label="Filter news by date"
+              >
+                <option value="all">All dates</option>
+                <option value="today">Today</option>
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+              </select>
+            )}
             {activeSubcatFilter && (
-              <span className="bg-[#7A0C0C]/10 text-[#7A0C0C] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider font-mono flex items-center gap-1">
+              <span className="hidden sm:flex bg-[#7A0C0C]/10 text-[#7A0C0C] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider font-mono items-center gap-1">
                 Filter: {activeSubcatFilter}
                 <button onClick={() => setActiveSubcatFilter(null)} className="ml-1 hover:text-black">×</button>
               </span>
@@ -208,11 +266,29 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               aria-label="Search news articles"
             >
               <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-stone-600 group-hover:text-[#7A0C0C] transition" />
-              <span className="text-xs font-sans">Search</span>
+              <span className="text-xs font-sans">{L.search}</span>
               <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-white text-stone-500 border border-stone-300 font-mono text-[9px] font-bold shadow-2xs">⌘K</kbd>
             </button>
 
-            <span className="text-stone-300">|</span>
+            {/* Language toggle EN | HI */}
+            <div className="flex items-center border border-stone-300 rounded-full overflow-hidden text-[10px] font-mono font-bold">
+              <button
+                onClick={() => setLang('en')}
+                className={`px-2 py-1 transition ${lang === 'en' ? 'bg-[#7A0C0C] text-white' : 'bg-white text-stone-600 hover:text-[#7A0C0C]'}`}
+                aria-pressed={lang === 'en'}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLang('hi')}
+                className={`px-2 py-1 transition ${lang === 'hi' ? 'bg-[#7A0C0C] text-white' : 'bg-white text-stone-600 hover:text-[#7A0C0C]'}`}
+                aria-pressed={lang === 'hi'}
+              >
+                HI
+              </button>
+            </div>
+
+            <span className="hidden sm:inline text-stone-300">|</span>
 
             {/* Subscribe Text Button */}
             <button
@@ -220,9 +296,9 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 const el = document.getElementById('newsletter-section');
                 if (el) el.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="text-stone-700 hover:text-[#7A0C0C] font-semibold tracking-tight transition"
+              className="hidden sm:inline text-stone-700 hover:text-[#7A0C0C] font-semibold tracking-tight transition"
             >
-              Subscribe
+              {L.subscribe}
             </button>
 
             {/* Social Media Icons */}
@@ -285,7 +361,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 </div>
                 <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-stone-500 mt-1 flex items-center gap-1">
                   <Globe className="w-2.5 h-2.5 text-[#991B1B]" />
-                  {setting.tagline || 'International Organic News 24x7'}
+                  {L.tagline}
                 </span>
               </div>
             </button>
@@ -460,7 +536,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </nav>
 
             <div className="px-5 py-4 border-t border-stone-200 bg-[#FAF8F5] text-[10px] font-mono uppercase tracking-widest text-stone-500 text-center">
-              International Organic News 24x7
+              National & International News Portal
             </div>
           </div>
         </div>
@@ -529,7 +605,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                 </span>
               </div>
               <p className="text-stone-600 leading-relaxed text-xs">
-                Official news, beauty pageant updates, Forever Star India Awards, and international editorial coverage.
+                Independent national &amp; international news — politics, fashion &amp; glamour, entertainment, business, lifestyle and astrology coverage.
               </p>
             </div>
 
@@ -556,11 +632,11 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             <div className="space-y-2">
               <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">Top Subcategories</h4>
               <ul className="space-y-1 text-stone-600 text-[11px]">
-                <li>• Miss India & Miss Bharat</li>
-                <li>• Forever Star India Awards</li>
-                <li>• Star India Kids Contest 2026</li>
-                <li>• Nominate Yourself Award</li>
-                <li>• Franchise State Directorship</li>
+                <li>• Fashion &amp; Glamour</li>
+                <li>• Entertainment</li>
+                <li>• Business News</li>
+                <li>• Lifestyle &amp; Products</li>
+                <li>• Astrology</li>
               </ul>
             </div>
 
@@ -588,6 +664,9 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           </div>
         </div>
       </footer>
+
+      {/* Timed promotional pop-up (ci_advertisement, 24h frequency cap) */}
+      <PromotionalModal ads={ads} />
 
       {/* COMMAND PALETTE SEARCH OVERLAY MODAL */}
       {commandPaletteOpen && (
