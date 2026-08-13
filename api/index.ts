@@ -17,6 +17,8 @@ import {
   getAllBlogsAdmin,
 } from '../src/lib/db.js';
 import { resolveCategoryIds } from '../src/lib/taxonomy.js';
+import { translateArticle } from '../src/lib/translate.js';
+import { answerQuestion } from '../src/lib/qa.js';
 import { CIBlog, CICategory, CIAdvertisement, CITag } from '../src/types.js';
 import { siteSetting } from '../src/data/siteConfig.js';
 // Real-data snapshot exported from the production jaipurwe_fsianews dump —
@@ -123,6 +125,30 @@ export default async function handler(req: any, res: any) {
       }
       const updated = await updateBlog(id, await readBody(req));
       return updated ? res.json(updated) : res.status(404).json({ error: 'Blog not found' });
+    }
+
+    // ---- Hindi translation (server-side, cached) ----
+    if (route === 'translate') {
+      const slug = (url.searchParams.get('slug') || '').trim();
+      if (!slug) return res.status(400).json({ error: 'slug required' });
+      const article = (await getBlogByUrlSlug(slug)) || snapBlogs.find((b) => b.url === slug) || null;
+      if (!article) return res.status(404).json({ error: 'Article not found' });
+      const out = await translateArticle(article);
+      // Long edge cache: translation is deterministic per article
+      res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800');
+      return res.json(out);
+    }
+
+    // ---- Interactive article Q&A ----
+    if (route === 'ask' && method === 'POST') {
+      const { slug, question } = await readBody(req);
+      if (!slug || !question || String(question).length > 300) {
+        return res.status(400).json({ error: 'slug and question (max 300 chars) required' });
+      }
+      const article = (await getBlogByUrlSlug(String(slug).trim())) || snapBlogs.find((b) => b.url === String(slug).trim()) || null;
+      if (!article) return res.status(404).json({ error: 'Article not found' });
+      const result = await answerQuestion(String(question), article.content, article.short_content);
+      return res.json(result);
     }
 
     // ---- Public reads ----

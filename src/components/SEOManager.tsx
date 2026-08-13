@@ -88,6 +88,27 @@ export const SEOManager: React.FC<SEOProps> = ({
       setLinkTag('canonical', activeUrl);
     }
 
+    // hreflang alternates — valid now that ?lang=hi is a distinct, indexable
+    // URL serving server-translated Hindi content
+    const base = window.location.origin + window.location.pathname;
+    const alternates: [string, string][] = [
+      ['en-IN', base],
+      ['hi-IN', `${base}?lang=hi`],
+      ['x-default', base],
+    ];
+    for (const [code, href] of alternates) {
+      const id = `hreflang-${code}`;
+      let link = document.getElementById(id) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'alternate';
+        link.id = id;
+        document.head.appendChild(link);
+      }
+      link.hreflang = code;
+      link.href = href;
+    }
+
     // 4. JSON-LD structured data — keeps the rich niche keywords (beauty
     // pageant, awards) for ranking even though the visible nav uses broad
     // editorial labels.

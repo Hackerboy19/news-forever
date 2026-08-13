@@ -3,6 +3,8 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { siteSetting } from "./src/data/siteConfig";
+import { translateArticle } from "./src/lib/translate";
+import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
 import {
   getPublishedBlogs,
@@ -62,6 +64,26 @@ async function startServer() {
     const admin = await verifyAdmin(String(username || ""), String(password || ""));
     if (!admin) return res.status(401).json({ error: "Invalid credentials or database unreachable" });
     res.json(admin);
+  });
+
+  // GET /api/translate?slug= — server-side Hindi translation (cached)
+  app.get("/api/translate", async (req, res) => {
+    const slug = String(req.query.slug || "").trim();
+    if (!slug) return res.status(400).json({ error: "slug required" });
+    const article = await getBlogByUrlSlug(slug);
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    res.json(await translateArticle(article));
+  });
+
+  // POST /api/ask — interactive article Q&A
+  app.post("/api/ask", async (req, res) => {
+    const { slug, question } = req.body || {};
+    if (!slug || !question || String(question).length > 300) {
+      return res.status(400).json({ error: "slug and question (max 300 chars) required" });
+    }
+    const article = await getBlogByUrlSlug(String(slug).trim());
+    if (!article) return res.status(404).json({ error: "Article not found" });
+    res.json(await answerQuestion(String(question), article.content, article.short_content));
   });
 
   // Health check

@@ -61,7 +61,9 @@ const DICT = {
     paqMore: 'Where can I read more {cat} coverage?',
     paqMoreAnswer: 'Browse the {cat} section of News Forever for all related stories, winner announcements and updates.',
     paqFees: 'Are there fees or extra charges to participate?',
-    paqFeesAnswer: 'Registration, nomination and participation fees are set and collected only through the official Forever Star India channels. Verify current fee levels, what they include and accepted payment methods on the official registration page or by contacting the organisers directly before paying anyone. News Forever never collects payments.',
+    paqFeesAnswer: 'All charges are ONE-TIME payments collected only through the official registration page — there are no future, recurring or hidden charges beyond the level you select. Each level states exactly what it covers before you pay. For the current one-time fee amounts, see the official registration page or contact the organisers directly. News Forever never collects payments.',
+    askPlaceholder: 'Ask a question about this article…',
+    askButton: 'Ask',
     // Nav umbrella labels
     'Home': 'Home',
     'Political News': 'Political News',
@@ -125,7 +127,9 @@ const DICT = {
     paqMore: '{cat} की और खबरें कहां पढ़ें?',
     paqMoreAnswer: 'सभी संबंधित खबरों, विजेता घोषणाओं और अपडेट के लिए न्यूज़ फ़ॉरएवर का {cat} खंड देखें।',
     paqFees: 'क्या भाग लेने के लिए शुल्क या अतिरिक्त प्रभार हैं?',
-    paqFeesAnswer: 'पंजीकरण, नामांकन और भागीदारी शुल्क केवल आधिकारिक फ़ॉरएवर स्टार इंडिया चैनलों के माध्यम से निर्धारित और एकत्र किए जाते हैं। किसी को भी भुगतान करने से पहले आधिकारिक पंजीकरण पृष्ठ पर या आयोजकों से सीधे संपर्क करके वर्तमान शुल्क स्तर, उनमें क्या शामिल है और स्वीकृत भुगतान विधियों की पुष्टि करें। न्यूज़ फ़ॉरएवर कभी भुगतान एकत्र नहीं करता।',
+    paqFeesAnswer: 'सभी शुल्क एकमुश्त (one-time) हैं और केवल आधिकारिक पंजीकरण पृष्ठ के माध्यम से लिए जाते हैं — आपके चुने हुए स्तर के अलावा कोई भविष्य का, आवर्ती या छिपा हुआ शुल्क नहीं है। हर स्तर भुगतान से पहले स्पष्ट बताता है कि उसमें क्या शामिल है। वर्तमान एकमुश्त शुल्क राशि के लिए आधिकारिक पंजीकरण पृष्ठ देखें या आयोजकों से सीधे संपर्क करें। न्यूज़ फ़ॉरएवर कभी भुगतान एकत्र नहीं करता।',
+    askPlaceholder: 'इस लेख के बारे में प्रश्न पूछें…',
+    askButton: 'पूछें',
     // Nav umbrella labels
     'Home': 'होम',
     'Political News': 'राजनीतिक समाचार',
@@ -157,6 +161,9 @@ const I18nContext = createContext<I18nValue>({
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [lang, setLang] = useState<Lang>(() => {
     try {
+      // ?lang=hi URL param wins (indexable Hindi URLs), then saved preference
+      const fromUrl = new URLSearchParams(window.location.search).get('lang');
+      if (fromUrl === 'hi' || fromUrl === 'en') return fromUrl;
       return (localStorage.getItem('nf_lang') as Lang) || 'en';
     } catch {
       return 'en';

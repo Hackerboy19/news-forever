@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CIBlog, CIAdvertisement } from '../types';
 import SEOManager from './SEOManager';
 import SidebarAd from './SidebarAd';
@@ -105,12 +105,48 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   onGoBack,
   onSelectArticle,
 }) => {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [copied, setCopied] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
 
   // Find exact article matching url column in ci_blog table
-  const article = blogs.find((b) => b.url === urlSlug);
+  const baseArticle = blogs.find((b) => b.url === urlSlug);
+
+  // Server-side Hindi translation (cached at the edge) when HI is active
+  const [hiPayload, setHiPayload] = useState<any>(null);
+  const [translating, setTranslating] = useState(false);
+  useEffect(() => {
+    setHiPayload(null);
+    if (lang !== 'hi' || !baseArticle) return;
+    let cancelled = false;
+    setTranslating(true);
+    fetch(`/api/translate?slug=${encodeURIComponent(baseArticle.url)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.translated) setHiPayload(d);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setTranslating(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lang, baseArticle?.url]);
+
+  // Displayed article: Hindi override on hi locale, verbatim DB row otherwise
+  const article = baseArticle
+    ? hiPayload
+      ? {
+          ...baseArticle,
+          title: hiPayload.title || baseArticle.title,
+          content: hiPayload.description || baseArticle.content,
+          meta_title: hiPayload.meta_title || baseArticle.meta_title,
+          meta_description: hiPayload.meta_description || baseArticle.meta_description,
+          meta_keyword: hiPayload.meta_keyword || baseArticle.meta_keyword,
+        }
+      : baseArticle
+    : undefined;
 
   if (isLoading || (!article && blogs.length === 0)) {
     return <PublicArticleSkeleton onGoBack={onGoBack} />;
@@ -346,6 +382,14 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Hindi translation in progress indicator */}
+          {translating && (
+            <div className="flex items-center gap-2 text-xs font-mono text-stone-500 bg-slate-50 border border-slate-200 rounded-sm px-3 py-2 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-[#991B1B] animate-ping" />
+              हिंदी अनुवाद लोड हो रहा है…
+            </div>
+          )}
 
           {/* HTML Article Body — ads injected after the 3rd and 6th paragraphs */}
           {splitHtmlAtParagraphs(article.content, [3, 6]).map((segment, i) => (
