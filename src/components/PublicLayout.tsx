@@ -239,7 +239,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               <select
                 value={dateFilter}
                 onChange={(e) => onDateFilterChange(e.target.value as DateFilter)}
-                className="bg-stone-100 border border-stone-300 text-[11px] font-mono text-stone-600 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#7A0C0C] cursor-pointer"
+                className="bg-stone-100 border border-stone-300 text-[10px] sm:text-[11px] font-mono text-stone-600 px-1 sm:px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#7A0C0C] cursor-pointer max-w-[92px] sm:max-w-none"
                 aria-label="Filter news by date"
               >
                 <option value="all">All dates</option>
@@ -266,7 +266,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               aria-label="Search news articles"
             >
               <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-stone-600 group-hover:text-[#7A0C0C] transition" />
-              <span className="text-xs font-sans">{L.search}</span>
+              <span className="hidden min-[420px]:inline text-xs font-sans">{L.search}</span>
               <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-white text-stone-500 border border-stone-300 font-mono text-[9px] font-bold shadow-2xs">⌘K</kbd>
             </button>
 
@@ -301,8 +301,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               {L.subscribe}
             </button>
 
-            {/* Social Media Icons */}
-            <div className="flex items-center gap-2.5 text-stone-700">
+            {/* Social Media Icons (desktop only — mobile bar stays uncluttered) */}
+            <div className="hidden sm:flex items-center gap-2.5 text-stone-700">
               <a
                 href={setting.facebook_url || "https://facebook.com"}
                 target="_blank"
@@ -643,7 +643,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             <div className="space-y-2">
               <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">Editorial Office</h4>
               <p className="text-stone-600 text-xs leading-relaxed">
-                News Forever Bureau • Independent journalism & official coverage for pageantry and awards.
+                News Forever Bureau • Independent national &amp; international journalism.
               </p>
               <div className="flex items-center gap-3 pt-2 text-stone-700">
                 <a href={setting.facebook_url || "#"} className="hover:text-[#7A0C0C]"><Facebook className="w-4 h-4 fill-current stroke-none" /></a>

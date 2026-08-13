@@ -317,9 +317,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
             <h2 className="text-xs font-bold text-stone-900 uppercase tracking-widest flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#991B1B]" />
-              {activeCategory === 'all' ? 'Latest News & Pageant Highlights' : 'Category Feed'}
+              {activeCategory === 'all' ? 'Latest News & Highlights' : 'Category Feed'}
             </h2>
-            <span className="text-[10px] text-stone-500 font-mono">
+            <span className="text-[10px] text-stone-500 font-mono whitespace-nowrap shrink-0 pl-3">
               Showing {categoryFilteredBlogs.length} articles
             </span>
           </div>
