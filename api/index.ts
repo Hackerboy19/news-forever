@@ -97,11 +97,18 @@ export default async function handler(req: any, res: any) {
       return res.json(admin);
     }
 
+    const DB_WRITE_UNAVAILABLE =
+      'Live database is unreachable from Vercel, so writes are disabled here. Publish from the local panel (or the legacy cPanel admin) — the site content on Vercel updates via the data snapshot.';
+
     if (route === 'blogs' && method === 'POST') {
       const admin = await requireAdmin(req);
       if (!admin) return res.status(401).json({ error: 'Unauthorized' });
-      const created = await createBlog(await readBody(req), admin.admin_id);
-      return res.status(201).json(created);
+      try {
+        const created = await createBlog(await readBody(req), admin.admin_id);
+        return res.status(201).json(created);
+      } catch {
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
     }
 
     if (route === 'blogs/bulk-action' && method === 'POST') {
@@ -111,20 +118,28 @@ export default async function handler(req: any, res: any) {
       if (!Array.isArray(ids) || !['activate', 'deactivate', 'delete'].includes(action)) {
         return res.status(400).json({ error: 'Invalid bulk action payload' });
       }
-      const affected = await bulkBlogAction(ids.map(Number), action);
-      return res.json({ success: true, affected, ids, action });
+      try {
+        const affected = await bulkBlogAction(ids.map(Number), action);
+        return res.json({ success: true, affected, ids, action });
+      } catch {
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
     }
 
     if (segments[0] === 'blogs' && segments.length === 2 && /^\d+$/.test(segments[1]) && (method === 'PUT' || method === 'DELETE')) {
       const admin = await requireAdmin(req);
       if (!admin) return res.status(401).json({ error: 'Unauthorized' });
       const id = parseInt(segments[1], 10);
-      if (method === 'DELETE') {
-        const ok = await deleteBlog(id);
-        return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Blog not found' });
+      try {
+        if (method === 'DELETE') {
+          const ok = await deleteBlog(id);
+          return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Blog not found' });
+        }
+        const updated = await updateBlog(id, await readBody(req));
+        return updated ? res.json(updated) : res.status(404).json({ error: 'Blog not found' });
+      } catch {
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
       }
-      const updated = await updateBlog(id, await readBody(req));
-      return updated ? res.json(updated) : res.status(404).json({ error: 'Blog not found' });
     }
 
     // ---- Hindi translation (server-side, cached) ----
@@ -167,12 +182,14 @@ export default async function handler(req: any, res: any) {
       const categorySlug = url.searchParams.get('category_slug') || undefined;
       const limit = parseInt(url.searchParams.get('limit') || '200', 10);
 
-      // Admin list (drafts included) — requires valid ci_admin credentials
+      // Admin list (drafts included) — requires valid ci_admin credentials;
+      // snapshot fallback keeps the panel browsable when the DB is offline
       if (url.searchParams.get('status') === 'all') {
         const admin = await requireAdmin(req);
         if (!admin) return res.status(401).json({ error: 'Unauthorized' });
         res.setHeader('Cache-Control', 'no-store');
-        return res.json(await getAllBlogsAdmin(limit));
+        const adminBlogs = await getAllBlogsAdmin(limit);
+        return res.json(adminBlogs.length > 0 ? adminBlogs : snapBlogs.slice(0, limit));
       }
 
       let result = await getPublishedBlogs(limit, categorySlug);

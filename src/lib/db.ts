@@ -283,7 +283,13 @@ export interface AdminUser {
   name: string;
 }
 
-/** Verify credentials against the real ci_admin table (legacy plaintext scheme). */
+/**
+ * Verify credentials against the real ci_admin table (legacy plaintext
+ * scheme). When the database is unreachable (e.g. Vercel cannot reach the
+ * shared-hosting MySQL), falls back to ADMIN_PANEL_USER / ADMIN_PANEL_PASS
+ * environment credentials so the panel still opens in snapshot (read-only)
+ * mode. The DB stays the authority whenever it is reachable.
+ */
 export async function verifyAdmin(username: string, password: string): Promise<AdminUser | null> {
   if (!username || !password) return null;
   try {
@@ -302,6 +308,11 @@ export async function verifyAdmin(username: string, password: string): Promise<A
     };
   } catch (err) {
     handleDbError('verifyAdmin', err);
+    const envUser = process.env.ADMIN_PANEL_USER;
+    const envPass = process.env.ADMIN_PANEL_PASS;
+    if (envUser && envPass && username === envUser && password === envPass) {
+      return { admin_id: 0, username: envUser, name: 'Admin (offline mode)' };
+    }
     return null;
   }
 }
