@@ -13,9 +13,14 @@ interface NewsTickerProps {
  * ci_blog titles in an infinite marquee (pauses on hover).
  */
 export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle }) => {
-  const { t } = useI18n();
+  const { t, tt, registerTitles } = useI18n();
   const latest = blogs.filter((b) => b.status === 1).slice(0, 5);
   if (latest.length === 0) return null;
+
+  React.useEffect(() => {
+    registerTitles(latest.map(b => b.title));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latest.map(b => b.id).join(',')]);
 
   // Duplicate the list so the -50% translate loops seamlessly
   const loop = [...latest, ...latest];
@@ -39,7 +44,7 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle }
                 className="inline-flex items-center gap-2 px-6 text-xs font-medium text-stone-200 hover:text-amber-300 transition-colors"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#991B1B] shrink-0" />
-                {article.title}
+                {tt(article.title)}
               </button>
             ))}
           </div>

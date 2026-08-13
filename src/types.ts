@@ -32,6 +32,9 @@ export interface CIBlog {
   og_description: string;
   og_image: string;
 
+  // Video Fields (legacy ci_blog)
+  youtube_video_link?: string;
+
   // DOM Heading Hierarchy Fields
   h2_tag?: string;
   h3_tag?: string;

@@ -3,7 +3,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { siteSetting } from "./src/data/siteConfig";
-import { translateArticle } from "./src/lib/translate";
+import { translateArticle, translateTitles } from "./src/lib/translate";
 import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
 import {
@@ -73,6 +73,15 @@ async function startServer() {
     const article = await getBlogByUrlSlug(slug);
     if (!article) return res.status(404).json({ error: "Article not found" });
     res.json(await translateArticle(article));
+  });
+
+  // POST /api/translate-titles — batch title translation for feeds
+  app.post("/api/translate-titles", async (req, res) => {
+    const { titles } = req.body || {};
+    if (!Array.isArray(titles) || titles.length === 0) {
+      return res.status(400).json({ error: "titles array required" });
+    }
+    res.json({ translations: await translateTitles(titles.map(String)) });
   });
 
   // POST /api/ask — interactive article Q&A

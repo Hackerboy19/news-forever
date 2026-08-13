@@ -17,7 +17,7 @@ import {
   getAllBlogsAdmin,
 } from '../src/lib/db.js';
 import { resolveCategoryIds } from '../src/lib/taxonomy.js';
-import { translateArticle } from '../src/lib/translate.js';
+import { translateArticle, translateTitles } from '../src/lib/translate.js';
 import { answerQuestion } from '../src/lib/qa.js';
 import { CIBlog, CICategory, CIAdvertisement, CITag } from '../src/types.js';
 import { siteSetting } from '../src/data/siteConfig.js';
@@ -137,6 +137,16 @@ export default async function handler(req: any, res: any) {
       // Long edge cache: translation is deterministic per article
       res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=604800');
       return res.json(out);
+    }
+
+    // ---- Batch blog-title translation for feeds/ticker ----
+    if (route === 'translate-titles' && method === 'POST') {
+      const { titles } = await readBody(req);
+      if (!Array.isArray(titles) || titles.length === 0) {
+        return res.status(400).json({ error: 'titles array required' });
+      }
+      const translations = await translateTitles(titles.map(String));
+      return res.json({ translations });
     }
 
     // ---- Interactive article Q&A ----

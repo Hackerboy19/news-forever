@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 /**
  * Lightweight EN | HI interface translation. Chrome labels, nav umbrellas
@@ -150,12 +150,18 @@ interface I18nValue {
   setLang: (l: Lang) => void;
   /** Translate a dict key; falls back to the key itself. {n} interpolation supported. */
   t: (key: DictKey | string, vars?: Record<string, string | number>) => string;
+  /** Translated blog title lookup (server-translated, EN fallback until loaded). */
+  tt: (title: string) => string;
+  /** Register blog titles for batch server-side translation when HI is active. */
+  registerTitles: (titles: string[]) => void;
 }
 
 const I18nContext = createContext<I18nValue>({
   lang: 'en',
   setLang: () => {},
   t: (k) => String(k),
+  tt: (title) => title,
+  registerTitles: () => {},
 });
 
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -193,7 +199,32 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return out;
   };
 
-  return <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>;
+  // Server-translated blog titles: components register the titles they show;
+  // one batched request per new set, EN fallback until the map arrives.
+  const [titleMap, setTitleMap] = useState<Record<string, string>>({});
+  const requestedRef = useRef<Set<string>>(new Set());
+
+  const registerTitles = (titles: string[]) => {
+    if (lang !== 'hi') return;
+    const fresh = [...new Set(titles)].filter((x) => x && !requestedRef.current.has(x));
+    if (fresh.length === 0) return;
+    fresh.forEach((x) => requestedRef.current.add(x));
+    fetch('/api/translate-titles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ titles: fresh }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.translations) setTitleMap((prev) => ({ ...prev, ...d.translations }));
+      })
+      .catch(() => {});
+  };
+
+  // Language switch back to EN: keep cache, lookups just bypass below
+  const tt = (title: string) => (lang === 'hi' ? titleMap[title] || title : title);
+
+  return <I18nContext.Provider value={{ lang, setLang, t, tt, registerTitles }}>{children}</I18nContext.Provider>;
 };
 
 export const useI18n = () => useContext(I18nContext);

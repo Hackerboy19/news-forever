@@ -96,6 +96,24 @@ async function translateHtml(html: string): Promise<string> {
   return tokens.join('');
 }
 
+const titleCache = new Map<string, string>();
+
+/** Batch-translate blog titles (feed/ticker/cards). Cached per title. */
+export async function translateTitles(titles: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const pending = [...new Set(titles)].filter((t) => t && t.length > 3).slice(0, 80);
+  const todo = pending.filter((t) => !titleCache.has(t));
+
+  const BATCH = 12;
+  for (let i = 0; i < todo.length; i += BATCH) {
+    const slice = todo.slice(i, i + BATCH);
+    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => t)));
+    results.forEach((r, k) => titleCache.set(slice[k], r));
+  }
+  for (const t of pending) out[t] = titleCache.get(t) || t;
+  return out;
+}
+
 export async function translateArticle(article: {
   url: string;
   title: string;

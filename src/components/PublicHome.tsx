@@ -113,7 +113,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   onSelectArticle,
   onCategorySelect,
 }) => {
-  const { t } = useI18n();
+  const { t, tt, registerTitles } = useI18n();
   if (isLoading) {
     return <PublicHomeSkeleton />;
   }
@@ -151,6 +151,12 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   const heroArticle = categoryFilteredBlogs.find(b => b.is_featured) || categoryFilteredBlogs[0];
   const trendingArticles = categoryFilteredBlogs.filter(b => b.is_trending && b.id !== heroArticle?.id).slice(0, 3);
   const remainingArticles = categoryFilteredBlogs.filter(b => b.id !== heroArticle?.id && !trendingArticles.some(t => t.id === b.id));
+
+  // Batch-translate visible titles when Hindi is active (server-side, cached)
+  React.useEffect(() => {
+    registerTitles(categoryFilteredBlogs.slice(0, 60).map(b => b.title));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryFilteredBlogs.length, activeCategory]);
 
   // In-feed native ad from ci_advertisement ('blog' = article-page zone in legacy CMS)
   const nativeAd = ads.find(a => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
@@ -198,7 +204,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     </span>
                   </div>
                   <h1 className="text-2xl sm:text-4xl font-serif italic font-extrabold text-stone-900 group-hover:text-[#991B1B] transition leading-[1.15] border-l-4 border-[#991B1B] pl-4">
-                    {heroArticle.title}
+                    {tt(heroArticle.title)}
                   </h1>
                   <p className="text-sm font-serif text-stone-700 line-clamp-2 leading-relaxed">
                     {heroArticle.short_content}
@@ -241,7 +247,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         {article.category_name}
                       </span>
                       <h4 className="text-xs font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] line-clamp-2 leading-snug">
-                        {article.title}
+                        {tt(article.title)}
                       </h4>
                       <span className="text-[9px] text-stone-500 font-mono block">
                         {article.created_at ? article.created_at.split(' ')[0] : ''}
@@ -296,7 +302,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     </div>
                     <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
                       <h3 className="text-sm font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug line-clamp-2">
-                        {article.title}
+                        {tt(article.title)}
                       </h3>
                       <div className="flex items-center justify-between text-[9px] text-stone-500 font-mono pt-2 border-t border-stone-100">
                         <span className="text-[#991B1B] font-bold uppercase tracking-wider line-clamp-1">
@@ -374,7 +380,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         </span>
                       </div>
                       <h3 className="text-lg font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug line-clamp-2">
-                        {article.title}
+                        {tt(article.title)}
                       </h3>
                       <p className="text-xs text-stone-600 line-clamp-3 leading-relaxed">
                         {article.short_content}

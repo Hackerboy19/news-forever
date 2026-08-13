@@ -18,9 +18,14 @@ export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
   onSelectArticle,
   title,
 }) => {
-  const { t } = useI18n();
+  const { t, tt, registerTitles } = useI18n();
   const heading = title || t('trendingNow');
   const topTrendingArticles = blogs.filter((b) => b.status === 1).slice(0, 5);
+
+  React.useEffect(() => {
+    registerTitles(topTrendingArticles.map(b => b.title));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topTrendingArticles.map(b => b.id).join(',')]);
 
   if (topTrendingArticles.length === 0) return null;
 
@@ -78,7 +83,7 @@ export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
                 </div>
 
                 <h4 className="font-serif italic font-bold text-stone-900 group-hover:text-[#7A0C0C] text-xs sm:text-sm leading-snug line-clamp-2 transition">
-                  {article.title}
+                  {tt(article.title)}
                 </h4>
 
                 <div className="flex items-center justify-between text-[10px] text-stone-400 font-mono pt-0.5">

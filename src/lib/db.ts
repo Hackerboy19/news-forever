@@ -56,6 +56,7 @@ interface RawBlogRow {
   image: string;
   alt_tag: string;
   url: string;
+  youtube_video_link?: string;
   meta_title: string;
   meta_keyword: string;
   meta_description: string;
@@ -130,6 +131,7 @@ function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     h4_tag: row.h4_tag,
     h5_tag: row.h5_tag,
     h6_tag: row.h6_tag,
+    youtube_video_link: (row.youtube_video_link || '').trim() || undefined,
   };
 }
 
@@ -162,7 +164,7 @@ function handleDbError(context: string, err: any) {
 }
 
 const BLOG_SELECT = `
-  SELECT b.id, b.user_created_by, b.title, b.cat_id, b.sub_cat_id, b.type, b.tag_id,
+  SELECT b.id, b.user_created_by, b.title, b.cat_id, b.sub_cat_id, b.type, b.tag_id, b.youtube_video_link,
          b.image, b.alt_tag, b.url, b.meta_title, b.meta_keyword, b.meta_description,
          b.h2_tag, b.h3_tag, b.h4_tag, b.h5_tag, b.h6_tag,
          b.og_title, b.og_url, b.og_description, b.og_image,
@@ -338,6 +340,7 @@ function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number
   if (payload.og_url !== undefined) cols.og_url = payload.og_url;
   if (payload.og_description !== undefined) cols.og_description = payload.og_description;
   if (payload.og_image !== undefined) cols.og_image = toLegacyAssetPath(payload.og_image);
+  if (payload.youtube_video_link !== undefined) cols.youtube_video_link = payload.youtube_video_link;
   if (payload.content !== undefined) cols.description = payload.content;
   if (payload.status !== undefined) cols.status = payload.status;
   return cols;

@@ -328,18 +328,48 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   </h3>
 
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Category Mapping</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Category Mapping (<code className="text-orange-400">cat_id</code>)</label>
                     <select
                       value={formData.category_id || 1}
-                      onChange={(e) => handleInputChange('category_id', parseInt(e.target.value, 10))}
+                      onChange={(e) => {
+                        handleInputChange('category_id', parseInt(e.target.value, 10));
+                        handleInputChange('sub_category_id', 0);
+                      }}
                       className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-zinc-200 outline-none focus:border-orange-500"
                     >
-                      {categories.map((cat) => (
+                      {categories.filter((c) => !c.parent_id).map((cat) => (
                         <option key={cat.id} value={cat.id}>
                           {cat.category_name} (ID: {cat.id})
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Sub-Category (<code className="text-orange-400">sub_cat_id</code>)</label>
+                    <select
+                      value={formData.sub_category_id || 0}
+                      onChange={(e) => handleInputChange('sub_category_id', parseInt(e.target.value, 10))}
+                      className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-zinc-200 outline-none focus:border-orange-500"
+                    >
+                      <option value={0}>— None —</option>
+                      {categories.filter((c) => c.parent_id === formData.category_id).map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.category_name} (ID: {cat.id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">YouTube Video Link (<code className="text-orange-400">youtube_video_link</code>)</label>
+                    <input
+                      type="url"
+                      value={(formData as any).youtube_video_link || ''}
+                      onChange={(e) => handleInputChange('youtube_video_link' as keyof CIBlog, e.target.value)}
+                      placeholder="https://youtube.com/watch?v=…"
+                      className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-zinc-200 outline-none focus:border-orange-500"
+                    />
                   </div>
 
                   <div>
