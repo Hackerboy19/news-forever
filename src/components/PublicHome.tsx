@@ -2,11 +2,10 @@ import React from 'react';
 import { CIBlog, CIAdvertisement, CICategory, CITag } from '../types';
 import { resolveCategoryIds } from '../lib/taxonomy';
 
-/** Editorial blocks below the hero — broad labels, legacy category groups */
-const CATEGORY_BLOCKS = [
-  { name: 'Fashion & Glamour', slug: 'fashion-glamour' },
-  { name: 'Entertainment', slug: 'entertainment' },
-];
+import { NAV_UMBRELLAS } from '../lib/taxonomy';
+
+/** Every nav umbrella gets its own homepage section (rendered only when it has articles) */
+const CATEGORY_BLOCKS = NAV_UMBRELLAS.map((u) => ({ name: u.name, slug: u.slug }));
 import { TrendingUp, Eye, Clock, ArrowRight, Sparkles, Tag, ChevronRight } from 'lucide-react';
 import TrendingSidebar from './TrendingSidebar';
 import SidebarAd from './SidebarAd';
@@ -275,7 +274,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
             <section key={block.slug} className="space-y-5">
               <div className="flex items-center justify-between border-b-2 border-stone-900 pb-2.5">
                 <h2 className="text-lg sm:text-xl font-serif font-black text-stone-900 tracking-tight">
-                  {block.name}
+                  {t(block.name)}
                 </h2>
                 <button
                   onClick={() => onCategorySelect(block.slug)}
