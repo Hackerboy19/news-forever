@@ -22,7 +22,14 @@ async function bridgeCall(action: string, body: Record<string, unknown>): Promis
     },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  let data: any = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // Non-JSON response (e.g. the site's HTML 404 page served with HTTP 200)
+    throw new Error(`bridge ${action}: nf-bridge.php not reachable at BRIDGE_URL (non-JSON response)`);
+  }
   if (!res.ok) throw new Error(data?.error || `bridge ${action} ${res.status}`);
   return data;
 }
@@ -62,6 +69,38 @@ export async function bridgeDeleteBlog(creds: BridgeCreds, id: number): Promise<
 
 export async function bridgeChangePassword(creds: BridgeCreds, newPassword: string): Promise<boolean> {
   const data = await bridgeCall('change-password', { ...creds, new_password: newPassword });
+  return Boolean(data.success);
+}
+
+export async function bridgeUploadImage(
+  creds: BridgeCreds,
+  folder: 'blog' | 'advertisement',
+  filename: string,
+  base64Data: string,
+  alt?: string
+): Promise<string> {
+  const data = await bridgeCall('upload-image', { ...creds, folder, filename, data: base64Data, alt });
+  if (!data.path) throw new Error('Bridge upload returned no path');
+  return String(data.path);
+}
+
+export async function bridgeSaveAd(creds: BridgeCreds, payload: Record<string, unknown>, id?: number): Promise<any[]> {
+  const data = await bridgeCall('ad-save', { ...creds, payload, id: id || 0 });
+  return data.rows || [];
+}
+
+export async function bridgeDeleteAd(creds: BridgeCreds, id: number): Promise<boolean> {
+  const data = await bridgeCall('ad-delete', { ...creds, id });
+  return Boolean(data.success);
+}
+
+export async function bridgeSaveCategory(creds: BridgeCreds, payload: Record<string, unknown>, id?: number): Promise<boolean> {
+  const data = await bridgeCall('cat-save', { ...creds, payload, id: id || 0 });
+  return Boolean(data.success);
+}
+
+export async function bridgeDeleteCategory(creds: BridgeCreds, id: number): Promise<boolean> {
+  const data = await bridgeCall('cat-delete', { ...creds, id });
   return Boolean(data.success);
 }
 

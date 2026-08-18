@@ -4,10 +4,21 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { siteSetting } from "./src/data/siteConfig";
 import { translateArticle, translateTitles } from "./src/lib/translate";
+import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
 import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
 import {
   changeAdminPassword,
+  getImageLibrary,
+  getSubscribers,
+  getAdminUsers,
+  getActivityLogs,
+  createAd,
+  updateAd,
+  deleteAd,
+  createCategory,
+  updateCategory,
+  deleteCategory,
   getPublishedBlogs,
   getBlogByUrlSlug,
   getAllCategories,
@@ -24,7 +35,7 @@ import {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json());
 
@@ -232,8 +243,20 @@ async function startServer() {
     }
   });
 
-  // POST /api/categories
-  app.post("/api/categories", (req, res) => {
+  // POST /api/categories — real INSERT on ci_category
+  app.post("/api/categories", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const cats = await createCategory(req.body || {});
+      logActivity(admin.name, admin.admin_id, `Created Category "${req.body?.category_name}"`, "Category");
+      return res.json(cats);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Category save failed: " + err?.message });
+    }
+  });
+
+  app.post("/api/_legacy_categories_unused", (req, res) => {
     const payload = req.body;
     const newId = dbCategories.length ? Math.max(...dbCategories.map(c => c.id)) + 1 : 1;
     const now = new Date().toISOString().replace("T", " ").substring(0, 19);
@@ -254,8 +277,19 @@ async function startServer() {
     res.status(201).json(newCategory);
   });
 
-  // PUT /api/categories/:id
-  app.put("/api/categories/:id", (req, res) => {
+  // PUT /api/categories/:id — real UPDATE on ci_category
+  app.put("/api/categories/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const cats = await updateCategory(parseInt(req.params.id, 10), req.body || {});
+      return res.json(cats);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Category update failed: " + err?.message });
+    }
+  });
+
+  app.put("/api/_legacy_categories_unused/:id", (req, res) => {
     const id = parseInt(req.params.id, 10);
     const idx = dbCategories.findIndex(c => c.id === id);
     if (idx === -1) return res.status(404).json({ error: "Category not found" });
@@ -265,8 +299,16 @@ async function startServer() {
     res.json(dbCategories[idx]);
   });
 
-  // DELETE /api/categories/:id
-  app.delete("/api/categories/:id", (req, res) => {
+  // DELETE /api/categories/:id — real DELETE on ci_category
+  app.delete("/api/categories/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ok = await deleteCategory(parseInt(req.params.id, 10));
+    if (!ok) return res.status(404).json({ error: "Category not found" });
+    return res.json({ success: true, id: parseInt(req.params.id, 10) });
+  });
+
+  app.delete("/api/_legacy_categories_unused/:id", (req, res) => {
     const id = parseInt(req.params.id, 10);
     dbCategories = dbCategories.filter(c => c.id !== id);
     logActivity("Elena Rostova", 1, `Deleted Category #${id}`, "Category");
@@ -284,8 +326,55 @@ async function startServer() {
     res.json(realAds.length > 0 ? realAds : dbAds);
   });
 
-  // POST /api/advertisements
-  app.post("/api/advertisements", (req, res) => {
+  // POST /api/advertisements — real INSERT/UPDATE on ci_advertisement
+  app.post("/api/advertisements", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const { id, ...payload } = req.body || {};
+      const ads = id ? await updateAd(Number(id), payload) : await createAd(payload);
+      logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement");
+      return res.json(ads);
+    } catch (err: any) {
+      return res.status(500).json({ error: "Ad save failed: " + err?.message });
+    }
+  });
+
+  // DELETE /api/advertisements/:id
+  app.delete("/api/advertisements/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ok = await deleteAd(parseInt(req.params.id, 10));
+    if (!ok) return res.status(404).json({ error: "Ad not found" });
+    logActivity(admin.name, admin.admin_id, `Deleted Advertisement #${req.params.id}`, "Advertisement");
+    res.json({ success: true });
+  });
+
+  // POST /api/upload-image — file upload via cPanel bridge (stores on the live server)
+  app.post("/api/upload-image", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const { folder, filename, data, alt } = req.body || {};
+    if (!data || !filename) return res.status(400).json({ error: "filename and data required" });
+    if (!bridgeConfigured()) {
+      return res.status(503).json({ error: "Image upload needs the cPanel bridge (nf-bridge.php) — set BRIDGE_URL/BRIDGE_KEY. Until then, paste an existing assets/img path or full URL." });
+    }
+    try {
+      const path = await bridgeUploadImage(
+        { username: String(req.headers["x-admin-user"] || ""), password: String(req.headers["x-admin-pass"] || "") },
+        folder === "advertisement" ? "advertisement" : "blog",
+        String(filename),
+        String(data),
+        alt ? String(alt) : undefined
+      );
+      return res.json({ success: true, path });
+    } catch (err: any) {
+      return res.status(502).json({ error: err?.message || "Upload failed" });
+    }
+  });
+
+  // (legacy in-memory ad handler removed)
+  app.post("/api/_legacy_ads_unused", (req, res) => {
     const payload = req.body;
     const newId = dbAds.length ? Math.max(...dbAds.map(a => a.id)) + 1 : 1;
     const now = new Date().toISOString().replace("T", " ").substring(0, 19);
@@ -318,19 +407,20 @@ async function startServer() {
     res.json({ success: true, clicks: ad?.click_count });
   });
 
-  // GET /api/activity-logs
-  app.get("/api/activity-logs", (_req, res) => {
-    res.json(dbActivityLogs);
+  // GET /api/activity-logs — real ci_activity_log + session actions
+  app.get("/api/activity-logs", async (_req, res) => {
+    const real = await getActivityLogs();
+    res.json([...dbActivityLogs, ...real]);
   });
 
-  // GET /api/users
-  app.get("/api/users", (_req, res) => {
-    res.json(dbUsers);
+  // GET /api/users — real ci_admin accounts (no passwords)
+  app.get("/api/users", async (_req, res) => {
+    res.json(await getAdminUsers());
   });
 
-  // GET /api/subscribers
-  app.get("/api/subscribers", (_req, res) => {
-    res.json(dbSubscribers);
+  // GET /api/subscribers — real ci_subscribe rows
+  app.get("/api/subscribers", async (_req, res) => {
+    res.json(await getSubscribers());
   });
 
   // POST /api/subscribers
@@ -353,9 +443,9 @@ async function startServer() {
     res.status(201).json({ message: "Subscribed successfully", subscriber: newSub });
   });
 
-  // GET /api/image-library
-  app.get("/api/image-library", (_req, res) => {
-    res.json(dbImages);
+  // GET /api/image-library — real ci_imagelibrary rows
+  app.get("/api/image-library", async (_req, res) => {
+    res.json(await getImageLibrary());
   });
 
   // POST /api/image-library

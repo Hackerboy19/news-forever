@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { CIBlog, CICategory, CIAdvertisement, CITag } from '../types.js';
+import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
 
 /**
@@ -253,6 +253,187 @@ export async function getAllCategories(): Promise<CICategory[]> {
 export async function getActiveCategories(): Promise<CICategory[]> {
   const all = await getAllCategories();
   return all.filter((c) => !c.parent_id && (c.article_count ?? 0) > 0);
+}
+
+/** Real image library rows from ci_imagelibrary. */
+export async function getImageLibrary(limit = 300): Promise<CIImageLibrary[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT id, user_id, url, image, created_at FROM ci_imagelibrary ORDER BY id DESC LIMIT ?`,
+      [limit]
+    );
+    return (rows as any[]).map((r) => ({
+      id: r.id,
+      file_name: String(r.image || '').split('/').pop() || String(r.image || ''),
+      file_path: assetUrl(r.image),
+      file_size: '',
+      alt_tag: r.url || '',
+      uploaded_by: String(r.user_id || ''),
+      created_at: r.created_at || '',
+    }));
+  } catch (err) {
+    handleDbError('getImageLibrary', err);
+    return [];
+  }
+}
+
+/** Real subscriber emails from ci_subscribe. */
+export async function getSubscribers(limit = 500): Promise<CISubscriber[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT id, email, created_at FROM ci_subscribe ORDER BY id DESC LIMIT ?`,
+      [limit]
+    );
+    return (rows as any[]).map((r) => ({
+      id: r.id,
+      email: r.email,
+      status: 'subscribed' as const,
+      subscribed_at: r.created_at || '',
+    }));
+  } catch (err) {
+    handleDbError('getSubscribers', err);
+    return [];
+  }
+}
+
+/** Real admin accounts from ci_admin (passwords never leave the DB layer). */
+export async function getAdminUsers(): Promise<CIUser[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT admin_id, username, firstname, lastname, email, image, is_active, is_supper, last_login FROM ci_admin ORDER BY admin_id ASC`
+    );
+    return (rows as any[]).map((r) => ({
+      id: r.admin_id,
+      username: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username,
+      email: r.email || '',
+      role: r.is_supper ? 'Super Admin' : 'Senior Editor',
+      avatar: assetUrl(r.image),
+      status: r.is_active ? 1 : 0,
+      last_login: r.last_login ? String(r.last_login) : '',
+    }));
+  } catch (err) {
+    handleDbError('getAdminUsers', err);
+    return [];
+  }
+}
+
+/** Real activity trail from ci_activity_log (labels joined from ci_activity_status). */
+export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT l.id, l.activity_id, l.user_id, l.admin_id, l.created_at,
+              a.username, a.firstname, a.lastname
+       FROM ci_activity_log l
+       LEFT JOIN ci_admin a ON l.admin_id = a.admin_id
+       ORDER BY l.id DESC LIMIT ?`,
+      [limit]
+    );
+    return (rows as any[]).map((r) => ({
+      id: r.id,
+      user_id: r.user_id || r.admin_id,
+      user_name: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username || `Admin #${r.admin_id}`,
+      activity: `Activity code ${r.activity_id}`,
+      module: 'System',
+      ip_address: '',
+      created_at: r.created_at ? String(r.created_at) : '',
+    }));
+  } catch (err) {
+    handleDbError('getActivityLogs', err);
+    return [];
+  }
+}
+
+// ---- ci_advertisement CRUD ----
+
+function toAdColumns(payload: Partial<CIAdvertisement>): Record<string, string | number> {
+  const cols: Record<string, string | number> = {};
+  if (payload.title !== undefined) cols.advertisement_title = payload.title;
+  if (payload.url !== undefined) cols.advertisement_url = payload.url;
+  if (payload.advertisement_image !== undefined) cols.advertisement_image = toLegacyAssetPath(payload.advertisement_image);
+  if (payload.alt_tag !== undefined) cols.alt_tag = payload.alt_tag;
+  if (payload.position !== undefined) cols.position = payload.position;
+  if (payload.priority !== undefined) cols.priority = payload.priority;
+  if (payload.status !== undefined) cols.status = payload.status;
+  return cols;
+}
+
+export async function createAd(payload: Partial<CIAdvertisement>): Promise<CIAdvertisement[]> {
+  const defaults: Record<string, string | number> = {
+    advertisement_title: '', advertisement_url: '', advertisement_image: '', alt_tag: '',
+    priority: 2, position: 'right', status: 1,
+  };
+  const row = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+  const names = Object.keys(row);
+  await dbPool.query(
+    `INSERT INTO ci_advertisement (${names.map((n) => `\`${n}\``).join(',')}) VALUES (${names.map(() => '?').join(',')})`,
+    names.map((n) => row[n as keyof typeof row])
+  );
+  return getActiveAds();
+}
+
+export async function updateAd(id: number, payload: Partial<CIAdvertisement>): Promise<CIAdvertisement[]> {
+  const cols = toAdColumns(payload);
+  const names = Object.keys(cols);
+  if (names.length > 0) {
+    await dbPool.query(
+      `UPDATE ci_advertisement SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`,
+      [...names.map((n) => cols[n]), id]
+    );
+  }
+  return getActiveAds();
+}
+
+export async function deleteAd(id: number): Promise<boolean> {
+  const [result] = await dbPool.query(`DELETE FROM ci_advertisement WHERE id = ?`, [id]);
+  return (result as any).affectedRows > 0;
+}
+
+// ---- ci_category CRUD ----
+
+export async function createCategory(payload: Partial<CICategory>): Promise<CICategory[]> {
+  const row: Record<string, string | number> = {
+    parent_id: payload.parent_id ?? 0,
+    url: (payload.slug || '').trim(),
+    cat_name: payload.category_name || '',
+    meta_title: payload.meta_title || payload.category_name || '',
+    meta_keyword: '', meta_description: payload.meta_description || '',
+    h2_tag: '', h3_tag: '', h4_tag: '', h5_tag: '', h6_tag: '',
+    og_title: '', og_url: '', og_description: '', og_image: '',
+    status: payload.status ?? 1,
+    created_at: legacyNow(),
+  };
+  const names = Object.keys(row);
+  await dbPool.query(
+    `INSERT INTO ci_category (${names.map((n) => `\`${n}\``).join(',')}) VALUES (${names.map(() => '?').join(',')})`,
+    names.map((n) => row[n])
+  );
+  categoriesCache = null;
+  return getAllCategories();
+}
+
+export async function updateCategory(id: number, payload: Partial<CICategory>): Promise<CICategory[]> {
+  const cols: Record<string, string | number> = {};
+  if (payload.category_name !== undefined) cols.cat_name = payload.category_name;
+  if (payload.slug !== undefined) cols.url = payload.slug.trim();
+  if (payload.parent_id !== undefined) cols.parent_id = payload.parent_id;
+  if (payload.status !== undefined) cols.status = payload.status;
+  if (payload.meta_title !== undefined) cols.meta_title = payload.meta_title;
+  if (payload.meta_description !== undefined) cols.meta_description = payload.meta_description;
+  const names = Object.keys(cols);
+  if (names.length > 0) {
+    await dbPool.query(
+      `UPDATE ci_category SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`,
+      [...names.map((n) => cols[n]), id]
+    );
+  }
+  categoriesCache = null;
+  return getAllCategories();
+}
+
+export async function deleteCategory(id: number): Promise<boolean> {
+  const [result] = await dbPool.query(`DELETE FROM ci_category WHERE id = ?`, [id]);
+  categoriesCache = null;
+  return (result as any).affectedRows > 0;
 }
 
 /** Fetch active tags from ci_tag (url column is the slug). */

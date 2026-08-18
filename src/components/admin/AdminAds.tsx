@@ -4,10 +4,12 @@ import { BarChart2, Plus, Edit3, Trash2, ExternalLink, Image as ImageIcon } from
 
 interface AdminAdsProps {
   ads: CIAdvertisement[];
-  onSaveAd: (ad: Partial<CIAdvertisement>) => void;
+  onSaveAd: (ad: Partial<CIAdvertisement> & { image_file?: { filename: string; data: string } }) => void;
+  onDeleteAd?: (id: number) => void;
 }
 
-export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd }) => {
+export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd }) => {
+  const [imageFile, setImageFile] = useState<{ filename: string; data: string; preview: string } | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingAd, setEditingAd] = useState<Partial<CIAdvertisement>>({
     title: '',
@@ -27,7 +29,24 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd }) => {
       position: 'top_banner',
       status: 1,
     });
+    setImageFile(null);
     setShowModal(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Image too large (max 8MB)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const base64 = result.split(',')[1] || '';
+      setImageFile({ filename: file.name, data: base64, preview: result });
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -36,7 +55,8 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd }) => {
       alert('Ad Title is required');
       return;
     }
-    onSaveAd(editingAd);
+    onSaveAd(imageFile ? { ...editingAd, image_file: { filename: imageFile.filename, data: imageFile.data } } : editingAd);
+    setImageFile(null);
     setShowModal(false);
   };
 
@@ -104,15 +124,26 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd }) => {
               <div className="text-zinc-400">
                 Clicks: <strong className="text-white">{ad.click_count}</strong> | Impressions: <strong className="text-white">{ad.impressions}</strong>
               </div>
-              <button
-                onClick={() => {
-                  setEditingAd(ad);
-                  setShowModal(true);
-                }}
-                className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-[10px] uppercase font-bold tracking-widest"
-              >
-                Edit Ad
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setEditingAd(ad);
+                    setImageFile(null);
+                    setShowModal(true);
+                  }}
+                  className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-[10px] uppercase font-bold tracking-widest"
+                >
+                  Edit Ad
+                </button>
+                {onDeleteAd && (
+                  <button
+                    onClick={() => onDeleteAd(ad.id)}
+                    className="px-3 py-1 bg-red-900/40 hover:bg-red-800 text-red-300 font-mono text-[10px] uppercase font-bold tracking-widest flex items-center gap-1"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         ))}
@@ -144,20 +175,32 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd }) => {
                   onChange={(e) => setEditingAd(prev => ({ ...prev, position: e.target.value as any }))}
                   className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
                 >
-                  <option value="top_banner">Top Leaderboard Banner (728x90)</option>
-                  <option value="sidebar_sticky">Sidebar Sticky Rectangle (300x600)</option>
-                  <option value="in_content">In-Article Native Banner (728x250)</option>
-                  <option value="footer_banner">Footer Banner (970x90)</option>
+                  <option value="blog">Leaderboard / In-Article ("blog" zone)</option>
+                  <option value="left">Sidebar Panel — left</option>
+                  <option value="right">Sidebar Panel — right</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  Ad Image Path (<code className="text-orange-400 font-mono">advertisement_image</code>)
+                  Upload Ad Image (<code className="text-orange-400 font-mono">advertisement_image</code>)
                 </label>
                 <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={handleFileChange}
+                  className="w-full text-xs text-zinc-300 file:mr-3 file:px-3 file:py-1.5 file:bg-orange-600 file:text-white file:border-0 file:text-xs file:font-bold file:uppercase file:cursor-pointer bg-[#0A0A0A] border border-zinc-700 p-1.5"
+                />
+                {imageFile && (
+                  <div className="mt-2 p-2 bg-[#0A0A0A] border border-zinc-700 flex items-center gap-3">
+                    <img src={imageFile.preview} alt="preview" className="h-12 object-contain" />
+                    <span className="text-[10px] font-mono text-emerald-400 truncate">{imageFile.filename} — uploads to assets/img/advertisement/ on save</span>
+                  </div>
+                )}
+                <p className="text-[10px] text-zinc-500 mt-1.5">…or paste an existing path / full URL below:</p>
+                <input
                   type="text"
-                  required
+                  required={!imageFile}
                   value={editingAd.advertisement_image || ''}
                   onChange={(e) => setEditingAd(prev => ({ ...prev, advertisement_image: e.target.value }))}
                   className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white font-mono text-xs focus:border-orange-500 outline-none"

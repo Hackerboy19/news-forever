@@ -245,25 +245,18 @@ export function App() {
     }
   };
 
-  // --- CATEGORY CRUD ---
+  // --- CATEGORY CRUD (real ci_category writes) ---
   const handleSaveCategory = async (cat: Partial<CICategory>) => {
     try {
-      if (cat.id) {
-        const res = await fetch(`/api/categories/${cat.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(cat),
-        });
-        const updated = await res.json();
-        setCategories(prev => prev.map(c => c.id === updated.id ? updated : c));
-      } else {
-        const res = await fetch('/api/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(cat),
-        });
-        const created = await res.json();
-        setCategories(prev => [created, ...prev]);
+      const res = cat.id
+        ? await fetch(`/api/categories/${cat.id}`, { method: 'PUT', headers: writeHeaders(), body: JSON.stringify(cat) })
+        : await fetch('/api/categories', { method: 'POST', headers: writeHeaders(), body: JSON.stringify(cat) });
+      if (await handleWriteError(res)) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setCategories(data);
+      else {
+        const resCats = await fetch('/api/categories').then(r => r.json());
+        setCategories(resCats);
       }
     } catch (err) {
       alert('Failed saving category');
@@ -271,27 +264,63 @@ export function App() {
   };
 
   const handleDeleteCategory = async (id: number) => {
-    if (!confirm('Delete this category?')) return;
+    if (!confirm('Permanently delete this category from the live ci_category table?')) return;
     try {
-      await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/categories/${id}`, { method: 'DELETE', headers: writeHeaders() });
+      if (await handleWriteError(res)) return;
       setCategories(prev => prev.filter(c => c.id !== id));
     } catch (err) {
       alert('Failed deleting category');
     }
   };
 
-  // --- ADVERTISEMENT CRUD ---
-  const handleSaveAd = async (ad: Partial<CIAdvertisement>) => {
+  // --- ADVERTISEMENT CRUD (real ci_advertisement writes + image upload) ---
+  const handleSaveAd = async (ad: Partial<CIAdvertisement> & { image_file?: { filename: string; data: string } }) => {
     try {
+      let payload: Partial<CIAdvertisement> = { ...ad };
+      // Upload the image file first (stored on the live server via the bridge)
+      if (ad.image_file) {
+        const up = await fetch('/api/upload-image', {
+          method: 'POST',
+          headers: writeHeaders(),
+          body: JSON.stringify({
+            folder: 'advertisement',
+            filename: ad.image_file.filename,
+            data: ad.image_file.data,
+            alt: ad.alt_tag,
+          }),
+        });
+        if (await handleWriteError(up)) return;
+        const { path } = await up.json();
+        payload = { ...payload, advertisement_image: path };
+      }
+      delete (payload as any).image_file;
+
       const res = await fetch('/api/advertisements', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ad),
+        headers: writeHeaders(),
+        body: JSON.stringify(payload),
       });
-      const created = await res.json();
-      setAds(prev => [created, ...prev]);
+      if (await handleWriteError(res)) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setAds(data);
+      else {
+        const resAds = await fetch('/api/advertisements').then(r => r.json());
+        setAds(resAds);
+      }
     } catch (err) {
       alert('Failed saving ad');
+    }
+  };
+
+  const handleDeleteAd = async (id: number) => {
+    if (!confirm('Permanently delete this advertisement from the live ci_advertisement table?')) return;
+    try {
+      const res = await fetch(`/api/advertisements/${id}`, { method: 'DELETE', headers: writeHeaders() });
+      if (await handleWriteError(res)) return;
+      setAds(prev => prev.filter(a => a.id !== id));
+    } catch (err) {
+      alert('Failed deleting ad');
     }
   };
 
@@ -432,6 +461,7 @@ export function App() {
               <AdminAds
                 ads={ads}
                 onSaveAd={handleSaveAd}
+                onDeleteAd={handleDeleteAd}
               />
             )}
 

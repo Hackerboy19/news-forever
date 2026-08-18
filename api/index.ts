@@ -4,6 +4,16 @@
  * (strictly read-only); admin-panel collections return static demo data.
  */
 import {
+  getImageLibrary,
+  getSubscribers,
+  getAdminUsers,
+  getActivityLogs,
+  createAd,
+  updateAd,
+  deleteAd,
+  createCategory,
+  updateCategory,
+  deleteCategory,
   getPublishedBlogs,
   getBlogByUrlSlug,
   getAllCategories,
@@ -20,6 +30,11 @@ import { resolveCategoryIds } from '../src/lib/taxonomy.js';
 import { translateArticle, translateTitles } from '../src/lib/translate.js';
 import {
   bridgeConfigured,
+  bridgeUploadImage,
+  bridgeSaveAd,
+  bridgeDeleteAd,
+  bridgeSaveCategory,
+  bridgeDeleteCategory,
   bridgeChangePassword,
   bridgeVerifyAdmin,
   bridgeListBlogs,
@@ -218,6 +233,122 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ error: 'Current password incorrect or database unreachable' });
     }
 
+    // ---- Advertisement CRUD (ci_advertisement) ----
+    if (route === 'advertisements' && method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const { id, ...payload } = await readBody(req);
+      try {
+        const ads = id ? await updateAd(Number(id), payload) : await createAd(payload);
+        return res.json(ads);
+      } catch {
+        if (bridgeConfigured()) {
+          try {
+            const rows = await bridgeSaveAd(reqCreds(req), payload, id ? Number(id) : 0);
+            return res.json(rows.map((r: any) => ({
+              id: r.id, title: r.advertisement_title, advertisement_image: r.advertisement_image,
+              alt_tag: r.alt_tag, url: r.advertisement_url, position: r.position,
+              priority: r.priority, status: r.status, click_count: 0, impressions: 0, created_at: r.created_at,
+            })));
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge ad save failed: ${e?.message}` });
+          }
+        }
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
+    }
+
+    if (segments[0] === 'advertisements' && segments.length === 2 && /^\d+$/.test(segments[1]) && method === 'DELETE') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const id = parseInt(segments[1], 10);
+      try {
+        const ok = await deleteAd(id);
+        return ok ? res.json({ success: true }) : res.status(404).json({ error: 'Ad not found' });
+      } catch {
+        if (bridgeConfigured()) {
+          try {
+            const ok = await bridgeDeleteAd(reqCreds(req), id);
+            return ok ? res.json({ success: true }) : res.status(404).json({ error: 'Ad not found' });
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge ad delete failed: ${e?.message}` });
+          }
+        }
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
+    }
+
+    // ---- Category CRUD (ci_category) ----
+    if (route === 'categories' && method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const payload = await readBody(req);
+      try {
+        return res.json(await createCategory(payload));
+      } catch {
+        if (bridgeConfigured()) {
+          try {
+            await bridgeSaveCategory(reqCreds(req), payload, 0);
+            return res.json({ success: true });
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge category save failed: ${e?.message}` });
+          }
+        }
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
+    }
+
+    if (segments[0] === 'categories' && segments.length === 2 && /^\d+$/.test(segments[1]) && (method === 'PUT' || method === 'DELETE')) {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const id = parseInt(segments[1], 10);
+      const payload = method === 'PUT' ? await readBody(req) : null;
+      try {
+        if (method === 'DELETE') {
+          const ok = await deleteCategory(id);
+          return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Category not found' });
+        }
+        return res.json(await updateCategory(id, payload));
+      } catch {
+        if (bridgeConfigured()) {
+          try {
+            if (method === 'DELETE') {
+              const ok = await bridgeDeleteCategory(reqCreds(req), id);
+              return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Category not found' });
+            }
+            await bridgeSaveCategory(reqCreds(req), payload, id);
+            return res.json({ success: true });
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge category write failed: ${e?.message}` });
+          }
+        }
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
+    }
+
+    // ---- Image upload (stored on the live server via the bridge) ----
+    if (route === 'upload-image' && method === 'POST') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const { folder, filename, data, alt } = await readBody(req);
+      if (!data || !filename) return res.status(400).json({ error: 'filename and data required' });
+      if (!bridgeConfigured()) {
+        return res.status(503).json({ error: 'Image upload needs the cPanel bridge (nf-bridge.php). Until then, paste an existing assets/img path or full URL.' });
+      }
+      try {
+        const path = await bridgeUploadImage(
+          reqCreds(req),
+          folder === 'advertisement' ? 'advertisement' : 'blog',
+          String(filename),
+          String(data),
+          alt ? String(alt) : undefined
+        );
+        return res.json({ success: true, path });
+      } catch (e: any) {
+        return res.status(502).json({ error: e?.message || 'Upload failed' });
+      }
+    }
+
     // ---- Hindi translation (server-side, cached) ----
     if (route === 'translate') {
       const slug = (url.searchParams.get('slug') || '').trim();
@@ -322,9 +453,9 @@ export default async function handler(req: any, res: any) {
 
     // Admin-only collections — no demo data; real values come from the live
     // DB once admin write support exists (out of scope, read-only mapping)
-    if (route === 'activity-logs') return res.json([]);
-    if (route === 'users') return res.json([]);
-    if (route === 'image-library') return res.json([]);
+    if (route === 'activity-logs') return res.json(await getActivityLogs());
+    if (route === 'users') return res.json(await getAdminUsers());
+    if (route === 'image-library') return res.json(await getImageLibrary());
     if (route === 'settings') return res.json(siteSetting);
 
     if (route === 'subscribers') {
@@ -336,7 +467,7 @@ export default async function handler(req: any, res: any) {
           subscriber: { id: 0, email, status: 'subscribed', subscribed_at: new Date().toISOString() },
         });
       }
-      return res.json([]);
+      return res.json(await getSubscribers());
     }
 
     return res.status(404).json({ error: `Unknown API route: ${route}` });

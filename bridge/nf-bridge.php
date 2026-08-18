@@ -220,6 +220,108 @@ switch ($action) {
         break;
     }
 
+    case 'upload-image': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $folder = (string)($body['folder'] ?? 'blog');
+        if (!in_array($folder, ['blog', 'advertisement'], true)) fail(400, 'Invalid folder');
+        $name = preg_replace('/[^a-zA-Z0-9._-]/', '', (string)($body['filename'] ?? ''));
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) fail(400, 'Only jpg/png/gif/webp allowed');
+        $data = base64_decode((string)($body['data'] ?? ''), true);
+        if ($data === false || strlen($data) < 100) fail(400, 'Invalid image data');
+        if (strlen($data) > 8 * 1024 * 1024) fail(400, 'Image too large (max 8MB)');
+        // Content sniff: must decode as a real image
+        if (@imagecreatefromstring($data) === false) fail(400, 'File is not a valid image');
+        $dir = __DIR__ . '/assets/img/' . $folder;
+        if (!is_dir($dir) && !mkdir($dir, 0755, true)) fail(500, 'Cannot create target directory');
+        $final = time() . '_' . ($name !== '' ? $name : ('upload.' . $ext));
+        if (file_put_contents($dir . '/' . $final, $data) === false) fail(500, 'Write failed');
+        $path = 'assets/img/' . $folder . '/' . $final;
+        // Register blog uploads in the image library like the legacy CMS
+        if ($folder === 'blog') {
+            $stmt = $conn->prepare('INSERT INTO ci_imagelibrary (user_id, url, image, created_at) VALUES (?, ?, ?, ?)');
+            $alt = (string)($body['alt'] ?? $name);
+            $ts = date('Y-m-d') . ' : ' . date('H:i:s');
+            $stmt->bind_param('isss', $admin['admin_id'], $alt, $path, $ts);
+            $stmt->execute();
+        }
+        echo json_encode(['success' => true, 'path' => $path]);
+        break;
+    }
+
+    case 'ad-save': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $pl = $body['payload'] ?? [];
+        $cols = [
+            'advertisement_title' => (string)($pl['title'] ?? ''),
+            'advertisement_url' => (string)($pl['url'] ?? ''),
+            'advertisement_image' => legacy_asset_path((string)($pl['advertisement_image'] ?? '')),
+            'alt_tag' => (string)($pl['alt_tag'] ?? ''),
+            'position' => (string)($pl['position'] ?? 'right'),
+            'priority' => (int)($pl['priority'] ?? 2),
+            'status' => (int)($pl['status'] ?? 1),
+        ];
+        $id = (int)($body['id'] ?? 0);
+        if ($id > 0) {
+            $stmt = $conn->prepare('UPDATE ci_advertisement SET advertisement_title=?, advertisement_url=?, advertisement_image=?, alt_tag=?, position=?, priority=?, status=? WHERE id=?');
+            $stmt->bind_param('sssssiii', $cols['advertisement_title'], $cols['advertisement_url'], $cols['advertisement_image'], $cols['alt_tag'], $cols['position'], $cols['priority'], $cols['status'], $id);
+        } else {
+            $ts = date('Y-m-d') . ' : ' . date('H:i:s');
+            $stmt = $conn->prepare('INSERT INTO ci_advertisement (advertisement_title, advertisement_url, advertisement_image, alt_tag, position, priority, status, created_at) VALUES (?,?,?,?,?,?,?,?)');
+            $stmt->bind_param('sssssiis', $cols['advertisement_title'], $cols['advertisement_url'], $cols['advertisement_image'], $cols['alt_tag'], $cols['position'], $cols['priority'], $cols['status'], $ts);
+        }
+        if (!$stmt->execute()) fail(500, 'Ad save failed: ' . $stmt->error);
+        $res = $conn->query('SELECT * FROM ci_advertisement WHERE status = 1 ORDER BY priority ASC, id DESC');
+        echo json_encode(['rows' => $res->fetch_all(MYSQLI_ASSOC)]);
+        break;
+    }
+
+    case 'ad-delete': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $id = (int)($body['id'] ?? 0);
+        $stmt = $conn->prepare('DELETE FROM ci_advertisement WHERE id = ?');
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        echo json_encode(['success' => $stmt->affected_rows > 0]);
+        break;
+    }
+
+    case 'cat-save': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $pl = $body['payload'] ?? [];
+        $id = (int)($body['id'] ?? 0);
+        $name = (string)($pl['category_name'] ?? '');
+        $slug = trim((string)($pl['slug'] ?? ''));
+        $parent = (int)($pl['parent_id'] ?? 0);
+        $status = (int)($pl['status'] ?? 1);
+        if ($id > 0) {
+            $stmt = $conn->prepare('UPDATE ci_category SET cat_name=?, url=?, parent_id=?, status=? WHERE id=?');
+            $stmt->bind_param('ssiii', $name, $slug, $parent, $status, $id);
+        } else {
+            $ts = date('Y-m-d') . ' : ' . date('H:i:s');
+            $stmt = $conn->prepare("INSERT INTO ci_category (parent_id, url, cat_name, meta_title, meta_keyword, meta_description, h2_tag, h3_tag, h4_tag, h5_tag, h6_tag, og_title, og_url, og_description, og_image, status, created_at) VALUES (?,?,?,?, '', '', '', '', '', '', '', '', '', '', '', ?, ?)");
+            $stmt->bind_param('isssis', $parent, $slug, $name, $name, $status, $ts);
+        }
+        if (!$stmt->execute()) fail(500, 'Category save failed: ' . $stmt->error);
+        echo json_encode(['success' => true]);
+        break;
+    }
+
+    case 'cat-delete': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $id = (int)($body['id'] ?? 0);
+        $stmt = $conn->prepare('DELETE FROM ci_category WHERE id = ?');
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        echo json_encode(['success' => $stmt->affected_rows > 0]);
+        break;
+    }
+
     case 'change-password': {
         $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
         if (!$admin) fail(401, 'Current password incorrect');
