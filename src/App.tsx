@@ -40,6 +40,7 @@ import AdminImageLibrary from './components/admin/AdminImageLibrary';
 import AdminSettings from './components/admin/AdminSettings';
 import AdminSubscribers from './components/admin/AdminSubscribers';
 import AdminUsers from './components/admin/AdminUsers';
+import AdminChangePassword from './components/admin/AdminChangePassword';
 
 export function App() {
   // Navigation & View Mode
@@ -460,7 +461,11 @@ export function App() {
               <AdminUsers users={users} />
             )}
 
-            {(adminTab === 'Tag' || adminTab === 'Profile' || adminTab === 'Sub Admin') && (
+            {adminTab === 'Profile' && (
+              <AdminChangePassword adminAuth={adminAuth} onPasswordChanged={setAdminAuth} />
+            )}
+
+            {(adminTab === 'Tag' || adminTab === 'Sub Admin') && (
               <div className="bg-white border border-[#E7E5E4] p-8 text-center space-y-3 shadow-xs">
                 <h2 className="text-xl font-bold font-serif italic text-stone-900">{adminTab} Module</h2>
                 <p className="text-xs text-stone-600 font-mono">

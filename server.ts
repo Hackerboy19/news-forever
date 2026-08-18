@@ -7,6 +7,7 @@ import { translateArticle, translateTitles } from "./src/lib/translate";
 import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
 import {
+  changeAdminPassword,
   getPublishedBlogs,
   getBlogByUrlSlug,
   getAllCategories,
@@ -64,6 +65,19 @@ async function startServer() {
     const admin = await verifyAdmin(String(username || ""), String(password || ""));
     if (!admin) return res.status(401).json({ error: "Invalid credentials or database unreachable" });
     res.json(admin);
+  });
+
+  // POST /api/admin/change-password
+  app.post("/api/admin/change-password", async (req, res) => {
+    const username = String(req.headers["x-admin-user"] || "");
+    const password = String(req.headers["x-admin-pass"] || "");
+    const { new_password } = req.body || {};
+    if (!new_password || String(new_password).length < 6) {
+      return res.status(400).json({ error: "New password must be at least 6 characters" });
+    }
+    const ok = await changeAdminPassword(username, password, String(new_password));
+    if (!ok) return res.status(401).json({ error: "Current password incorrect" });
+    res.json({ success: true });
   });
 
   // GET /api/translate?slug= — server-side Hindi translation (cached)

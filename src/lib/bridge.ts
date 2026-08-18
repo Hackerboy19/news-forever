@@ -60,6 +60,11 @@ export async function bridgeDeleteBlog(creds: BridgeCreds, id: number): Promise<
   return Boolean(data.success);
 }
 
+export async function bridgeChangePassword(creds: BridgeCreds, newPassword: string): Promise<boolean> {
+  const data = await bridgeCall('change-password', { ...creds, new_password: newPassword });
+  return Boolean(data.success);
+}
+
 export async function bridgeBulkBlogs(
   creds: BridgeCreds,
   ids: number[],

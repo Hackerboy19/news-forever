@@ -20,6 +20,7 @@ import { resolveCategoryIds } from '../src/lib/taxonomy.js';
 import { translateArticle, translateTitles } from '../src/lib/translate.js';
 import {
   bridgeConfigured,
+  bridgeChangePassword,
   bridgeVerifyAdmin,
   bridgeListBlogs,
   bridgeCreateBlog,
@@ -190,6 +191,31 @@ export default async function handler(req: any, res: any) {
         }
         return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
       }
+    }
+
+    // ---- Admin password change (legacy plaintext scheme preserved) ----
+    if (route === 'admin/change-password' && method === 'POST') {
+      const { username, password } = reqCreds(req);
+      const { new_password } = await readBody(req);
+      if (!new_password || String(new_password).length < 6) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters' });
+      }
+      const { changeAdminPassword } = await import('../src/lib/db.js');
+      try {
+        const ok = await changeAdminPassword(username, password, String(new_password));
+        if (ok) return res.json({ success: true });
+      } catch {
+        /* fall through to bridge */
+      }
+      if (bridgeConfigured()) {
+        try {
+          const ok = await bridgeChangePassword({ username, password }, String(new_password));
+          if (ok) return res.json({ success: true });
+        } catch (e: any) {
+          return res.status(503).json({ error: e?.message || 'Bridge unavailable' });
+        }
+      }
+      return res.status(401).json({ error: 'Current password incorrect or database unreachable' });
     }
 
     // ---- Hindi translation (server-side, cached) ----

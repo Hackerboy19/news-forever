@@ -220,6 +220,18 @@ switch ($action) {
         break;
     }
 
+    case 'change-password': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Current password incorrect');
+        $new = (string)($body['new_password'] ?? '');
+        if (strlen($new) < 6) fail(400, 'New password must be at least 6 characters');
+        $stmt = $conn->prepare('UPDATE ci_admin SET password = ? WHERE admin_id = ?');
+        $stmt->bind_param('si', $new, $admin['admin_id']);
+        if (!$stmt->execute()) fail(500, 'Password update failed');
+        echo json_encode(['success' => true]);
+        break;
+    }
+
     case 'bulk': {
         $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
         if (!$admin) fail(401, 'Unauthorized');

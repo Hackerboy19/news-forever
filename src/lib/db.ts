@@ -317,6 +317,24 @@ export async function verifyAdmin(username: string, password: string): Promise<A
   }
 }
 
+/**
+ * Change the signed-in admin's password (legacy plaintext scheme kept so the
+ * old cPanel panel continues to accept the same credentials).
+ */
+export async function changeAdminPassword(
+  username: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<boolean> {
+  const admin = await verifyAdmin(username, currentPassword);
+  if (!admin || admin.admin_id === 0) return false;
+  const [result] = await dbPool.query(
+    `UPDATE ci_admin SET password = ? WHERE admin_id = ?`,
+    [newPassword, admin.admin_id]
+  );
+  return (result as any).affectedRows > 0;
+}
+
 /** Legacy CodeIgniter created_at format: 'YYYY-MM-DD : HH:MM:SS' */
 function legacyNow(): string {
   const d = new Date();
