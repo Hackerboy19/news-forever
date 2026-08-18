@@ -6,6 +6,7 @@ import InArticleAd from './InArticleAd';
 import PeopleAlsoAsk from './PeopleAlsoAsk';
 import Skeleton from './ui/Skeleton';
 import { splitHtmlAtParagraphs } from '../lib/injectAds';
+import { shuffleAds } from '../lib/adRotation';
 import { useI18n } from '../lib/i18n';
 import { 
   ArrowLeft, 
@@ -148,14 +149,17 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
       : baseArticle
     : undefined;
 
+  // In-content ads ('blog' = article-page zone in the legacy CMS) — shuffled
+  // per page load, injected after the 3rd and 6th paragraphs.
+  // Hook must run before any conditional return.
+  const inContentAds = React.useMemo(
+    () => shuffleAds(ads.filter((a) => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'))),
+    [ads]
+  );
+
   if (isLoading || (!article && blogs.length === 0)) {
     return <PublicArticleSkeleton onGoBack={onGoBack} />;
   }
-
-
-  // In-content ads ('blog' = article-page zone in the legacy CMS) — injected
-  // dynamically after the 3rd and 6th paragraphs of the description HTML
-  const inContentAds = ads.filter((a) => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
 
   // Related articles in same category
   const relatedArticles = article

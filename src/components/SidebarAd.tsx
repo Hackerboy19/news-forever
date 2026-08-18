@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIAdvertisement } from '../types';
 import { useI18n } from '../lib/i18n';
+import { shuffleAds } from '../lib/adRotation';
 
 interface SidebarAdProps {
   ads: CIAdvertisement[];
@@ -19,9 +20,10 @@ const SIDEBAR_POSITIONS = ['left', 'right', 'sidebar_sticky'];
  */
 export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = false }) => {
   const { t } = useI18n();
-  const panelAds = ads
-    .filter((a) => a.status === 1 && SIDEBAR_POSITIONS.includes(a.position))
-    .slice(0, max);
+  const panelAds = React.useMemo(
+    () => shuffleAds(ads.filter((a) => a.status === 1 && SIDEBAR_POSITIONS.includes(a.position))).slice(0, max),
+    [ads, max]
+  );
 
   if (panelAds.length === 0) return null;
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIAdvertisement } from '../types';
 import { useI18n } from '../lib/i18n';
+import { shuffleAds } from '../lib/adRotation';
 
 interface LeaderboardAdProps {
   ads: CIAdvertisement[];
@@ -17,7 +18,10 @@ const LEADERBOARD_POSITIONS = ['blog', 'top_banner', 'in_content'];
  */
 export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
   const { t } = useI18n();
-  const ad = ads.find((a) => a.status === 1 && LEADERBOARD_POSITIONS.includes(a.position));
+  const ad = React.useMemo(
+    () => shuffleAds(ads.filter((a) => a.status === 1 && LEADERBOARD_POSITIONS.includes(a.position)))[0],
+    [ads]
+  );
   if (!ad) return null;
 
   return (

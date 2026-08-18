@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { CIAdvertisement } from '../types';
 import { useI18n } from '../lib/i18n';
+import { shuffleAds } from '../lib/adRotation';
 
 interface PromotionalModalProps {
   ads: CIAdvertisement[];
@@ -21,7 +22,10 @@ export const PromotionalModal: React.FC<PromotionalModalProps> = ({ ads, delayMs
   const { t } = useI18n();
   const [visible, setVisible] = useState(false);
 
-  const ad = ads.find((a) => a.status === 1 && (a.position === 'blog' || a.position === 'top_banner'));
+  const ad = React.useMemo(
+    () => shuffleAds(ads.filter((a) => a.status === 1 && (a.position === 'blog' || a.position === 'top_banner')))[0],
+    [ads]
+  );
 
   useEffect(() => {
     if (!ad) return;

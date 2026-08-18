@@ -12,6 +12,7 @@ import SidebarAd from './SidebarAd';
 import Skeleton from './ui/Skeleton';
 import BlurImage from './ui/BlurImage';
 import { useI18n } from '../lib/i18n';
+import { shuffleAds } from '../lib/adRotation';
 
 export const PublicHomeSkeleton: React.FC = () => {
   return (
@@ -113,9 +114,6 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   onCategorySelect,
 }) => {
   const { t, tt, registerTitles } = useI18n();
-  if (isLoading) {
-    return <PublicHomeSkeleton />;
-  }
 
   // Filter active published blogs
   let activeBlogs = blogs.filter(b => b.status === 1);
@@ -158,7 +156,14 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   }, [categoryFilteredBlogs.length, activeCategory]);
 
   // In-feed native ad from ci_advertisement ('blog' = article-page zone in legacy CMS)
-  const nativeAd = ads.find(a => a.status === 1 && (a.position === 'in_content' || a.position === 'blog'));
+  const nativeAd = React.useMemo(
+    () => shuffleAds(ads.filter(a => a.status === 1 && (a.position === 'in_content' || a.position === 'blog')))[0],
+    [ads]
+  );
+
+  if (isLoading) {
+    return <PublicHomeSkeleton />;
+  }
 
   return (
     <div className="space-y-12">
