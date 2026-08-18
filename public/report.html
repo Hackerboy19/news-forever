@@ -72,8 +72,8 @@
   .bar { display: grid; grid-template-columns: 190px 1fr 92px; gap: 12px; align-items: center; font-size: 13.5px; }
   @media (max-width: 560px) { .bar { grid-template-columns: 1fr 70px; } .bar .track { grid-column: 1 / -1; order: 3; } }
   .bar .name b { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--accent); }
-  .bar .track { height: 9px; background: var(--bar-track); border-radius: 5px; overflow: hidden; }
-  .bar .fill { height: 100%; border-radius: 5px; background: var(--good); }
+  .bar .track { display: block; height: 9px; background: var(--bar-track); border-radius: 5px; overflow: hidden; }
+  .bar .fill { display: block; height: 100%; border-radius: 5px; background: var(--good); }
   .bar .fill.mid { background: var(--wait); }
   .bar .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
   .bar .val b { color: var(--ink); }
@@ -124,8 +124,8 @@
       <circle cx="60" cy="60" r="50" fill="none" stroke="var(--bar-track)" stroke-width="10"/>
       <circle cx="60" cy="60" r="50" fill="none" stroke="var(--good)" stroke-width="10"
         stroke-linecap="round" stroke-dasharray="270 314" transform="rotate(-90 60 60)"/>
-      <text x="60" y="64" text-anchor="middle" class="num">86</text>
-      <text x="60" y="82" text-anchor="middle" class="of">SEO HEALTH / 100</text>
+      <text x="60" y="58" text-anchor="middle" class="num">86</text>
+      <text x="60" y="76" text-anchor="middle" class="of">OUT OF 100</text>
     </svg>
     <div>
       <h2>Strong on-page foundation, four fixable gaps</h2>
