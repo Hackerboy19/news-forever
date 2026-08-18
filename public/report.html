@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>News Forever Relaunch Report</title>
+</head>
+<body style="margin:0">
+<style>
+  :root {
+    --ground: #FAFAFA;
+    --paper: #FFFFFF;
+    --ink: #2E3944;
+    --ink-soft: #6B7683;
+    --rule: #E4E2DE;
+    --accent: #991B1B;
+    --accent-soft: #F6E9E9;
+    --good: #1E7F4F;
+    --good-soft: #E7F3EC;
+    --wait: #9A6B15;
+    --wait-soft: #F7EEDC;
+    --mono-bg: #F1EFEC;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #15181C;
+      --paper: #1D2126;
+      --ink: #E8E6E1;
+      --ink-soft: #9AA3AD;
+      --rule: #33383F;
+      --accent: #E06A5F;
+      --accent-soft: #3A2422;
+      --good: #5FBF8F;
+      --good-soft: #1E3328;
+      --wait: #D9A84E;
+      --wait-soft: #3A3021;
+      --mono-bg: #262B31;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #15181C;
+    --paper: #1D2126;
+    --ink: #E8E6E1;
+    --ink-soft: #9AA3AD;
+    --rule: #33383F;
+    --accent: #E06A5F;
+    --accent-soft: #3A2422;
+    --good: #5FBF8F;
+    --good-soft: #1E3328;
+    --wait: #D9A84E;
+    --wait-soft: #3A3021;
+    --mono-bg: #262B31;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .sheet { max-width: 880px; margin: 0 auto; padding: 40px 22px 72px; }
+
+  /* Masthead — newspaper nameplate */
+  .masthead { text-align: center; border-bottom: 3px double var(--ink); padding-bottom: 18px; }
+  .masthead .kicker {
+    font-size: 11px; letter-spacing: .28em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 600;
+  }
+  .masthead h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(40px, 7vw, 64px); line-height: 1.05; margin: 8px 0 6px;
+    letter-spacing: -.01em; text-wrap: balance;
+  }
+  .masthead h1 em { font-style: italic; color: var(--accent); }
+  .dateline {
+    display: flex; justify-content: center; gap: 18px; flex-wrap: wrap;
+    font-size: 12px; color: var(--ink-soft); letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  /* Live URL slab */
+  .urlcard {
+    margin: 30px 0; background: var(--paper); border: 1px solid var(--rule);
+    border-top: 4px solid var(--accent); padding: 22px 24px;
+    display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: baseline; justify-content: space-between;
+  }
+  .urlcard .label { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-soft); font-weight: 700; }
+  .urlcard a {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: clamp(16px, 3vw, 22px); color: var(--accent); text-decoration: none; border-bottom: 1.5px solid var(--accent);
+    word-break: break-all;
+  }
+  .urlcard a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .urlcard .note { font-size: 13px; color: var(--ink-soft); flex-basis: 100%; margin: 0; }
+
+  h2 {
+    font-family: Georgia, serif; font-size: 24px; margin: 44px 0 6px;
+    display: flex; align-items: center; gap: 12px; text-wrap: balance;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+  .sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 18px; max-width: 62ch; }
+
+  /* Numbers row */
+  .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .figure { background: var(--paper); padding: 16px 14px; }
+  .figure b { display: block; font-family: Georgia, serif; font-size: 30px; font-variant-numeric: tabular-nums; }
+  .figure span { font-size: 12px; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
+
+  /* Feature ledger */
+  .ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .ledger { grid-template-columns: 1fr; } }
+  .entry { background: var(--paper); border: 1px solid var(--rule); padding: 16px 18px; }
+  .entry h3 { margin: 0 0 4px; font-size: 15px; font-family: Georgia, serif; }
+  .entry p { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+  .entry .tag {
+    display: inline-block; margin-bottom: 8px; padding: 2px 9px; border-radius: 3px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    background: var(--accent-soft); color: var(--accent);
+  }
+
+  /* Status table */
+  table { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--rule); font-size: 14px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-soft); }
+  tr:last-child td { border-bottom: 0; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+  .chip.live { background: var(--good-soft); color: var(--good); }
+  .chip.wait { background: var(--wait-soft); color: var(--wait); }
+  td small { color: var(--ink-soft); display: block; margin-top: 2px; }
+
+  /* Review checklist */
+  ol.review { background: var(--paper); border: 1px solid var(--rule); margin: 0; padding: 20px 24px 20px 44px; }
+  ol.review li { padding: 5px 0; max-width: 68ch; }
+  ol.review b { font-family: Georgia, serif; }
+  .hi { font-weight: 600; }
+
+  footer { margin-top: 52px; padding-top: 14px; border-top: 3px double var(--ink); font-size: 12px; color: var(--ink-soft); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+</style>
+
+<div class="sheet">
+  <header class="masthead">
+    <div class="kicker">Relaunch Report · newsforever.in</div>
+    <h1>News<em>Forever</em></h1>
+    <div class="dateline">
+      <span>National &amp; International News Portal</span>
+      <span>·</span>
+      <span>Modern rebuild — August 2026</span>
+    </div>
+  </header>
+
+  <div class="urlcard">
+    <div>
+      <div class="label">Testing URL — open on any device</div>
+      <a href="https://news-forever.vercel.app" target="_blank" rel="noopener">news-forever.vercel.app</a>
+    </div>
+    <p class="note">Public staging build. No login needed. Same database content as the live newsforever.in portal — every article, category, image and advertisement is real.</p>
+  </div>
+
+  <h2>The portal by the numbers</h2>
+  <div class="figures">
+    <div class="figure"><b>660</b><span>Real articles</span></div>
+    <div class="figure"><b>78</b><span>Categories</span></div>
+    <div class="figure"><b>11</b><span>Live ad campaigns</span></div>
+    <div class="figure"><b>248</b><span>Tags</span></div>
+    <div class="figure"><b>2</b><span>Languages (EN · HI)</span></div>
+  </div>
+
+  <h2>What the rebuild delivers</h2>
+  <p class="sub">The old CodeIgniter site keeps running untouched. This is a new, modern frontend on the same database — zero data loss, all legacy URLs and SEO preserved.</p>
+  <div class="ledger">
+    <div class="entry"><span class="tag">Reader experience</span>
+      <h3>Premium editorial design</h3>
+      <p>Magazine-style homepage: breaking-news ticker, featured cover story, category showcases, clean typography — reads like a national news portal, not a niche blog.</p>
+    </div>
+    <div class="entry"><span class="tag">Bilingual</span>
+      <h3>Full Hindi edition <span class="hi">(EN | HI)</span></h3>
+      <p>One tap converts the entire interface <em>and</em> article text to Hindi — headlines, body, menus, dates. Server-side translation, cached, SEO-safe.</p>
+    </div>
+    <div class="entry"><span class="tag">Monetisation</span>
+      <h3>Advertising system</h3>
+      <p>Leaderboard strip, sidebar panels, in-article slots and a timed promotional pop-up — all pulled live from the existing advertisement database, each labelled "Sponsored".</p>
+    </div>
+    <div class="entry"><span class="tag">Engagement</span>
+      <h3>Quick Answers on every article</h3>
+      <p>"People Also Ask" section plus a box where readers type their own question and get an answer drawn from the article itself. Fee-transparency note on nomination stories.</p>
+    </div>
+    <div class="entry"><span class="tag">Operations</span>
+      <h3>New admin panel</h3>
+      <p>Publish, edit and delete articles, categories and ad campaigns — including direct ad image upload — from any browser, phone included. Same accounts as the old panel; password change built in.</p>
+    </div>
+    <div class="entry"><span class="tag">Search &amp; SEO</span>
+      <h3>Rankings protected</h3>
+      <p>Every legacy URL, meta tag, heading and image alt text is preserved 1:1, with added structured data (JSON-LD) and hreflang for the Hindi edition.</p>
+    </div>
+  </div>
+
+  <h2>Status board</h2>
+  <table>
+    <thead><tr><th>Item</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td>Public site on testing URL — full content, EN/HI, ads, search<small>Desktop + mobile verified</small></td><td><span class="chip live">Live</span></td></tr>
+      <tr><td>Admin panel — article &amp; ad management<small>Fully working against the database in the office setup</small></td><td><span class="chip live">Live</span></td></tr>
+      <tr><td>Admin publishing directly from the testing URL<small>Waiting on one small connector file being placed on the current hosting</small></td><td><span class="chip wait">One step left</span></td></tr>
+      <tr><td>Automatic content sync from the live CMS<small>Enabled by the same connector file</small></td><td><span class="chip wait">One step left</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Five-minute review path</h2>
+  <ol class="review">
+    <li>Open <b>news-forever.vercel.app</b> — note the ticker, cover story and category rows.</li>
+    <li>Tap <b>HI</b> (top-right) — watch the whole portal switch to Hindi, then open any article.</li>
+    <li>Scroll an article — in-article ads, <b>Quick Answers</b>, and type a question in the ask box.</li>
+    <li>Use the <b>date filter</b> and <b>search</b> in the top bar.</li>
+    <li>Open the same URL on a phone — the layout, menu and ads adapt fully.</li>
+  </ol>
+
+  <footer>
+    <span>Prepared by the News Forever web team</span>
+    <span>Old site remains live and untouched at newsforever.in</span>
+  </footer>
+</div>
+
+</body>
+</html>
