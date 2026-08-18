@@ -91,7 +91,7 @@ interface RawCategoryRow {
 }
 
 /** Map a raw ci_blog row to the frontend CIBlog shape. */
-function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
+export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
   const summarySource = row.meta_description?.trim() || stripHtml(row.description);
   const summary = summarySource.length > 220 ? summarySource.slice(0, 217).trimEnd() + '…' : summarySource;
   const author = [row.author_firstname, row.author_lastname].filter(Boolean).join(' ').trim();

@@ -18,6 +18,15 @@ import {
 } from '../src/lib/db.js';
 import { resolveCategoryIds } from '../src/lib/taxonomy.js';
 import { translateArticle, translateTitles } from '../src/lib/translate.js';
+import {
+  bridgeConfigured,
+  bridgeVerifyAdmin,
+  bridgeListBlogs,
+  bridgeCreateBlog,
+  bridgeUpdateBlog,
+  bridgeDeleteBlog,
+  bridgeBulkBlogs,
+} from '../src/lib/bridge.js';
 import { answerQuestion } from '../src/lib/qa.js';
 import { CIBlog, CICategory, CIAdvertisement, CITag } from '../src/types.js';
 import { siteSetting } from '../src/data/siteConfig.js';
@@ -56,11 +65,21 @@ async function readBody(req: any): Promise<any> {
   return raw ? JSON.parse(raw) : {};
 }
 
-/** Authenticate a write request against ci_admin via headers. */
+/** Credentials from request headers (verified per request). */
+function reqCreds(req: any): { username: string; password: string } {
+  return {
+    username: String(req.headers['x-admin-user'] || ''),
+    password: String(req.headers['x-admin-pass'] || ''),
+  };
+}
+
+/** Authenticate against ci_admin: direct MySQL first, then the PHP bridge. */
 async function requireAdmin(req: any) {
-  const user = req.headers['x-admin-user'];
-  const pass = req.headers['x-admin-pass'];
-  return verifyAdmin(String(user || ''), String(pass || ''));
+  const { username, password } = reqCreds(req);
+  const direct = await verifyAdmin(username, password);
+  if (direct) return direct;
+  if (bridgeConfigured()) return bridgeVerifyAdmin({ username, password });
+  return null;
 }
 
 export default async function handler(req: any, res: any) {
@@ -92,7 +111,10 @@ export default async function handler(req: any, res: any) {
 
     if (route === 'admin/login' && method === 'POST') {
       const { username, password } = await readBody(req);
-      const admin = await verifyAdmin(String(username || ''), String(password || ''));
+      const u = String(username || '');
+      const p = String(password || '');
+      let admin = await verifyAdmin(u, p);
+      if (!admin && bridgeConfigured()) admin = await bridgeVerifyAdmin({ username: u, password: p });
       if (!admin) return res.status(401).json({ error: 'Invalid credentials or database unreachable' });
       return res.json(admin);
     }
@@ -103,10 +125,18 @@ export default async function handler(req: any, res: any) {
     if (route === 'blogs' && method === 'POST') {
       const admin = await requireAdmin(req);
       if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const payload = await readBody(req);
       try {
-        const created = await createBlog(await readBody(req), admin.admin_id);
+        const created = await createBlog(payload, admin.admin_id);
         return res.status(201).json(created);
       } catch {
+        if (bridgeConfigured()) {
+          try {
+            return res.status(201).json(await bridgeCreateBlog(reqCreds(req), payload));
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge write failed: ${e?.message}` });
+          }
+        }
         return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
       }
     }
@@ -122,6 +152,14 @@ export default async function handler(req: any, res: any) {
         const affected = await bulkBlogAction(ids.map(Number), action);
         return res.json({ success: true, affected, ids, action });
       } catch {
+        if (bridgeConfigured()) {
+          try {
+            const affected = await bridgeBulkBlogs(reqCreds(req), ids.map(Number), action);
+            return res.json({ success: true, affected, ids, action });
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge write failed: ${e?.message}` });
+          }
+        }
         return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
       }
     }
@@ -130,14 +168,26 @@ export default async function handler(req: any, res: any) {
       const admin = await requireAdmin(req);
       if (!admin) return res.status(401).json({ error: 'Unauthorized' });
       const id = parseInt(segments[1], 10);
+      const payload = method === 'PUT' ? await readBody(req) : null;
       try {
         if (method === 'DELETE') {
           const ok = await deleteBlog(id);
           return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Blog not found' });
         }
-        const updated = await updateBlog(id, await readBody(req));
+        const updated = await updateBlog(id, payload);
         return updated ? res.json(updated) : res.status(404).json({ error: 'Blog not found' });
       } catch {
+        if (bridgeConfigured()) {
+          try {
+            if (method === 'DELETE') {
+              const ok = await bridgeDeleteBlog(reqCreds(req), id);
+              return ok ? res.json({ success: true, id }) : res.status(404).json({ error: 'Blog not found' });
+            }
+            return res.json(await bridgeUpdateBlog(reqCreds(req), id, payload));
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge write failed: ${e?.message}` });
+          }
+        }
         return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
       }
     }
@@ -188,7 +238,14 @@ export default async function handler(req: any, res: any) {
         const admin = await requireAdmin(req);
         if (!admin) return res.status(401).json({ error: 'Unauthorized' });
         res.setHeader('Cache-Control', 'no-store');
-        const adminBlogs = await getAllBlogsAdmin(limit);
+        let adminBlogs = await getAllBlogsAdmin(limit);
+        if (adminBlogs.length === 0 && bridgeConfigured()) {
+          try {
+            adminBlogs = await bridgeListBlogs(reqCreds(req), limit);
+          } catch {
+            /* fall through to snapshot */
+          }
+        }
         return res.json(adminBlogs.length > 0 ? adminBlogs : snapBlogs.slice(0, limit));
       }
 
