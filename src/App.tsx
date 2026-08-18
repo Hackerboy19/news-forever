@@ -113,8 +113,14 @@ export function App() {
 
   useEffect(() => {
     fetchData();
-    // Direct admin entry via https://<host>/#admin
-    if (window.location.hash === '#admin') setViewMode('admin');
+    // Direct admin entry via https://<host>/#admin — on load AND when the
+    // hash is typed into an already-open page
+    const checkHash = () => {
+      if (window.location.hash === '#admin') setViewMode('admin');
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
   }, []);
 
   // --- ADMIN SESSION ---
