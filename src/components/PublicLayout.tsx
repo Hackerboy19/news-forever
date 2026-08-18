@@ -334,7 +334,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </button>
 
             {/* Desktop Main Navigation — full live ci_category tree */}
-            <nav className="hidden lg:flex items-center flex-wrap gap-x-4 gap-y-1 text-xs font-bold uppercase tracking-wider text-stone-800">
+            <nav className="hidden md:flex items-center flex-wrap gap-x-4 gap-y-1 text-xs font-bold uppercase tracking-wider text-stone-800">
               {navItems.map((item) => {
                 const hasSubcats = item.subs.length > 0;
                 const isActive = item.id !== undefined && activeCategory === item.id;
@@ -397,7 +397,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </nav>
 
             {/* Mobile Hamburger Menu Button */}
-            <div className="lg:hidden flex items-center justify-between w-full md:w-auto">
+            <div className="md:hidden flex items-center justify-between w-full">
               <span className="text-xs font-mono font-bold uppercase text-stone-500">{t('navMenu')}</span>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -413,7 +413,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
       {/* Full-screen slide-out mobile drawer with accordion sub-menus */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div className="md:hidden fixed inset-0 z-50">
           <div
             className="drawer-backdrop absolute inset-0 bg-stone-950/50 backdrop-blur-xs"
             onClick={() => setMobileMenuOpen(false)}
