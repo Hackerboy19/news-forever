@@ -46,7 +46,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin, onBackToSite })
     <div className="min-h-screen bg-stone-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white border border-stone-200 shadow-2xl">
         <div className="p-6 border-b border-stone-200 bg-[#FAF8F5] text-center space-y-2">
-          <Logo className="w-12 h-12 mx-auto rounded-xl" />
+          <Logo className="w-14 h-14 mx-auto" />
           <h1 className="font-serif font-black text-2xl text-stone-900">
             News<span className="text-[#991B1B]">Forever</span>
           </h1>

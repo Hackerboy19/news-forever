@@ -330,7 +330,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           <div className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Logo: NEWS FOREVER */}
             <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
-              <Logo className="w-11 h-11 shadow-md group-hover:scale-105 transition-transform duration-300 rounded-[10px]" />
+              <Logo className="w-12 h-12 group-hover:scale-105 transition-transform duration-300 drop-shadow-md" />
 
               <div className="flex flex-col leading-none">
                 <div className="flex items-center gap-1.5">
