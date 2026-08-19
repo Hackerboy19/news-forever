@@ -41,8 +41,12 @@ const mk = (id: number, title: string, image: string, position: string): CIAdver
 export const DEMO_ADS: CIAdvertisement[] = [
   mk(-1, 'TechNova 5G Smartphones', svgBanner(728, 90, '#0F4C81', '#2E86DE', 'TechNova', 'Flagship 5G phones from ₹19,999', 'SHOP NOW'), 'blog'),
   mk(-2, 'SwiftPay UPI Cashback', svgBanner(728, 90, '#134E4A', '#10B981', 'SwiftPay', 'Flat 5% cashback on every UPI payment', 'GET APP'), 'blog'),
-  mk(-3, 'AeroFly Monsoon Sale', svgBanner(600, 400, '#3B0764', '#8B5CF6', 'AeroFly', 'Flights from ₹1,499 · Monsoon Sale', 'BOOK NOW'), 'right'),
-  mk(-4, 'GlowKart Beauty Fest', svgBanner(600, 400, '#831843', '#EC4899', 'GlowKart', 'Up to 60% off top beauty brands', 'EXPLORE'), 'left'),
+  mk(-3, 'UrbanRide Cabs', svgBanner(728, 90, '#7C2D12', '#F97316', 'UrbanRide', 'City rides from ₹49 · 24x7 booking', 'RIDE NOW'), 'blog'),
+  mk(-4, 'FreshCart Groceries', svgBanner(728, 90, '#365314', '#84CC16', 'FreshCart', 'Groceries in 15 minutes · Free delivery', 'ORDER'), 'blog'),
+  mk(-5, 'AeroFly Monsoon Sale', svgBanner(600, 500, '#3B0764', '#8B5CF6', 'AeroFly', 'Flights from ₹1,499 · Monsoon Sale', 'BOOK NOW'), 'right'),
+  mk(-6, 'GlowKart Beauty Fest', svgBanner(600, 500, '#831843', '#EC4899', 'GlowKart', 'Up to 60% off top beauty brands', 'EXPLORE'), 'left'),
+  mk(-7, 'FitPro Gym Membership', svgBanner(600, 500, '#0C4A6E', '#0EA5E9', 'FitPro', 'Annual membership at 40% off', 'JOIN NOW'), 'right'),
+  mk(-8, 'BrightBank Savings', svgBanner(600, 500, '#164E63', '#06B6D4', 'BrightBank', '7% interest savings account', 'OPEN A/C'), 'left'),
+  mk(-9, 'MegaMart Festive Sale', svgBanner(728, 90, '#7F1D1D', '#EF4444', 'MegaMart', 'Biggest festive sale · up to 70% off', 'SHOP NOW'), 'popup'),
 ];
-
 export const isDemoAd = (ad: CIAdvertisement) => ad.id < 0;

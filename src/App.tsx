@@ -19,7 +19,7 @@ import PublicArticlePage from './components/PublicArticlePage';
 import SEOManager from './components/SEOManager';
 
 import { I18nProvider } from './lib/i18n';
-import { DEMO_ADS } from './data/demoAds';
+import { DEMO_ADS, isDemoAd } from './data/demoAds';
 
 // Admin Components
 import AdminLayout from './components/AdminLayout';
@@ -576,12 +576,16 @@ export function App() {
     );
   }
 
+  // Public site shows the dummy brand campaigns (demo) in place of the
+  // real ad slots; the admin panel keeps the full real+demo list.
+  const demoAds = ads.filter(isDemoAd);
+  const publicAds = demoAds.length > 0 ? demoAds : ads;
+
   // RENDER PUBLIC FRONTEND VIEW
   return (
     <I18nProvider>
     <PublicLayout
       categories={categories}
-      ads={ads}
       setting={setting}
       blogs={blogs}
       activeCategory={activeCategory}
@@ -599,6 +603,7 @@ export function App() {
       dateFilter={dateFilter}
       onDateFilterChange={setDateFilter}
       siteConfig={siteConfig}
+      ads={publicAds}
     >
       {!selectedArticleUrl && (
         <SEOManager
@@ -611,7 +616,7 @@ export function App() {
         <PublicArticlePage
           urlSlug={selectedArticleUrl}
           blogs={blogs}
-          ads={ads}
+          ads={publicAds}
           isLoading={loading}
           onGoBack={() => setSelectedArticleUrl(null)}
           onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
@@ -619,7 +624,7 @@ export function App() {
       ) : (
         <PublicHome
           blogs={blogs}
-          ads={ads}
+          ads={publicAds}
           categories={categories}
           tags={tags}
           activeCategory={activeCategory}
