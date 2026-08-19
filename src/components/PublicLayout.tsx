@@ -39,6 +39,7 @@ interface PublicLayoutProps {
 
 import { NAV_UMBRELLAS } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
+import Logo from './ui/Logo';
 import NewsTicker from './NewsTicker';
 import PromotionalModal from './PromotionalModal';
 import { useI18n } from '../lib/i18n';
@@ -226,15 +227,31 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           {/* Right Header Controls: Persistent Search Button, Subscribe, Socials */}
           <div className="flex items-center gap-2.5 sm:gap-4">
             {/* Persistent Command Palette Search Button — comfortable tap target on mobile */}
+            {/* Prominent search field (opens the command palette) */}
+            <div
+              onClick={() => setCommandPaletteOpen(true)}
+              className="hidden sm:flex items-center gap-2 w-56 md:w-72 px-3 py-1.5 bg-stone-100 hover:bg-white border border-stone-300 hover:border-[#7A0C0C] rounded-full cursor-text transition group"
+              role="search"
+              title="Search news articles (Cmd+K)"
+            >
+              <Search className="w-4 h-4 text-stone-500 group-hover:text-[#7A0C0C] shrink-0 transition" />
+              <input
+                type="search"
+                readOnly
+                placeholder={t('searchPlaceholder')}
+                onFocus={() => setCommandPaletteOpen(true)}
+                className="w-full bg-transparent text-xs text-stone-700 placeholder-stone-400 outline-none cursor-text"
+                aria-label="Search news articles"
+              />
+              <kbd className="px-1.5 py-0.5 bg-white text-stone-400 border border-stone-300 rounded font-mono text-[9px] font-bold shrink-0">⌘K</kbd>
+            </div>
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 sm:px-2.5 sm:py-1 bg-stone-100 hover:bg-stone-200/80 border border-stone-300 text-stone-700 hover:text-[#7A0C0C] font-medium transition text-xs group rounded-full sm:rounded-none"
-              title="Search news articles (Cmd+K)"
+              className="sm:hidden flex items-center gap-2 px-3 py-1.5 bg-stone-100 border border-stone-300 text-stone-700 rounded-full text-xs"
               aria-label="Search news articles"
             >
-              <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-stone-600 group-hover:text-[#7A0C0C] transition" />
-              <span className="hidden min-[420px]:inline text-xs font-sans">{t('search')}</span>
-              <kbd className="hidden sm:inline-block px-1.5 py-0.2 bg-white text-stone-500 border border-stone-300 font-mono text-[9px] font-bold shadow-2xs">⌘K</kbd>
+              <Search className="w-4 h-4 text-stone-600" />
+              <span className="hidden min-[420px]:inline">{t('search')}</span>
             </button>
 
             {/* Language toggle EN | HI */}
@@ -313,9 +330,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           <div className="py-4 flex flex-col md:flex-row md:items-center justify-between border-b border-stone-100 gap-4">
             {/* Logo: NEWS FOREVER */}
             <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#991B1B] to-stone-900 text-white flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-300 border border-stone-800">
-                <Newspaper className="w-5.5 h-5.5 text-amber-100" />
-              </div>
+              <Logo className="w-11 h-11 shadow-md group-hover:scale-105 transition-transform duration-300 rounded-[10px]" />
 
               <div className="flex flex-col leading-none">
                 <div className="flex items-center gap-1.5">
