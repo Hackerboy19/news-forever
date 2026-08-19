@@ -207,7 +207,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       {t('leadEditorial')}
                     </span>
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-serif italic font-extrabold text-stone-900 group-hover:text-[#991B1B] transition leading-[1.15] border-l-4 border-[#991B1B] pl-4">
+                  <h1 className="text-2xl sm:text-4xl font-serif font-black text-stone-900 group-hover:text-[#991B1B] transition leading-[1.15] tracking-tight border-l-4 border-[#991B1B] pl-4 decoration-[#991B1B]/60 decoration-2 underline-offset-4 group-hover:underline">
                     {tt(heroArticle.title)}
                   </h1>
                   <p className="text-sm font-serif text-stone-700 line-clamp-2 leading-relaxed">
@@ -250,7 +250,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       <span className="text-[9px] font-bold text-[#991B1B] uppercase font-mono tracking-widest">
                         {article.category_name}
                       </span>
-                      <h4 className="text-xs font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] line-clamp-2 leading-snug">
+                      <h4 className="text-xs font-serif font-bold text-stone-900 group-hover:text-[#991B1B] line-clamp-2 leading-snug tracking-tight">
                         {tt(article.title)}
                       </h4>
                       <span className="text-[9px] text-stone-500 font-mono block">
@@ -277,8 +277,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
           return (
             <section key={block.slug} className="space-y-5">
-              <div className="flex items-center justify-between border-b-2 border-stone-900 pb-2.5">
-                <h2 className="text-lg sm:text-xl font-serif font-black text-stone-900 tracking-tight">
+              <div className="flex items-center justify-between border-b border-stone-200 pb-2.5">
+                <h2 className="text-lg sm:text-xl font-serif font-black text-stone-900 tracking-tight flex items-center gap-2.5">
+                  <span className="w-1.5 h-6 bg-[#991B1B] rounded-sm inline-block" aria-hidden="true"></span>
                   {t(block.name)}
                 </h2>
                 <button
@@ -305,7 +306,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       />
                     </div>
                     <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
-                      <h3 className="text-sm font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug line-clamp-2">
+                      <h3 className="text-sm font-serif font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug tracking-tight line-clamp-2 decoration-[#991B1B]/50 decoration-2 underline-offset-4 group-hover:underline">
                         {tt(article.title)}
                       </h3>
                       <div className="flex items-center justify-between text-[9px] text-stone-500 font-mono pt-2 border-t border-stone-100">
@@ -383,7 +384,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                           {article.category_name}
                         </span>
                       </div>
-                      <h3 className="text-lg font-serif italic font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug line-clamp-2">
+                      <h3 className="text-lg font-serif font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug tracking-tight line-clamp-2 decoration-[#991B1B]/50 decoration-2 underline-offset-4 group-hover:underline">
                         {tt(article.title)}
                       </h3>
                       <p className="text-xs text-stone-600 line-clamp-3 leading-relaxed">

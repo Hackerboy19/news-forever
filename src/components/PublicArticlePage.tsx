@@ -275,7 +275,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-5xl font-serif italic font-extrabold text-stone-900 leading-[1.2] sm:leading-[1.15] tracking-tight border-l-4 border-[#991B1B] pl-3 sm:pl-5">
+            <h1 className="text-2xl sm:text-[2.9rem] font-serif font-black text-stone-900 leading-[1.18] sm:leading-[1.12] tracking-tight relative pl-3 sm:pl-5 border-l-4 border-[#991B1B] after:content-[''] after:block after:mt-3 after:h-[3px] after:w-24 after:bg-gradient-to-r after:from-[#991B1B] after:to-transparent">
               {article.title}
             </h1>
 
