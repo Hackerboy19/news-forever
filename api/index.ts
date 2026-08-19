@@ -32,6 +32,8 @@ import { resolveCategoryIds } from '../src/lib/taxonomy.js';
 import { translateArticle, translateTitles } from '../src/lib/translate.js';
 import {
   bridgeConfigured,
+  bridgeGetConfig,
+  bridgeSaveConfig,
   bridgeUploadImage,
   bridgeSaveAd,
   bridgeDeleteAd,
@@ -237,15 +239,37 @@ export default async function handler(req: any, res: any) {
 
     // ---- Site configuration (theme + navigation) ----
     if (route === 'site-config' && method === 'GET') {
-      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
-      return res.json(await getSiteConfig());
+      res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=120');
+      try {
+        const { dbPool } = await import('../src/lib/db.js');
+        await dbPool.query('SELECT 1');
+        return res.json(await getSiteConfig());
+      } catch {
+        if (bridgeConfigured()) {
+          try { return res.json(await bridgeGetConfig(reqCreds(req))); } catch { /* ignore */ }
+        }
+        return res.json({});
+      }
     }
     if (route === 'site-config' && method === 'PUT') {
       const admin = await requireAdmin(req);
       if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      const body = await readBody(req);
       try {
-        return res.json(await saveSiteConfig(await readBody(req)));
+        return res.json(await saveSiteConfig(body));
       } catch {
+        if (bridgeConfigured()) {
+          try {
+            await bridgeSaveConfig(reqCreds(req), {
+              headerColor: body.headerColor || '',
+              footerColor: body.footerColor || '',
+              navExtra: Array.isArray(body.navExtra) ? body.navExtra.map(Number).slice(0, 12) : [],
+            });
+            return res.json({ headerColor: body.headerColor || '', footerColor: body.footerColor || '', navExtra: body.navExtra || [] });
+          } catch (e: any) {
+            return res.status(503).json({ error: `Bridge config save failed: ${e?.message}` });
+          }
+        }
         return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
       }
     }

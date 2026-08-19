@@ -334,6 +334,32 @@ switch ($action) {
         break;
     }
 
+    case 'config-get': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $res = $conn->query("SELECT page_description FROM ci_setting WHERE page_key = 'nf_site_config' LIMIT 1");
+        $row = $res ? $res->fetch_assoc() : null;
+        echo json_encode(['config' => $row ? $row['page_description'] : '{}']);
+        break;
+    }
+
+    case 'config-save': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $json = (string)($body['config'] ?? '{}');
+        $chk = $conn->query("SELECT id FROM ci_setting WHERE page_key = 'nf_site_config' LIMIT 1");
+        if ($chk && $chk->num_rows > 0) {
+            $stmt = $conn->prepare("UPDATE ci_setting SET page_description = ? WHERE page_key = 'nf_site_config'");
+            $stmt->bind_param('s', $json);
+        } else {
+            $stmt = $conn->prepare("INSERT INTO ci_setting (page_key, page_description, email, phone, address, map, status) VALUES ('nf_site_config', ?, '', '', '', '', 1)");
+            $stmt->bind_param('s', $json);
+        }
+        if (!$stmt->execute()) fail(500, 'Config save failed: ' . $stmt->error);
+        echo json_encode(['success' => true]);
+        break;
+    }
+
     case 'change-password': {
         $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
         if (!$admin) fail(401, 'Current password incorrect');

@@ -67,6 +67,16 @@ export async function bridgeDeleteBlog(creds: BridgeCreds, id: number): Promise<
   return Boolean(data.success);
 }
 
+export async function bridgeGetConfig(creds: BridgeCreds): Promise<any> {
+  const data = await bridgeCall('config-get', creds);
+  try { return JSON.parse(data.config || '{}'); } catch { return {}; }
+}
+
+export async function bridgeSaveConfig(creds: BridgeCreds, config: any): Promise<boolean> {
+  const data = await bridgeCall('config-save', { ...creds, config: JSON.stringify(config) });
+  return Boolean(data.success);
+}
+
 export async function bridgeChangePassword(creds: BridgeCreds, newPassword: string): Promise<boolean> {
   const data = await bridgeCall('change-password', { ...creds, new_password: newPassword });
   return Boolean(data.success);
