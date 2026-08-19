@@ -19,9 +19,18 @@
 // Set by the generator — must match the BRIDGE_KEY env var on Vercel.
 const BRIDGE_KEY = '__BRIDGE_KEY__';
 
-// Database credentials are read from the CodeIgniter config that already
-// lives on this server. Adjust the path only if this file is not in the
-// same directory as application/.
+// --- SEPARATE TEST DATABASE (Option C) ---
+// Fill these in to point the bridge at a SEPARATE test database instead of
+// the live site DB. The production database is then never touched.
+// Create the DB in cPanel > MySQL Databases, import the dump into it, and
+// enter its name / user / password below. Leave DB_TEST_NAME empty to fall
+// back to the live CodeIgniter config.
+const DB_TEST_HOST = 'localhost';
+const DB_TEST_NAME = '';   // e.g. 'jaipurwe_fsianews_test'
+const DB_TEST_USER = '';   // e.g. 'jaipurwe_testuser'
+const DB_TEST_PASS = '';
+
+// Live CodeIgniter config — only used when DB_TEST_NAME above is empty.
 $ciConfig = __DIR__ . '/application/config/database.php';
 // ======================
 
@@ -39,17 +48,20 @@ if (!hash_equals(BRIDGE_KEY, $key)) {
     fail(401, 'Invalid bridge key');
 }
 
-// --- DB connection via the site's own CI config ---
-if (!file_exists($ciConfig)) {
-    fail(500, 'CI database config not found — adjust $ciConfig path in nf-bridge.php');
-}
-if (!defined('BASEPATH')) define('BASEPATH', '1'); // CI config guard
-require $ciConfig;
-$cfg = $db['default'] ?? null;
-if (!$cfg) fail(500, 'CI config parsed but default group missing');
-
+// --- DB connection: separate test DB if configured, else live CI config ---
 mysqli_report(MYSQLI_REPORT_OFF);
-$conn = @new mysqli($cfg['hostname'], $cfg['username'], $cfg['password'], $cfg['database']);
+if (DB_TEST_NAME !== '') {
+    $conn = @new mysqli(DB_TEST_HOST, DB_TEST_USER, DB_TEST_PASS, DB_TEST_NAME);
+} else {
+    if (!file_exists($ciConfig)) {
+        fail(500, 'CI database config not found — adjust $ciConfig path in nf-bridge.php');
+    }
+    if (!defined('BASEPATH')) define('BASEPATH', '1'); // CI config guard
+    require $ciConfig;
+    $cfg = $db['default'] ?? null;
+    if (!$cfg) fail(500, 'CI config parsed but default group missing');
+    $conn = @new mysqli($cfg['hostname'], $cfg['username'], $cfg['password'], $cfg['database']);
+}
 if ($conn->connect_errno) fail(500, 'DB connect failed: ' . $conn->connect_error);
 $conn->set_charset('utf8mb4');
 
