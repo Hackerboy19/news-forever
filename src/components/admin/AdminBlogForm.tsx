@@ -626,31 +626,44 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Heading className="w-4 h-4 text-rose-400" />
-                  Structured DOM Heading Hierarchy (H2 - H6)
+                  Extra Headings (optional)
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Accurately maps legacy <code className="text-slate-300">h2_tag</code> through <code className="text-slate-300">h6_tag</code> fields into the frontend article DOM.
+                  Optional. The big main heading (H1) of the page is your <strong className="text-slate-200">Article Title</strong> — set it in the "Article" tab. Use the boxes below only if you also want extra sub-headings for search engines.
                 </p>
               </div>
 
+              {/* H1 = the article title, shown read-only so staff understand */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <span className="w-28 px-3 py-1.5 bg-rose-950/60 text-rose-300 text-xs font-bold rounded-lg text-center border border-rose-800/50">
+                  Main heading (H1)
+                </span>
+                <div className="flex-1 px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-300 text-sm truncate">
+                  {formData.title?.trim() ? formData.title : <span className="text-slate-500 italic">= your Article Title (set it in the Article tab)</span>}
+                </div>
+              </div>
+
               <div className="space-y-4">
-                {['h2_tag', 'h3_tag', 'h4_tag', 'h5_tag', 'h6_tag'].map((tagKey) => {
-                  const tagUpper = tagKey.replace('_tag', '').toUpperCase();
-                  return (
-                    <div key={tagKey} className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <span className="w-16 px-3 py-1.5 bg-slate-800 text-rose-300 font-mono text-xs font-bold rounded-lg text-center">
-                        &lt;{tagUpper}&gt;
-                      </span>
-                      <input
-                        type="text"
-                        value={(formData as any)[tagKey] || ''}
-                        onChange={(e) => handleInputChange(tagKey as keyof CIBlog, e.target.value)}
-                        placeholder={`Sub-heading content for ${tagUpper}`}
-                        className="flex-1 px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
-                      />
-                    </div>
-                  );
-                })}
+                {[
+                  { key: 'h2_tag', label: 'Sub-heading 1' },
+                  { key: 'h3_tag', label: 'Sub-heading 2' },
+                  { key: 'h4_tag', label: 'Sub-heading 3' },
+                  { key: 'h5_tag', label: 'Sub-heading 4' },
+                  { key: 'h6_tag', label: 'Sub-heading 5' },
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <span className="w-28 px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg text-center">
+                      {label}
+                    </span>
+                    <input
+                      type="text"
+                      value={(formData as any)[key] || ''}
+                      onChange={(e) => handleInputChange(key as keyof CIBlog, e.target.value)}
+                      placeholder="Leave blank if not needed"
+                      className="flex-1 px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                  </div>
+                ))}
               </div>
             </div>
           </div>

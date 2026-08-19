@@ -68,10 +68,10 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            Category Management (<code className="text-rose-400 font-mono">ci_categories</code>)
+            Categories
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Organize article categories with tabbed meta & SEO attributes.
+            The sections of the site (like Pageants, City News). Add or edit them here.
           </p>
         </div>
 
@@ -88,11 +88,11 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
         <table className="w-full text-left text-sm text-slate-300">
           <thead className="bg-slate-950 border-b border-slate-800 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <tr>
-              <th className="p-4">ID</th>
-              <th className="p-4">Category Name</th>
-              <th className="p-4">Slug</th>
-              <th className="p-4">Articles Count</th>
-              <th className="p-4">Status</th>
+              <th className="p-4">#</th>
+              <th className="p-4">Name</th>
+              <th className="p-4">Web address</th>
+              <th className="p-4">Articles</th>
+              <th className="p-4">Shown?</th>
               <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
@@ -105,7 +105,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                 <td className="p-4 font-mono text-xs text-slate-300">{cat.article_count || 0} articles</td>
                 <td className="p-4">
                   <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${cat.status === 1 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border-amber-500/30'}`}>
-                    {cat.status === 1 ? 'Active' : 'Inactive'}
+                    {cat.status === 1 ? 'Visible' : 'Hidden'}
                   </span>
                 </td>
                 <td className="p-4 text-right">
@@ -113,7 +113,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                     <button
                       onClick={() => handleOpenEdit(cat)}
                       className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded transition"
-                      title="Edit Category (Tabbed Form)"
+                      title="Edit category"
                     >
                       <Edit3 className="w-4 h-4" />
                     </button>
@@ -155,7 +155,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                   modalTab === 'general' ? 'border-rose-500 text-rose-400' : 'border-transparent text-slate-400'
                 }`}
               >
-                Tab 1: General Info
+                Basics
               </button>
               <button
                 type="button"
@@ -164,7 +164,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                   modalTab === 'seo' ? 'border-rose-500 text-rose-400' : 'border-transparent text-slate-400'
                 }`}
               >
-                Tab 2: SEO Meta Settings
+                Search / SEO
               </button>
             </div>
 
@@ -173,7 +173,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                 <>
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-300 mb-1">
-                      Category Name (<code className="text-rose-400">category_name</code>)
+                      Category name
                     </label>
                     <input
                       type="text"
@@ -187,7 +187,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-300 mb-1">
-                      Category Slug (<code className="text-rose-400">slug</code>)
+                      Web address <span className="text-slate-500 normal-case font-normal">(auto-filled — ⚠ changing it breaks old links)</span>
                     </label>
                     <input
                       type="text"
@@ -197,19 +197,20 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                       placeholder="pageants"
                       className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-rose-500"
                     />
+                    <p className="text-[10px] text-slate-500 mt-1">Shows as newsforever.in/category/<span className="text-slate-300">{editingCat.slug || 'pageants'}</span></p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold uppercase text-slate-300 mb-1">
-                      Status (<code className="text-rose-400">status</code>)
+                      Show on the site?
                     </label>
                     <select
                       value={editingCat.status || 1}
                       onChange={(e) => setEditingCat(prev => ({ ...prev, status: parseInt(e.target.value, 10) }))}
                       className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
                     >
-                      <option value={1}>Active (1)</option>
-                      <option value={0}>Inactive (0)</option>
+                      <option value={1}>Yes — visible to visitors</option>
+                      <option value={0}>No — hidden</option>
                     </select>
                   </div>
                 </>

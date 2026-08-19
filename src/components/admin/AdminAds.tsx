@@ -9,6 +9,15 @@ interface AdminAdsProps {
   onDeleteAd?: (id: number) => void;
 }
 
+const POSITION_LABELS: Record<string, string> = {
+  blog: 'Top & inside articles',
+  top_banner: 'Top of the page',
+  left: 'Left sidebar',
+  right: 'Right sidebar',
+  popup: 'Pop-up',
+};
+const posLabel = (p?: string) => POSITION_LABELS[p || ''] || p || 'Unknown spot';
+
 export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd }) => {
   const [imageFile, setImageFile] = useState<{ filename: string; data: string; preview: string } | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -66,10 +75,10 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#111111] border border-[#222222] p-6">
         <div>
           <h1 className="text-xl font-serif italic font-bold text-white flex items-center gap-2">
-            Advertisement Zone Manager (<code className="text-orange-400 font-mono text-xs">ci_advertisement</code>)
+            Advertisements
           </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Configure header banners, sticky sidebars, and in-article ad slots with asset & alt tag mapping.
+            Add banner ads and choose where they appear — top of the page, in the sidebar, or inside articles.
           </p>
         </div>
 
@@ -78,7 +87,7 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
           className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs uppercase tracking-widest transition shadow-lg"
         >
           <Plus className="w-4 h-4" />
-          Create Ad Campaign
+          Add New Ad
         </button>
       </div>
 
@@ -87,8 +96,8 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
           <div key={ad.id} className="bg-[#111111] border border-[#222222] p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div>
-                <span className="text-[10px] uppercase font-bold text-orange-400 font-mono tracking-widest">
-                  Zone: {ad.position}
+                <span className="text-[10px] uppercase font-bold text-orange-400 tracking-widest">
+                  📍 {posLabel(ad.position)}
                 </span>
                 <h3 className="text-base font-serif italic font-bold text-white mt-0.5">{ad.title}</h3>
               </div>
@@ -109,25 +118,22 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
               />
             </div>
 
-            <div className="space-y-1 text-xs font-mono text-zinc-400 bg-[#0A0A0A] p-3 border border-[#222222]">
-              <div className="truncate">
-                <span className="text-zinc-300">image:</span> {ad.advertisement_image}
-              </div>
-              <div className="truncate">
-                <span className="text-zinc-300">alt_tag:</span> "{ad.alt_tag}"
-              </div>
+            <div className="space-y-1 text-xs text-zinc-400 bg-[#0A0A0A] p-3 border border-[#222222]">
               <div className="truncate text-orange-400 flex items-center gap-1">
-                <span>url:</span> {ad.url} <ExternalLink className="w-3 h-3" />
+                <span className="text-zinc-300">Goes to:</span> {ad.url} <ExternalLink className="w-3 h-3" />
+              </div>
+              <div className="truncate">
+                <span className="text-zinc-300">Describes image:</span> "{ad.alt_tag}"
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 text-xs font-mono">
+            <div className="flex items-center justify-between pt-2 text-xs">
               <div className="text-zinc-400">
-                Clicks: <strong className="text-white">{ad.click_count}</strong> | Impressions: <strong className="text-white">{ad.impressions}</strong>
+                Clicks: <strong className="text-white">{ad.click_count}</strong> · Views: <strong className="text-white">{ad.impressions}</strong>
               </div>
               <div className="flex items-center gap-2">
                 {isDemoAd(ad) && (
-                  <span className="text-[9px] font-mono text-sky-400 uppercase">Sample — not in DB</span>
+                  <span className="text-[9px] text-sky-400 uppercase">Sample ad (not saved)</span>
                 )}
                 {!isDemoAd(ad) && (
                 <button
@@ -164,7 +170,7 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">Campaign Title</label>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">Ad name <span className="text-zinc-500 font-normal">(only you see this)</span></label>
                 <input
                   type="text"
                   required
@@ -175,22 +181,22 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">Ad Slot Position</label>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">Where should it show?</label>
                 <select
-                  value={editingAd.position || 'top_banner'}
+                  value={editingAd.position || 'blog'}
                   onChange={(e) => setEditingAd(prev => ({ ...prev, position: e.target.value as any }))}
                   className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
                 >
-                  <option value="blog">Top Leaderboard + In-Article ("blog" zone)</option>
-                  <option value="left">Sidebar Panel — Left column</option>
-                  <option value="right">Sidebar Panel — Right column</option>
-                  <option value="popup">Promotional Pop-up Modal</option>
+                  <option value="blog">Top of page &amp; inside articles</option>
+                  <option value="left">Left sidebar</option>
+                  <option value="right">Right sidebar</option>
+                  <option value="popup">Pop-up</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  Upload Ad Image (<code className="text-orange-400 font-mono">advertisement_image</code>)
+                  Banner image <span className="text-zinc-500 font-normal">(the picture people see)</span>
                 </label>
                 <input
                   type="file"
@@ -201,10 +207,10 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                 {imageFile && (
                   <div className="mt-2 p-2 bg-[#0A0A0A] border border-zinc-700 flex items-center gap-3">
                     <img src={imageFile.preview} alt="preview" className="h-12 object-contain" />
-                    <span className="text-[10px] font-mono text-emerald-400 truncate">{imageFile.filename} — uploads to assets/img/advertisement/ on save</span>
+                    <span className="text-[10px] text-emerald-400 truncate">{imageFile.filename} — will upload when you press Save</span>
                   </div>
                 )}
-                <p className="text-[10px] text-zinc-500 mt-1.5">…or paste an existing path / full URL below:</p>
+                <p className="text-[10px] text-zinc-500 mt-1.5">…or paste an image link (URL) below:</p>
                 <input
                   type="text"
                   required={!imageFile}
@@ -216,7 +222,7 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  Alt Tag (<code className="text-orange-400 font-mono">alt_tag</code>)
+                  Describe the image <span className="text-zinc-500 font-normal">(helps Google &amp; screen readers)</span>
                 </label>
                 <input
                   type="text"
@@ -229,7 +235,7 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  Display Priority (<code className="text-orange-400 font-mono">priority</code> — 1 shows first)
+                  Show order <span className="text-zinc-500 font-normal">(1 shows first, higher = later)</span>
                 </label>
                 <input
                   type="number"
@@ -242,7 +248,7 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">Destination URL</label>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">Link when clicked <span className="text-zinc-500 font-normal">(where the ad takes people)</span></label>
                 <input
                   type="text"
                   required
