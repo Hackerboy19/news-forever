@@ -4,6 +4,8 @@
  * (strictly read-only); admin-panel collections return static demo data.
  */
 import {
+  getSiteConfig,
+  saveSiteConfig,
   getImageLibrary,
   getSubscribers,
   getAdminUsers,
@@ -231,6 +233,21 @@ export default async function handler(req: any, res: any) {
         }
       }
       return res.status(401).json({ error: 'Current password incorrect or database unreachable' });
+    }
+
+    // ---- Site configuration (theme + navigation) ----
+    if (route === 'site-config' && method === 'GET') {
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300');
+      return res.json(await getSiteConfig());
+    }
+    if (route === 'site-config' && method === 'PUT') {
+      const admin = await requireAdmin(req);
+      if (!admin) return res.status(401).json({ error: 'Unauthorized' });
+      try {
+        return res.json(await saveSiteConfig(await readBody(req)));
+      } catch {
+        return res.status(503).json({ error: DB_WRITE_UNAVAILABLE });
+      }
     }
 
     // ---- Advertisement CRUD (ci_advertisement) ----

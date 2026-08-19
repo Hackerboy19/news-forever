@@ -343,6 +343,46 @@ export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
   }
 }
 
+// ---- Site configuration (stored as a JSON row in ci_setting, zero schema change) ----
+
+export interface SiteConfig {
+  headerColor?: string;
+  footerColor?: string;
+  navExtra?: number[]; // extra ci_category ids pinned as top-level nav tabs
+}
+
+const CONFIG_KEY = 'nf_site_config';
+
+export async function getSiteConfig(): Promise<SiteConfig> {
+  try {
+    const [rows] = await dbPool.query(`SELECT page_description FROM ci_setting WHERE page_key = ? LIMIT 1`, [CONFIG_KEY]);
+    const list = rows as any[];
+    if (list.length === 0) return {};
+    return JSON.parse(list[0].page_description || '{}');
+  } catch (err) {
+    handleDbError('getSiteConfig', err);
+    return {};
+  }
+}
+
+export async function saveSiteConfig(config: SiteConfig): Promise<SiteConfig> {
+  const json = JSON.stringify({
+    headerColor: config.headerColor || '',
+    footerColor: config.footerColor || '',
+    navExtra: Array.isArray(config.navExtra) ? config.navExtra.map(Number).slice(0, 12) : [],
+  });
+  const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [CONFIG_KEY]);
+  if ((rows as any[]).length > 0) {
+    await dbPool.query(`UPDATE ci_setting SET page_description = ? WHERE page_key = ?`, [json, CONFIG_KEY]);
+  } else {
+    await dbPool.query(
+      `INSERT INTO ci_setting (page_key, page_description, email, phone, address, map, status) VALUES (?, ?, '', '', '', '', 1)`,
+      [CONFIG_KEY, json]
+    );
+  }
+  return getSiteConfig();
+}
+
 // ---- ci_advertisement CRUD ----
 
 function toAdColumns(payload: Partial<CIAdvertisement>): Record<string, string | number> {

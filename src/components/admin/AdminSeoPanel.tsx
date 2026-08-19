@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { CIBlog } from '../../types';
 import { Search, ChevronDown, Save, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
+import SeoMetaFields from './SeoMetaFields';
 
 interface AdminSeoPanelProps {
   blogs: CIBlog[];
   onQuickSave: (id: number, fields: Partial<CIBlog>) => Promise<boolean>;
+  onUploadImage?: (file: File) => Promise<string | null>;
 }
 
 interface SeoCheck {
@@ -47,7 +49,7 @@ const ScoreChip: React.FC<{ score: number }> = ({ score }) => {
  * SEO workbench: every article's SEO health at a glance with inline editing
  * of the fields that matter for ranking — writes go straight to ci_blog.
  */
-export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ blogs, onQuickSave }) => {
+export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ blogs, onQuickSave, onUploadImage }) => {
   const [query, setQuery] = useState('');
   const [onlyIssues, setOnlyIssues] = useState(true);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -73,6 +75,8 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ blogs, onQuickSave
       meta_keyword: b.meta_keyword,
       alt_tag: b.alt_tag,
       og_title: b.og_title,
+      og_image: b.og_image,
+      og_url: b.og_url,
     });
   };
 
@@ -156,54 +160,12 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ blogs, onQuickSave
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
-                    Meta Title <code className="text-orange-400">meta_title</code>
-                  </label>
-                  <input
-                    value={draft.meta_title || ''}
-                    onChange={(e) => setDraft((d) => ({ ...d, meta_title: e.target.value }))}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-2 text-xs text-zinc-200 outline-none focus:border-orange-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
-                    Meta Description <code className="text-orange-400">meta_description</code>
-                    <span className={`ml-2 font-mono ${descLen >= 120 && descLen <= 165 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      {descLen}/165 {descLen >= 120 && descLen <= 165 ? '✓ ideal' : '(target 120–165)'}
-                    </span>
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={draft.meta_description || ''}
-                    onChange={(e) => setDraft((d) => ({ ...d, meta_description: e.target.value }))}
-                    className="w-full bg-zinc-900 border border-zinc-800 p-2 text-xs text-zinc-200 outline-none focus:border-orange-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
-                      Keywords <code className="text-orange-400">meta_keyword</code>
-                    </label>
-                    <input
-                      value={draft.meta_keyword || ''}
-                      onChange={(e) => setDraft((d) => ({ ...d, meta_keyword: e.target.value }))}
-                      className="w-full bg-zinc-900 border border-zinc-800 p-2 text-xs text-zinc-200 outline-none focus:border-orange-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
-                      Image Alt Text <code className="text-orange-400">alt_tag</code>
-                    </label>
-                    <input
-                      value={draft.alt_tag || ''}
-                      onChange={(e) => setDraft((d) => ({ ...d, alt_tag: e.target.value }))}
-                      className="w-full bg-zinc-900 border border-zinc-800 p-2 text-xs text-zinc-200 outline-none focus:border-orange-500"
-                    />
-                  </div>
-                </div>
+                <SeoMetaFields
+                  values={draft}
+                  onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+                  previewUrl={`https://newsforever.in/${b.url}`}
+                  onUploadOgImage={onUploadImage}
+                />
 
                 <div className="flex justify-end gap-3 pt-1">
                   <button onClick={() => setOpenId(null)} className="px-4 py-2 text-xs font-mono text-zinc-400 hover:text-white">

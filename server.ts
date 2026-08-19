@@ -9,6 +9,8 @@ import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
 import {
   changeAdminPassword,
+  getSiteConfig,
+  saveSiteConfig,
   getImageLibrary,
   getSubscribers,
   getAdminUsers,
@@ -118,6 +120,20 @@ async function startServer() {
     const article = await getBlogByUrlSlug(String(slug).trim());
     if (!article) return res.status(404).json({ error: "Article not found" });
     res.json(await answerQuestion(String(question), article.content, article.short_content));
+  });
+
+  // GET/PUT /api/site-config — theme + navigation configuration
+  app.get("/api/site-config", async (_req, res) => {
+    res.json(await getSiteConfig());
+  });
+  app.put("/api/site-config", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      res.json(await saveSiteConfig(req.body || {}));
+    } catch (err: any) {
+      res.status(500).json({ error: "Config save failed: " + err?.message });
+    }
   });
 
   // Health check

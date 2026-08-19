@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CICategory } from '../../types';
+import SeoMetaFields from './SeoMetaFields';
 import { FolderTree, Plus, Edit3, Trash2, Globe, Save, X, Check } from 'lucide-react';
 
 interface AdminCategoriesProps {
@@ -213,31 +214,14 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                   </div>
                 </>
               ) : (
-                <>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-300 mb-1">
-                      Category Meta Title (<code className="text-rose-400">meta_title</code>)
-                    </label>
-                    <input
-                      type="text"
-                      value={editingCat.meta_title || ''}
-                      onChange={(e) => setEditingCat(prev => ({ ...prev, meta_title: e.target.value }))}
-                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-300 mb-1">
-                      Category Meta Description (<code className="text-rose-400">meta_description</code>)
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={editingCat.meta_description || ''}
-                      onChange={(e) => setEditingCat(prev => ({ ...prev, meta_description: e.target.value }))}
-                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
-                    />
-                  </div>
-                </>
+                <SeoMetaFields
+                  values={{ meta_title: editingCat.meta_title, meta_description: editingCat.meta_description }}
+                  onChange={(patch) => setEditingCat(prev => ({ ...prev, ...patch }))}
+                  previewUrl={`https://newsforever.in/category/${(editingCat.slug || '').trim() || 'category-slug'}`}
+                  withAltField={false}
+                  withKeywords={false}
+                  withOg={false}
+                />
               )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">

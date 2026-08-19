@@ -34,6 +34,7 @@ interface PublicLayoutProps {
   onSubscribe: (email: string) => void;
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
+  siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[] };
   children: React.ReactNode;
 }
 
@@ -59,6 +60,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   onSubscribe,
   dateFilter = 'all',
   onDateFilterChange,
+  siteConfig = {} as NonNullable<PublicLayoutProps['siteConfig']>,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -165,6 +167,16 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     })
       .filter((item) => item.hasContent)
       .map(({ hasContent, ...item }) => item),
+    ...(siteConfig.navExtra || [])
+      .map((id) => topCategories.find((c) => c.id === id))
+      .filter((c): c is CICategory => Boolean(c))
+      .map((c) => ({
+        name: c.category_name,
+        id: c.id as number | string | 'all',
+        subs: categories
+          .filter((ch) => ch.parent_id === c.id && (ch.article_count ?? 0) > 0)
+          .map((ch) => ({ name: ch.category_name, id: ch.id })),
+      })),
     { name: 'About Us', href: 'https://newsforever.in/about-us', subs: [] },
     { name: 'Contact Us', href: 'https://newsforever.in/contact-us', subs: [] },
   ];
@@ -321,7 +333,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
       {/* Main Brand Logo Header & Navigation Header Bar (sticky, scroll-hide) */}
       <header
-        className={`bg-[#132639] border-b border-[#0C1A28] sticky top-0 z-40 shadow-md transition-transform duration-300 ${
+        style={siteConfig.headerColor ? { backgroundColor: siteConfig.headerColor } : undefined}
+        className={`bg-[#132639] border-b border-black/30 sticky top-0 z-40 shadow-md transition-transform duration-300 ${
           headerHidden && !mobileMenuOpen ? '-translate-y-full' : 'translate-y-0'
         }`}
       >
@@ -536,7 +549,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
       </main>
 
       {/* Newsletter & Footer Section */}
-      <footer id="newsletter-section" className="bg-[#FAF8F5] border-t border-stone-200 pt-12 pb-8 text-stone-700">
+      <footer id="newsletter-section" style={siteConfig.footerColor ? { backgroundColor: siteConfig.footerColor } : undefined} className="bg-[#FAF8F5] border-t border-stone-200 pt-12 pb-8 text-stone-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           {/* Newsletter Box */}
           <div className="bg-white border border-stone-200 p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xs">

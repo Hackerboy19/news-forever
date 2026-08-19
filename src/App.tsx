@@ -43,6 +43,7 @@ import AdminSubscribers from './components/admin/AdminSubscribers';
 import AdminUsers from './components/admin/AdminUsers';
 import AdminChangePassword from './components/admin/AdminChangePassword';
 import AdminSeoPanel from './components/admin/AdminSeoPanel';
+import AdminSiteSettings, { SiteConfigValues } from './components/admin/AdminSiteSettings';
 
 export function App() {
   // Navigation & View Mode
@@ -69,6 +70,7 @@ export function App() {
   const [subscribers, setSubscribers] = useState<CISubscriber[]>([]);
   const [images, setImages] = useState<CIImageLibrary[]>([]);
   const [setting, setSetting] = useState<CISetting | null>(null);
+  const [siteConfig, setSiteConfig] = useState<SiteConfigValues>({});
 
   // Loading state
   const [loading, setLoading] = useState(true);
@@ -107,6 +109,7 @@ export function App() {
       setSubscribers(resSubs);
       setImages(resImgs);
       setSetting(resSetting);
+      fetch('/api/site-config').then(r => r.ok ? r.json() : {}).then(setSiteConfig).catch(() => {});
     } catch (err) {
       console.error('Failed to fetch REST API data', err);
     } finally {
@@ -200,6 +203,45 @@ export function App() {
       console.error(err);
     } finally {
       setIsSavingBlog(false);
+    }
+  };
+
+  /** Save site appearance/navigation config (DB-persisted). */
+  const handleSaveSiteConfig = async (cfg: SiteConfigValues): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/site-config', {
+        method: 'PUT',
+        headers: writeHeaders(),
+        body: JSON.stringify(cfg),
+      });
+      if (await handleWriteError(res)) return false;
+      setSiteConfig(await res.json());
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  /** Upload an image via the bridge; returns the stored assets path. */
+  const handleImageUpload = async (file: File): Promise<string | null> => {
+    try {
+      const base64: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/upload-image', {
+        method: 'POST',
+        headers: writeHeaders(),
+        body: JSON.stringify({ folder: 'blog', filename: file.name, data: base64 }),
+      });
+      if (await handleWriteError(res)) return null;
+      const { path } = await res.json();
+      return path || null;
+    } catch {
+      alert('Upload failed');
+      return null;
     }
   };
 
@@ -497,9 +539,10 @@ export function App() {
             )}
 
             {adminTab === 'Setting' && (
-              <AdminSettings
-                setting={setting}
-                onSaveSetting={handleSaveSetting}
+              <AdminSiteSettings
+                config={siteConfig}
+                categories={categories}
+                onSave={handleSaveSiteConfig}
               />
             )}
 
@@ -512,7 +555,7 @@ export function App() {
             )}
 
             {adminTab === 'SEO' && (
-              <AdminSeoPanel blogs={blogs} onQuickSave={handleSeoQuickSave} />
+              <AdminSeoPanel blogs={blogs} onQuickSave={handleSeoQuickSave} onUploadImage={handleImageUpload} />
             )}
 
             {adminTab === 'Profile' && (
@@ -555,6 +598,7 @@ export function App() {
       onSubscribe={handleSubscribe}
       dateFilter={dateFilter}
       onDateFilterChange={setDateFilter}
+      siteConfig={siteConfig}
     >
       {!selectedArticleUrl && (
         <SEOManager
