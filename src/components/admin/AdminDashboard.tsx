@@ -114,9 +114,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <ShieldAlert className="w-4 h-4 text-rose-400" />
-                Recent System Activity Log (<code className="text-slate-300 font-mono text-xs">ci_activity_log</code>)
+                Recent Activity
               </h2>
-              <p className="text-xs text-slate-400">Live trail of editor changes and system updates</p>
+              <p className="text-xs text-slate-400">Who changed what, and when</p>
             </div>
             <button
               onClick={() => onNavigate('Activity Log')}
@@ -158,7 +158,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <BarChart2 className="w-4 h-4 text-purple-400" />
-              Ad Zones (<code className="text-slate-300 font-mono text-xs">ci_advertisement</code>)
+              Ads
             </h2>
             <button
               onClick={() => onNavigate('Advertisement')}

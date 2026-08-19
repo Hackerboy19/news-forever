@@ -12,10 +12,10 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ users }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#111111] border border-[#222222] p-6">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif italic">
-            Editorial Staff & Role Management (<code className="text-orange-400 font-mono text-xs">ci_users</code>)
+            Team Members
           </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Role-based editorial staff permissions and access control management.
+            The people who can log in and manage the site, and what each is allowed to do.
           </p>
         </div>
       </div>
@@ -24,11 +24,11 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ users }) => {
         <table className="w-full text-left text-sm text-zinc-300">
           <thead className="bg-[#0A0A0A] border-b border-[#222222] text-[10px] font-bold uppercase tracking-widest text-zinc-400 font-mono">
             <tr>
-              <th className="p-4">User ID</th>
-              <th className="p-4">Username & Email</th>
-              <th className="p-4">Assigned Role</th>
+              <th className="p-4">#</th>
+              <th className="p-4">Name & Email</th>
+              <th className="p-4">Role</th>
               <th className="p-4">Status</th>
-              <th className="p-4 text-right">Last Active Session</th>
+              <th className="p-4 text-right">Last seen</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#222222]">

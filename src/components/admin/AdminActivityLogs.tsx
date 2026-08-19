@@ -25,10 +25,10 @@ export const AdminActivityLogs: React.FC<AdminActivityLogsProps> = ({ activityLo
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            System Activity Audit Trail (<code className="text-rose-400 font-mono">ci_activity_log</code>)
+            Activity Log
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Immutable log of all admin editorial modifications, publishing events, and system settings updates.
+            A record of everything the team has done — edits, new articles, published items, and setting changes.
           </p>
         </div>
       </div>

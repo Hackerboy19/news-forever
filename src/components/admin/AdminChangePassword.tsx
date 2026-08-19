@@ -61,8 +61,7 @@ export const AdminChangePassword: React.FC<AdminChangePasswordProps> = ({ adminA
       </div>
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         <p className="text-xs text-stone-500">
-          Signed in as <span className="font-bold text-stone-800">{adminAuth.username}</span> — the change writes to the
-          live <code className="text-[#991B1B] font-mono">ci_admin</code> record.
+          Signed in as <span className="font-bold text-stone-800">{adminAuth.username}</span>. Your new password takes effect right away.
         </p>
         {[
           { label: 'Current Password', value: current, set: setCurrent, ac: 'current-password' },

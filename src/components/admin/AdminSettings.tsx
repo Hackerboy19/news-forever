@@ -21,10 +21,10 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({ setting, onSaveSet
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            System Settings & Meta Defaults (<code className="text-rose-400 font-mono">ci_settings</code>)
+            Site Settings
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Configure global website identity, logo branding, social links, and fallback OpenGraph meta defaults.
+            The site's name, logo, social links, and the default preview text used when pages are shared.
           </p>
         </div>
 

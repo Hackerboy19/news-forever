@@ -258,7 +258,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
               <div className="lg:col-span-2 space-y-6">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                    Article Title (h1) (<code className="text-orange-400">title</code>)
+                    Article Title <span className="text-zinc-500 font-normal normal-case">(this is the big H1 heading on the page)</span>
                   </label>
                   <input
                     type="text"
@@ -340,9 +340,9 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   <div className="absolute top-3 right-3 flex items-center gap-1">
                     <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
                   </div>
-                  <h3 className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest mb-2">Ad Placement (ci_advertisement)</h3>
+                  <h3 className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest mb-2">Where ads appear</h3>
                   <div className="border-2 border-dashed border-zinc-800 rounded p-4 flex items-center justify-center min-h-[100px] text-center">
-                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Sidebar Sticky Zone (Active)</span>
+                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">Sidebar ad slot</span>
                   </div>
                 </div>
 
@@ -556,10 +556,10 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Globe className="w-4 h-4 text-rose-400" />
-                  Meta & OpenGraph Programmatic SEO Fields
+                  How this article looks on Google &amp; social media
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Programmatically injected into <code className="text-slate-300">&lt;head&gt;</code> to maintain 100% of legacy Domain Authority (DA).
+                  Optional. Leave blank and the site uses the title and summary automatically. Fill these in to control exactly what shows in search results and when the link is shared.
                 </p>
               </div>
 
@@ -567,12 +567,12 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                 {/* Standard Search Engine Meta */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-rose-400 border-b border-slate-800 pb-2">
-                    Standard Search Engine Metadata
+                    Google search result
                   </h4>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Meta Title (<code className="text-rose-400">meta_title</code>)
+                      Title on Google <span className="text-slate-500 font-normal">(blue clickable line)</span>
                     </label>
                     <input
                       type="text"
@@ -584,7 +584,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Meta Keywords (<code className="text-rose-400">meta_keyword</code>)
+                      Keywords <span className="text-slate-500 font-normal">(comma separated)</span>
                     </label>
                     <input
                       type="text"
@@ -597,7 +597,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Meta Description (<code className="text-rose-400">meta_description</code>)
+                      Description on Google <span className="text-slate-500 font-normal">(grey text under the title)</span>
                     </label>
                     <textarea
                       rows={4}
@@ -611,12 +611,12 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                 {/* Social OpenGraph Tags */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-rose-400 border-b border-slate-800 pb-2">
-                    OpenGraph & Social Sharing Meta
+                    When shared on WhatsApp / Facebook
                   </h4>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      OG Title (<code className="text-rose-400">og_title</code>)
+                      Title when shared
                     </label>
                     <input
                       type="text"
@@ -628,7 +628,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      OG Canonical URL (<code className="text-rose-400">og_url</code>)
+                      Official link for this article <span className="text-slate-500 font-normal">(leave blank unless told)</span>
                     </label>
                     <input
                       type="text"
@@ -640,7 +640,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      OG Image Path (<code className="text-rose-400">og_image</code>)
+                      Picture when shared <span className="text-slate-500 font-normal">(auto-uses the cover image)</span>
                     </label>
                     <input
                       type="text"
@@ -652,7 +652,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      OG Description (<code className="text-rose-400">og_description</code>)
+                      Description when shared
                     </label>
                     <textarea
                       rows={2}

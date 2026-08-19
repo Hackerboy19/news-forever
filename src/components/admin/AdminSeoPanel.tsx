@@ -102,14 +102,14 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ blogs, onQuickSave
       <div className="bg-[#111111] border border-[#222222] p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-serif italic font-bold text-white">
-            SEO Workbench (<code className="text-orange-400 font-mono text-xs">ci_blog metadata</code>)
+            Search / SEO Helper
           </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Fix meta titles, descriptions, keywords and alt text article-by-article — saves write to the live database.
+            Improve how articles show up on Google — fix titles, descriptions, keywords and image text, one article at a time.
           </p>
         </div>
-        <div className="flex items-center gap-3 text-[11px] font-mono">
-          <span className="text-emerald-400">{totals.healthy} healthy</span>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="text-emerald-400">{totals.healthy} good</span>
           <span className="text-amber-400">{totals.warn} needs work</span>
           <span className="text-red-400">{totals.poor} poor</span>
         </div>

@@ -90,11 +90,11 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
 
       <div className="bg-[#111111] border border-[#222222] p-6 space-y-3">
         <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
-          <Layout className="w-4 h-4 text-orange-400" /> Extra Navbar Tabs
+          <Layout className="w-4 h-4 text-orange-400" /> Extra Menu Tabs
         </h2>
         <p className="text-xs text-zinc-400">
-          Pin real categories as additional top-level tabs (max 6). They appear after the standard sections; new
-          categories created in the Category tab show up here automatically.
+          Tick a category to add it to the top menu of the site (up to 6). They appear after the usual sections; any
+          new category you create shows up here automatically.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           {topCats.map((c) => (

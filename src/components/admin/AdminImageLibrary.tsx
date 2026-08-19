@@ -34,10 +34,10 @@ export const AdminImageLibrary: React.FC<AdminImageLibraryProps> = ({ images, on
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            Image Library & Asset Manager (<code className="text-rose-400 font-mono">ci_image_library</code>)
+            Image Library
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Upload new assets, inspect file paths, and update image <code className="text-rose-400 font-mono">alt_tag</code> metadata.
+            All pictures uploaded to the site. Add new ones, and edit the short description of each image.
           </p>
         </div>
 
@@ -105,7 +105,7 @@ export const AdminImageLibrary: React.FC<AdminImageLibraryProps> = ({ images, on
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Alt Tag (<code className="text-rose-400">alt_tag</code>)</label>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Describe the image <span className="text-slate-500 font-normal">(helps Google &amp; screen readers)</span></label>
                 <input
                   type="text"
                   required
