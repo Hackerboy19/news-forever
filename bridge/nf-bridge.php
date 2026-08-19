@@ -363,8 +363,7 @@ switch ($action) {
         break;
     }
     case 'config-get': {
-        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
-        if (!$admin) fail(401, 'Unauthorized');
+        // Public read — theme colours & nav tabs are visible on the site anyway
         $res = $conn->query("SELECT page_description FROM ci_setting WHERE page_key = 'nf_site_config' LIMIT 1");
         $row = $res ? $res->fetch_assoc() : null;
         echo json_encode(['config' => $row ? $row['page_description'] : '{}']);

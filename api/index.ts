@@ -240,14 +240,15 @@ export default async function handler(req: any, res: any) {
 
     // ---- Site configuration (theme + navigation) ----
     if (route === 'site-config' && method === 'GET') {
-      res.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=120');
+      res.setHeader('Cache-Control', 'no-store');
       try {
         const { dbPool } = await import('../src/lib/db.js');
         await dbPool.query('SELECT 1');
         return res.json(await getSiteConfig());
       } catch {
         if (bridgeConfigured()) {
-          try { return res.json(await bridgeGetConfig(reqCreds(req))); } catch { /* ignore */ }
+          // config-get is a public bridge action — no creds needed
+          try { return res.json(await bridgeGetConfig({ username: '', password: '' })); } catch { /* ignore */ }
         }
         return res.json({});
       }
