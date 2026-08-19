@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CIBlog, CICategory, CITag, CIImageLibrary } from '../../types';
+import RichTextEditor from './RichTextEditor';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -136,13 +137,10 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
           </button>
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2 font-serif italic">
-              {initialData ? `Edit Article #${initialData.id}` : 'Create New Article'}
-              <span className="text-[10px] uppercase tracking-widest px-2.5 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20 font-mono font-bold">
-                ci_blog Schema
-              </span>
+              {initialData ? 'Edit Article' : 'Create New Article'}
             </h2>
             <p className="text-xs text-zinc-500 mt-0.5">
-              100% database-aligned editor mapping to <code className="text-zinc-300 font-mono">ci_blog</code> fields
+              Fill in the details below and press Save. Only the Title is required.
             </p>
           </div>
         </div>
@@ -245,8 +243,8 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2 flex items-center justify-between">
-                    <span>Database URL Key (<code className="text-orange-400">ci_blog.url</code>)</span>
-                    <span className="text-zinc-500 text-[10px] font-normal">Exact SEO route match</span>
+                    <span>Web address <span className="font-normal normal-case tracking-normal text-zinc-500">— auto-filled from the title, edit only if needed</span></span>
+                    <span className="text-amber-500/70 text-[10px] font-normal normal-case">⚠ changing this breaks old links</span>
                   </label>
                   <div className="flex bg-[#0A0A0A] border border-[#222222] p-3 text-xs font-mono text-zinc-300">
                     <span className="text-zinc-500 pr-2">/article/</span>
@@ -264,7 +262,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                 {/* Short Content */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                    Article Abstract / Short Content (<code className="text-orange-400">short_content</code>)
+                    Short summary <span className="font-normal normal-case tracking-normal text-zinc-500">— 1–2 lines shown on cards &amp; previews</span>
                   </label>
                   <textarea
                     rows={3}
@@ -278,14 +276,12 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                 {/* Full HTML Content */}
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2">
-                    Article Body (<code className="text-orange-400">content</code>)
+                    Article Body
+                    <span className="ml-2 font-normal normal-case tracking-normal text-zinc-500">— write like a document; use the toolbar to format</span>
                   </label>
-                  <textarea
-                    rows={10}
+                  <RichTextEditor
                     value={formData.content || ''}
-                    onChange={(e) => handleInputChange('content', e.target.value)}
-                    placeholder="<p>Write or paste your article body content here...</p>"
-                    className="w-full p-4 bg-[#0A0A0A] border border-[#222222] text-sm font-serif leading-relaxed text-zinc-300 outline-none focus:border-orange-500 transition font-mono"
+                    onChange={(html) => handleInputChange('content', html)}
                   />
                 </div>
               </div>
@@ -324,11 +320,11 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                 {/* Category & Status */}
                 <div className="bg-[#0A0A0A] border border-[#222222] p-5 space-y-4">
                   <h3 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 border-b border-zinc-800 pb-2">
-                    Taxonomy & Publishing Status
+                    Category &amp; Publishing
                   </h3>
 
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Category Mapping (<code className="text-orange-400">cat_id</code>)</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Category <span className="font-normal normal-case tracking-normal text-zinc-500">— which section this story belongs to</span></label>
                     <select
                       value={formData.category_id || 1}
                       onChange={(e) => {
@@ -346,7 +342,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Sub-Category (<code className="text-orange-400">sub_cat_id</code>)</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Sub-category <span className="font-normal normal-case tracking-normal text-zinc-500">— optional, more specific</span></label>
                     <select
                       value={formData.sub_category_id || 0}
                       onChange={(e) => handleInputChange('sub_category_id', parseInt(e.target.value, 10))}
@@ -362,7 +358,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">YouTube Video Link (<code className="text-orange-400">youtube_video_link</code>)</label>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">YouTube video link <span className="font-normal normal-case tracking-normal text-zinc-500">— optional</span></label>
                     <input
                       type="url"
                       value={(formData as any).youtube_video_link || ''}
