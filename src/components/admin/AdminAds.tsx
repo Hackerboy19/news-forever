@@ -181,9 +181,10 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                   onChange={(e) => setEditingAd(prev => ({ ...prev, position: e.target.value as any }))}
                   className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
                 >
-                  <option value="blog">Leaderboard / In-Article ("blog" zone)</option>
-                  <option value="left">Sidebar Panel — left</option>
-                  <option value="right">Sidebar Panel — right</option>
+                  <option value="blog">Top Leaderboard + In-Article ("blog" zone)</option>
+                  <option value="left">Sidebar Panel — Left column</option>
+                  <option value="right">Sidebar Panel — Right column</option>
+                  <option value="popup">Promotional Pop-up Modal</option>
                 </select>
               </div>
 
@@ -222,6 +223,20 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                   required
                   value={editingAd.alt_tag || ''}
                   onChange={(e) => setEditingAd(prev => ({ ...prev, alt_tag: e.target.value }))}
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  Display Priority (<code className="text-orange-400 font-mono">priority</code> — 1 shows first)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={9}
+                  value={editingAd.priority ?? 2}
+                  onChange={(e) => setEditingAd(prev => ({ ...prev, priority: parseInt(e.target.value || '2', 10) }))}
                   className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
                 />
               </div>

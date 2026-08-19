@@ -23,7 +23,11 @@ export const PromotionalModal: React.FC<PromotionalModalProps> = ({ ads, delayMs
   const [visible, setVisible] = useState(false);
 
   const ad = React.useMemo(
-    () => shuffleAds(ads.filter((a) => a.status === 1 && (a.position === 'blog' || a.position === 'top_banner')))[0],
+    () => {
+      const pool = ads.filter((a) => a.status === 1 && a.position === 'popup');
+      const fallback = ads.filter((a) => a.status === 1 && (a.position === 'blog' || a.position === 'top_banner'));
+      return shuffleAds(pool.length > 0 ? pool : fallback)[0];
+    },
     [ads]
   );
 

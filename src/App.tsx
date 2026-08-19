@@ -42,6 +42,7 @@ import AdminSettings from './components/admin/AdminSettings';
 import AdminSubscribers from './components/admin/AdminSubscribers';
 import AdminUsers from './components/admin/AdminUsers';
 import AdminChangePassword from './components/admin/AdminChangePassword';
+import AdminSeoPanel from './components/admin/AdminSeoPanel';
 
 export function App() {
   // Navigation & View Mode
@@ -199,6 +200,24 @@ export function App() {
       console.error(err);
     } finally {
       setIsSavingBlog(false);
+    }
+  };
+
+  /** SEO workbench: PUT only the metadata fields, refresh the list in place. */
+  const handleSeoQuickSave = async (id: number, fields: Partial<CIBlog>): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/blogs/${id}`, {
+        method: 'PUT',
+        headers: writeHeaders(),
+        body: JSON.stringify(fields),
+      });
+      if (await handleWriteError(res)) return false;
+      const updated = await res.json();
+      setBlogs(prev => prev.map(b => (b.id === id ? { ...b, ...updated } : b)));
+      return true;
+    } catch {
+      alert('SEO save failed');
+      return false;
     }
   };
 
@@ -490,6 +509,10 @@ export function App() {
 
             {adminTab === 'Users' && (
               <AdminUsers users={users} />
+            )}
+
+            {adminTab === 'SEO' && (
+              <AdminSeoPanel blogs={blogs} onQuickSave={handleSeoQuickSave} />
             )}
 
             {adminTab === 'Profile' && (

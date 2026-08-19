@@ -17,6 +17,7 @@ import {
   Bell,
   Search,
   Menu,
+  TrendingUp,
   ShieldCheck
 } from 'lucide-react';
 
@@ -54,6 +55,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   const managementItems = [
     { name: 'Dashboard', icon: LayoutDashboard },
     { name: 'Blog', icon: FileText },
+    { name: 'SEO', icon: TrendingUp },
     { name: 'Category', icon: FolderTree },
     { name: 'Tag', icon: Tag },
     { name: 'Advertisement', icon: BarChart2 },
