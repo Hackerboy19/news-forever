@@ -466,6 +466,7 @@ export function App() {
             categories={categories}
             tags={tags}
             images={images}
+            onUploadImage={handleImageUpload}
             onSave={handleSaveBlog}
             onCancel={() => {
               setIsBlogFormOpen(false);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CIBlog, CICategory, CITag, CIImageLibrary } from '../../types';
 import RichTextEditor from './RichTextEditor';
 import { 
@@ -14,7 +14,8 @@ import {
   Eye, 
   Tag as TagIcon,
   HelpCircle,
-  AlertCircle
+  AlertCircle,
+  Upload
 } from 'lucide-react';
 
 interface AdminBlogFormProps {
@@ -22,6 +23,7 @@ interface AdminBlogFormProps {
   categories: CICategory[];
   tags: CITag[];
   images: CIImageLibrary[];
+  onUploadImage?: (file: File) => Promise<string | null>;
   onSave: (formData: Partial<CIBlog>) => void;
   onCancel: () => void;
   isSaving?: boolean;
@@ -32,12 +34,39 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
   categories,
   tags,
   images,
+  onUploadImage,
   onSave,
   onCancel,
   isSaving = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'media' | 'seo' | 'headings'>('general');
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    if (!onUploadImage) {
+      alert('Upload is only available on the live site.');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      alert('Image is too large (max 8 MB). Please pick a smaller file.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const path = await onUploadImage(file);
+      if (path) {
+        handleInputChange('image', path);
+        if (!formData.og_image) handleInputChange('og_image', path);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Form State initialized with database defaults
   const [formData, setFormData] = useState<Partial<CIBlog>>({
@@ -176,7 +205,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
           }`}
         >
           <FileText className="w-3.5 h-3.5" />
-          General Info
+          Article
         </button>
 
         <button
@@ -189,7 +218,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
           }`}
         >
           <ImageIcon className="w-3.5 h-3.5" />
-          Media Library
+          Cover Image
         </button>
 
         <button
@@ -202,7 +231,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
           }`}
         >
           <Globe className="w-3.5 h-3.5" />
-          SEO & Metadata
+          Search / SEO
         </button>
 
         <button
@@ -215,7 +244,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
           }`}
         >
           <Heading className="w-3.5 h-3.5" />
-          Header Tags (H2-H6)
+          Extra Headings
         </button>
       </div>
 
@@ -422,58 +451,77 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
         {activeTab === 'media' && (
           <div className="space-y-6">
             <div className="bg-slate-950/60 p-6 border border-slate-800 rounded-xl space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     <ImageIcon className="w-4 h-4 text-rose-400" />
-                    Asset Mapping & Image Alt Tags
+                    Cover Image
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    Binds directly to <code className="text-rose-400">image</code> and <code className="text-rose-400">alt_tag</code> columns. File path structures (e.g. assets/img/blog/...) remain intact.
+                    The main picture shown on the article and on cards. Upload one from your computer, or pick from images already on the site.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowImagePicker(true)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-rose-300 border border-slate-700 rounded-lg transition"
-                >
-                  Browse Image Library
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Hidden native file picker driven by the button */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    onChange={handlePickFile}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 disabled:cursor-wait text-xs font-bold text-white rounded-lg transition flex items-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {uploading ? 'Uploading…' : 'Upload from computer'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowImagePicker(true)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-rose-300 border border-slate-700 rounded-lg transition"
+                  >
+                    Choose existing
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
-                    Database Image File Path (<code className="text-rose-400">image</code>)
+                    Image location <span className="text-slate-500 normal-case font-normal">(auto-filled after upload)</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.image || ''}
                     onChange={(e) => handleInputChange('image', e.target.value)}
-                    placeholder="assets/img/blog/2026/08/sample.jpg"
+                    placeholder="Upload above, or paste an image link"
                     className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-rose-500 mb-4"
                   />
 
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
-                    Image Alt Tag (<code className="text-rose-400">alt_tag</code>)
+                    Describe the image <span className="text-slate-500 normal-case font-normal">(helps Google &amp; screen readers)</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.alt_tag || ''}
                     onChange={(e) => handleInputChange('alt_tag', e.target.value)}
-                    placeholder="Descriptive alt text for accessibility and SEO"
+                    placeholder="e.g. Nidhi Netra holding the winner's trophy on stage"
                     className="w-full px-4 py-2.5 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
                   />
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Crucial for image SEO & WCAG compliance. Automatically injected into DOM <code className="text-slate-300">alt</code> attribute.
+                    A short sentence saying what's in the picture. Shown if the image can't load, and read aloud to blind visitors.
                   </p>
                 </div>
 
                 {/* Image Live Preview Box */}
                 <div className="border border-slate-800 rounded-xl p-4 bg-slate-900/80 flex flex-col items-center justify-center text-center">
-                  <span className="text-xs text-slate-400 uppercase font-semibold mb-2">Database Image Asset Preview</span>
+                  <span className="text-xs text-slate-400 uppercase font-semibold mb-2">Preview</span>
                   <div className="relative w-full h-48 rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
                     {formData.image ? (
                       <img
@@ -488,7 +536,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                     ) : (
                       <div className="text-slate-600 text-xs flex flex-col items-center gap-1">
                         <ImageIcon className="w-8 h-8 stroke-1" />
-                        <span>No image path specified</span>
+                        <span>No image yet — upload one above</span>
                       </div>
                     )}
                   </div>
