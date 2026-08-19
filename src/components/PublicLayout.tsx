@@ -321,35 +321,35 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
       {/* Main Brand Logo Header & Navigation Header Bar (sticky, scroll-hide) */}
       <header
-        className={`bg-white border-b border-stone-200 sticky top-0 z-40 shadow-xs transition-transform duration-300 ${
+        className={`bg-[#132639] border-b border-[#0C1A28] sticky top-0 z-40 shadow-md transition-transform duration-300 ${
           headerHidden && !mobileMenuOpen ? '-translate-y-full' : 'translate-y-0'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Main Logo and Navigation Container matching NewsForever layout */}
-          <div className="py-4 flex flex-col md:flex-row md:items-center justify-between border-b border-stone-100 gap-4">
+          <div className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Logo: NEWS FOREVER */}
             <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
               <Logo className="w-11 h-11 shadow-md group-hover:scale-105 transition-transform duration-300 rounded-[10px]" />
 
               <div className="flex flex-col leading-none">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-serif font-black text-2xl sm:text-3xl tracking-tight text-stone-900 group-hover:text-[#991B1B] transition-colors duration-200">
-                    News<span className="text-[#991B1B]">Forever</span>
+                  <span className="font-serif font-black text-2xl sm:text-3xl tracking-tight text-white group-hover:text-red-300 transition-colors duration-200">
+                    News<span className="text-[#FF6B5E]">Forever</span>
                   </span>
-                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-stone-100 text-[#991B1B] border border-[#E7E5E4] font-mono text-[9px] font-bold uppercase rounded-sm tracking-wider">
+                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-red-500/15 text-red-300 border border-red-400/30 font-mono text-[9px] font-bold uppercase rounded-sm tracking-wider">
                     {t('live247')}
                   </span>
                 </div>
-                <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-stone-500 mt-1 flex items-center gap-1">
-                  <Globe className="w-2.5 h-2.5 text-[#991B1B]" />
+                <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-slate-300/80 mt-1 flex items-center gap-1">
+                  <Globe className="w-2.5 h-2.5 text-red-300" />
                   {t('tagline')}
                 </span>
               </div>
             </button>
 
             {/* Desktop Main Navigation — full live ci_category tree */}
-            <nav className="hidden md:flex items-center flex-wrap gap-x-4 gap-y-1 text-xs font-bold uppercase tracking-wider text-stone-800">
+            <nav className="hidden md:flex items-center flex-wrap gap-x-1 gap-y-0.5 text-xs font-bold uppercase tracking-wider text-slate-100">
               {navItems.map((item) => {
                 const hasSubcats = item.subs.length > 0;
                 const isActive = item.id !== undefined && activeCategory === item.id;
@@ -361,7 +361,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                       href={item.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="py-2 text-stone-800 hover:text-[#7A0C0C] transition"
+                      className="py-2 px-2.5 text-slate-200 hover:text-white hover:bg-white/10 rounded transition"
                     >
                       {t(item.name)}
                     </a>
@@ -377,14 +377,14 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                   >
                     <button
                       onClick={() => handleCatSelect(item.id!, item.id === 'all' ? null : item.name)}
-                      className={`flex items-center gap-1 transition ${
+                      className={`flex items-center gap-1 px-2.5 py-2 rounded transition border-b-2 ${
                         isActive
-                          ? 'text-[#7A0C0C] font-extrabold border-b-2 border-[#7A0C0C] pb-0.5'
-                          : 'text-stone-800 hover:text-[#7A0C0C]'
+                          ? 'text-white border-[#FF6B5E] bg-white/10 font-extrabold'
+                          : 'text-slate-200 border-transparent hover:text-white hover:bg-white/10'
                       }`}
                     >
                       <span>{t(item.name)}</span>
-                      {hasSubcats && <ChevronDown className="w-3 h-3 text-stone-500 group-hover:text-[#7A0C0C] transition-transform duration-200 group-hover:rotate-180" />}
+                      {hasSubcats && <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-white transition-transform duration-200 group-hover:rotate-180" />}
                     </button>
 
                     {/* Hover Dropdown Menu */}
@@ -413,10 +413,10 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             {/* Mobile Hamburger Menu Button */}
             <div className="md:hidden flex items-center justify-between w-full">
-              <span className="text-xs font-mono font-bold uppercase text-stone-500">{t('navMenu')}</span>
+              <span className="text-xs font-mono font-bold uppercase text-slate-300">{t('navMenu')}</span>
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="p-2 text-stone-800 hover:text-[#7A0C0C]"
+                className="p-2 text-slate-100 hover:text-white"
               >
                 {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
               </button>

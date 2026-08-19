@@ -19,6 +19,7 @@ import PublicArticlePage from './components/PublicArticlePage';
 import SEOManager from './components/SEOManager';
 
 import { I18nProvider } from './lib/i18n';
+import { DEMO_ADS } from './data/demoAds';
 
 // Admin Components
 import AdminLayout from './components/AdminLayout';
@@ -99,7 +100,7 @@ export function App() {
       setBlogs(resBlogs);
       setCategories(resCats);
       setTags(resTags);
-      setAds(resAds);
+      setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
       setActivityLogs(resLogs);
       setUsers(resUsers);
       setSubscribers(resSubs);
@@ -306,7 +307,7 @@ export function App() {
       if (Array.isArray(data)) setAds(data);
       else {
         const resAds = await fetch('/api/advertisements').then(r => r.json());
-        setAds(resAds);
+        setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
       }
     } catch (err) {
       alert('Failed saving ad');

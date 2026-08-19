@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CIAdvertisement } from '../../types';
+import { isDemoAd } from '../../data/demoAds';
 import { BarChart2, Plus, Edit3, Trash2, ExternalLink, Image as ImageIcon } from 'lucide-react';
 
 interface AdminAdsProps {
@@ -91,8 +92,8 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                 </span>
                 <h3 className="text-base font-serif italic font-bold text-white mt-0.5">{ad.title}</h3>
               </div>
-              <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${ad.status === 1 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
-                {ad.status === 1 ? 'Active' : 'Inactive'}
+              <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest ${isDemoAd(ad) ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20' : ad.status === 1 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}>
+                {isDemoAd(ad) ? 'Demo' : ad.status === 1 ? 'Active' : 'Inactive'}
               </span>
             </div>
 
@@ -125,6 +126,10 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                 Clicks: <strong className="text-white">{ad.click_count}</strong> | Impressions: <strong className="text-white">{ad.impressions}</strong>
               </div>
               <div className="flex items-center gap-2">
+                {isDemoAd(ad) && (
+                  <span className="text-[9px] font-mono text-sky-400 uppercase">Sample — not in DB</span>
+                )}
+                {!isDemoAd(ad) && (
                 <button
                   onClick={() => {
                     setEditingAd(ad);
@@ -135,7 +140,8 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                 >
                   Edit Ad
                 </button>
-                {onDeleteAd && (
+                )}
+                {onDeleteAd && !isDemoAd(ad) && (
                   <button
                     onClick={() => onDeleteAd(ad.id)}
                     className="px-3 py-1 bg-red-900/40 hover:bg-red-800 text-red-300 font-mono text-[10px] uppercase font-bold tracking-widest flex items-center gap-1"
