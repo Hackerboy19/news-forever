@@ -34,6 +34,7 @@ import {
   bridgeConfigured,
   bridgeGetConfig,
   bridgeSaveConfig,
+  bridgeListRaw,
   bridgeUploadImage,
   bridgeSaveAd,
   bridgeDeleteAd,
@@ -494,9 +495,36 @@ export default async function handler(req: any, res: any) {
 
     // Admin-only collections — no demo data; real values come from the live
     // DB once admin write support exists (out of scope, read-only mapping)
-    if (route === 'activity-logs') return res.json(await getActivityLogs());
-    if (route === 'users') return res.json(await getAdminUsers());
-    if (route === 'image-library') return res.json(await getImageLibrary());
+    if (route === 'activity-logs') {
+      let out = await getActivityLogs();
+      if (out.length === 0 && bridgeConfigured()) {
+        try {
+          const rows = await bridgeListRaw(reqCreds(req), 'logs-list');
+          out = rows.map((r: any) => ({ id: r.id, user_id: r.user_id || r.admin_id, user_name: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username || `Admin #${r.admin_id}`, activity: `Activity code ${r.activity_id}`, module: 'System', ip_address: '', created_at: String(r.created_at || '') }));
+        } catch { /* ignore */ }
+      }
+      return res.json(out);
+    }
+    if (route === 'users') {
+      let out = await getAdminUsers();
+      if (out.length === 0 && bridgeConfigured()) {
+        try {
+          const rows = await bridgeListRaw(reqCreds(req), 'users-list');
+          out = rows.map((r: any) => ({ id: r.admin_id, username: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username, email: r.email || '', role: r.is_supper ? 'Super Admin' : 'Senior Editor', avatar: r.image || '', status: r.is_active ? 1 : 0, last_login: r.last_login ? String(r.last_login) : '' }));
+        } catch { /* ignore */ }
+      }
+      return res.json(out);
+    }
+    if (route === 'image-library') {
+      let out = await getImageLibrary();
+      if (out.length === 0 && bridgeConfigured()) {
+        try {
+          const rows = await bridgeListRaw(reqCreds(req), 'images-list');
+          out = rows.map((r: any) => ({ id: r.id, file_name: String(r.image || '').split('/').pop() || '', file_path: String(r.image || ''), file_size: '', alt_tag: r.url || '', uploaded_by: String(r.user_id || ''), created_at: r.created_at || '' }));
+        } catch { /* ignore */ }
+      }
+      return res.json(out);
+    }
     if (route === 'settings') return res.json(siteSetting);
 
     if (route === 'subscribers') {
@@ -508,7 +536,14 @@ export default async function handler(req: any, res: any) {
           subscriber: { id: 0, email, status: 'subscribed', subscribed_at: new Date().toISOString() },
         });
       }
-      return res.json(await getSubscribers());
+      let out = await getSubscribers();
+      if (out.length === 0 && bridgeConfigured()) {
+        try {
+          const rows = await bridgeListRaw(reqCreds(req), 'subs-list');
+          out = rows.map((r: any) => ({ id: r.id, email: r.email, status: 'subscribed' as const, subscribed_at: r.created_at || '' }));
+        } catch { /* ignore */ }
+      }
+      return res.json(out);
     }
 
     return res.status(404).json({ error: `Unknown API route: ${route}` });

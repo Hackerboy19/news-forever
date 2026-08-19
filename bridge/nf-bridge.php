@@ -334,6 +334,34 @@ switch ($action) {
         break;
     }
 
+    case 'subs-list': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $res = $conn->query("SELECT id, email, created_at FROM ci_subscribe ORDER BY id DESC LIMIT 500");
+        echo json_encode(['rows' => $res ? $res->fetch_all(MYSQLI_ASSOC) : []]);
+        break;
+    }
+    case 'users-list': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $res = $conn->query("SELECT admin_id, username, firstname, lastname, email, image, is_active, is_supper, last_login FROM ci_admin ORDER BY admin_id ASC");
+        echo json_encode(['rows' => $res ? $res->fetch_all(MYSQLI_ASSOC) : []]);
+        break;
+    }
+    case 'images-list': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $res = $conn->query("SELECT id, user_id, url, image, created_at FROM ci_imagelibrary ORDER BY id DESC LIMIT 300");
+        echo json_encode(['rows' => $res ? $res->fetch_all(MYSQLI_ASSOC) : []]);
+        break;
+    }
+    case 'logs-list': {
+        $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
+        if (!$admin) fail(401, 'Unauthorized');
+        $res = $conn->query("SELECT l.id, l.activity_id, l.user_id, l.admin_id, l.created_at, a.username, a.firstname, a.lastname FROM ci_activity_log l LEFT JOIN ci_admin a ON l.admin_id=a.admin_id ORDER BY l.id DESC LIMIT 100");
+        echo json_encode(['rows' => $res ? $res->fetch_all(MYSQLI_ASSOC) : []]);
+        break;
+    }
     case 'config-get': {
         $admin = verify_admin($conn, (string)($body['username'] ?? ''), (string)($body['password'] ?? ''));
         if (!$admin) fail(401, 'Unauthorized');

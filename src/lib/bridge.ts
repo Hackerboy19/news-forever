@@ -67,6 +67,11 @@ export async function bridgeDeleteBlog(creds: BridgeCreds, id: number): Promise<
   return Boolean(data.success);
 }
 
+export async function bridgeListRaw(creds: BridgeCreds, action: string): Promise<any[]> {
+  const data = await bridgeCall(action, creds);
+  return data.rows || [];
+}
+
 export async function bridgeGetConfig(creds: BridgeCreds): Promise<any> {
   const data = await bridgeCall('config-get', creds);
   try { return JSON.parse(data.config || '{}'); } catch { return {}; }
