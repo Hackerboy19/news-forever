@@ -529,11 +529,10 @@ export async function verifyAdmin(username: string, password: string): Promise<A
     };
   } catch (err) {
     handleDbError('verifyAdmin', err);
-    const envUser = process.env.ADMIN_PANEL_USER;
-    const envPass = process.env.ADMIN_PANEL_PASS;
-    if (envUser && envPass && username === envUser && password === envPass) {
-      return { admin_id: 0, username: envUser, name: 'Admin (offline mode)' };
-    }
+    // Direct DB unreachable (e.g. Vercel) — the caller falls back to the
+    // bridge, which verifies against the real ci_admin table. The old
+    // ADMIN_PANEL_USER/PASS offline shortcut is removed: it let you log in
+    // but not write (bridge needs real credentials), which was confusing.
     return null;
   }
 }
