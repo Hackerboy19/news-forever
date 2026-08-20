@@ -575,6 +575,7 @@ function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number
   if (payload.title !== undefined) cols.title = payload.title;
   if (payload.category_id !== undefined) cols.cat_id = payload.category_id;
   if (payload.sub_category_id !== undefined) cols.sub_cat_id = payload.sub_category_id;
+  if (payload.type !== undefined) cols.type = payload.type;
   if (payload.tag_ids !== undefined) cols.tag_id = payload.tag_ids.join(',');
   if (payload.image !== undefined) cols.image = toLegacyAssetPath(payload.image);
   if (payload.alt_tag !== undefined) cols.alt_tag = payload.alt_tag;

@@ -77,6 +77,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
     short_content: '',
     content: '',
     category_id: categories.length ? categories[0].id : 1,
+    type: 0,
     tag_ids: [],
     image: 'assets/img/blog/2026/08/miss-universe-stage.jpg',
     alt_tag: '',
@@ -459,6 +460,19 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                           {cat.category_name} (ID: {cat.id})
                         </option>
                       ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Homepage placement <span className="font-normal normal-case tracking-normal text-zinc-500">— show this in a special section</span><HelpTip text="Feature this article in a homepage strip. 'Our Picks' and 'Popular Posts' are curated sections on the site. Leave as None for a normal article." /></label>
+                    <select
+                      value={Number((formData as any).type) || 0}
+                      onChange={(e) => handleInputChange('type' as keyof CIBlog, parseInt(e.target.value, 10))}
+                      className="w-full bg-zinc-900 border border-zinc-800 p-2.5 text-xs text-zinc-200 outline-none focus:border-orange-500"
+                    >
+                      <option value={0}>None — normal article</option>
+                      <option value={1}>Popular Posts</option>
+                      <option value={2}>Our Picks</option>
                     </select>
                   </div>
 

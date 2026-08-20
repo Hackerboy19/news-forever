@@ -10,6 +10,7 @@ export interface CIBlog {
   content: string;
   category_id: number; // ci_blog.cat_id
   sub_category_id?: number; // ci_blog.sub_cat_id
+  type?: number; // ci_blog.type — homepage placement: 0 none, 1 Popular Posts, 2 Our Picks
   category_name?: string; // joined
   tag_ids: number[];
   image: string; // Path: e.g. assets/img/blog/2026/08/article-1.jpg

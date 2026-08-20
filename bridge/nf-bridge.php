@@ -100,7 +100,7 @@ $BLOG_SELECT = "SELECT b.id, b.user_created_by, b.title, b.cat_id, b.sub_cat_id,
 
 /** Columns writable through the bridge (frontend name => ci_blog column). */
 $WRITABLE = [
-    'title' => 'title', 'category_id' => 'cat_id', 'sub_category_id' => 'sub_cat_id',
+    'title' => 'title', 'category_id' => 'cat_id', 'sub_category_id' => 'sub_cat_id', 'type' => 'type',
     'image' => 'image', 'alt_tag' => 'alt_tag', 'url' => 'url',
     'meta_title' => 'meta_title', 'meta_keyword' => 'meta_keyword', 'meta_description' => 'meta_description',
     'h2_tag' => 'h2_tag', 'h3_tag' => 'h3_tag', 'h4_tag' => 'h4_tag', 'h5_tag' => 'h5_tag', 'h6_tag' => 'h6_tag',
@@ -119,7 +119,7 @@ function extract_cols(array $payload, array $WRITABLE): array {
         $val = $payload[$front];
         if (in_array($col, ['image', 'og_image'], true)) $val = legacy_asset_path((string)$val);
         if ($front === 'url') $val = trim((string)$val);
-        if (in_array($col, ['cat_id', 'sub_cat_id', 'status'], true)) $val = (int)$val;
+        if (in_array($col, ['cat_id', 'sub_cat_id', 'status', 'type'], true)) $val = (int)$val;
         $cols[$col] = $val;
     }
     if (isset($payload['tag_ids']) && is_array($payload['tag_ids'])) {
