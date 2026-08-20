@@ -532,8 +532,56 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+
+    // Server-side meta injection: for article URLs, put the real title/desc/
+    // OG tags into the initial HTML so Google, WhatsApp, Facebook, etc. show
+    // the correct preview (the SPA still refreshes them client-side).
+    const fs = await import("fs/promises");
+    let templateCache = "";
+    const getTemplate = async () => {
+      if (!templateCache) templateCache = await fs.readFile(path.join(distPath, "index.html"), "utf8");
+      return templateCache;
+    };
+    const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const RESERVED = new Set(["", "admin", "category", "api", "assets", "report.html", "favicon.ico"]);
+
+    app.get("*", async (req, res) => {
+      try {
+        let html = await getTemplate();
+        const seg = decodeURIComponent(req.path).replace(/^\/+|\/+$/g, "");
+        if (seg && !RESERVED.has(seg.split("/")[0])) {
+          const article = await getBlogByUrlSlug(seg);
+          if (article) {
+            const title = esc(article.meta_title || article.title);
+            const desc = esc(article.meta_description || article.short_content || "");
+            const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+            const url = esc(article.og_url || `${proto}://${req.get("host")}/${seg}`);
+            const img = /^https?:/i.test(article.og_image || "") ? article.og_image : article.image; // already absolute
+            const imgEsc = esc(img);
+            const ogTitle = esc(article.og_title || article.meta_title || article.title);
+            const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
+            const tags = [
+              `<title>${title}</title>`,
+              `<meta name="description" content="${desc}">`,
+              article.meta_keyword ? `<meta name="keywords" content="${esc(article.meta_keyword)}">` : "",
+              `<link rel="canonical" href="${url}">`,
+              `<meta property="og:type" content="article">`,
+              `<meta property="og:title" content="${ogTitle}">`,
+              `<meta property="og:description" content="${ogDesc}">`,
+              imgEsc ? `<meta property="og:image" content="${imgEsc}">` : "",
+              `<meta property="og:url" content="${url}">`,
+              `<meta name="twitter:card" content="summary_large_image">`,
+              `<meta name="twitter:title" content="${ogTitle}">`,
+              `<meta name="twitter:description" content="${ogDesc}">`,
+              imgEsc ? `<meta name="twitter:image" content="${imgEsc}">` : "",
+            ].filter(Boolean).join("\n    ");
+            html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}\n  </head>`);
+          }
+        }
+        res.set("Content-Type", "text/html; charset=utf-8").send(html);
+      } catch {
+        res.sendFile(path.join(distPath, "index.html"));
+      }
     });
   }
 

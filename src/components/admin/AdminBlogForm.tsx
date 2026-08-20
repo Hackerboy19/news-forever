@@ -46,10 +46,13 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-selecting the same file
+  // Upload one image file (used by the file picker, drag-drop and paste).
+  const uploadFile = async (file: File | undefined | null) => {
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('That is not an image. Please use a JPG, PNG, WebP or GIF.');
+      return;
+    }
     if (!onUploadImage) {
       alert('Upload is only available on the live site.');
       return;
@@ -69,6 +72,31 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
       setUploading(false);
     }
   };
+
+  const handlePickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file
+    uploadFile(file);
+  };
+
+  const [dragOver, setDragOver] = useState(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    uploadFile(e.dataTransfer.files?.[0]);
+  };
+
+  // Paste an image straight from the clipboard (e.g. a screenshot) while the
+  // Cover Image tab is open.
+  useEffect(() => {
+    if (activeTab !== 'media') return;
+    const onPaste = (e: ClipboardEvent) => {
+      const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith('image/'));
+      if (item) uploadFile(item.getAsFile());
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  });
 
   // Form State initialized with database defaults
   const [formData, setFormData] = useState<Partial<CIBlog>>({
@@ -609,13 +637,18 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   </p>
                 </div>
 
-                {/* Image Live Preview Box */}
-                <div className="border border-slate-800 rounded-xl p-4 bg-slate-900/80 flex flex-col items-center justify-center text-center">
+                {/* Image Live Preview Box — also a drag-drop / paste target */}
+                <div
+                  className={`border rounded-xl p-4 flex flex-col items-center justify-center text-center transition ${dragOver ? 'border-rose-500 bg-rose-950/30' : 'border-slate-800 bg-slate-900/80'}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                >
                   <span className="text-xs text-slate-400 uppercase font-semibold mb-2">Preview</span>
                   <div className="relative w-full h-48 rounded-lg overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center">
                     {formData.image ? (
                       <img
-                        src={formData.image}
+                        src={resolveAssetUrl(formData.image)}
                         alt={formData.alt_tag || 'Preview'}
                         className="w-full h-full object-cover"
                         onError={(e) => {
@@ -624,12 +657,15 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                         }}
                       />
                     ) : (
-                      <div className="text-slate-600 text-xs flex flex-col items-center gap-1">
+                      <div className="text-slate-500 text-xs flex flex-col items-center gap-1 px-3">
                         <ImageIcon className="w-8 h-8 stroke-1" />
-                        <span>No image yet — upload one above</span>
+                        <span>{dragOver ? 'Drop the image to upload' : 'Drag an image here, or paste (Ctrl+V), or use the buttons above'}</span>
                       </div>
                     )}
                   </div>
+                  {formData.image ? (
+                    <span className="mt-2 text-[11px] text-slate-500">Drag a new image here or paste (Ctrl+V) to replace</span>
+                  ) : null}
                   <div className="mt-2 text-[11px] text-slate-400 font-mono truncate max-w-full">
                     alt="{formData.alt_tag || 'Empty Alt Tag'}"
                   </div>
