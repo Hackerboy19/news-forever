@@ -372,7 +372,31 @@ async function startServer() {
     const { folder, filename, data, alt } = req.body || {};
     if (!data || !filename) return res.status(400).json({ error: "filename and data required" });
     if (!bridgeConfigured()) {
-      return res.status(503).json({ error: "Image upload needs the cPanel bridge (nf-bridge.php) — set BRIDGE_URL/BRIDGE_KEY. Until then, paste an existing assets/img path or full URL." });
+      // Standalone Node deploy (no bridge): write the file to the local
+      // web-served assets folder and return an ABSOLUTE URL on this host, so
+      // the logo/cover renders from this origin (not the legacy asset host).
+      try {
+        const fs = await import("fs/promises");
+        const sub = folder === "advertisement" ? "advertisement" : "blog";
+        const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, "");
+        const ext = (safe.split(".").pop() || "png").toLowerCase();
+        if (!["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext)) {
+          return res.status(400).json({ error: "Only image files (jpg, png, gif, webp, svg) are allowed" });
+        }
+        const buf = Buffer.from(String(data), "base64");
+        if (buf.length < 50) return res.status(400).json({ error: "Image data looks empty or corrupt" });
+        if (buf.length > 8 * 1024 * 1024) return res.status(400).json({ error: "Image too large (max 8 MB)" });
+        const dir = path.join(process.cwd(), "dist", "assets", "img", sub);
+        await fs.mkdir(dir, { recursive: true });
+        const fname = `${Date.now()}_${safe || "upload." + ext}`;
+        await fs.writeFile(path.join(dir, fname), buf);
+        const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+        const host = req.get("host");
+        const abs = `${proto}://${host}/assets/img/${sub}/${fname}`;
+        return res.json({ success: true, path: abs });
+      } catch (err: any) {
+        return res.status(500).json({ error: "Local image save failed: " + (err?.message || "") });
+      }
     }
     try {
       const path = await bridgeUploadImage(
