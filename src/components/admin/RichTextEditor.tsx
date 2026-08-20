@@ -1,9 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Bold, Italic, Underline, Heading2, Heading3, List, ListOrdered, Link2, Quote, Eraser, Code2 } from 'lucide-react';
+import { Bold, Italic, Underline, Heading2, Heading3, List, ListOrdered, Link2, Quote, Eraser, Code2, ImagePlus } from 'lucide-react';
+import { resolveAssetUrl } from '../../lib/assets';
 
 interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
+  onUploadImage?: (file: File) => Promise<string | null>;
 }
 
 /**
@@ -12,9 +14,12 @@ interface RichTextEditorProps {
  * optional raw-HTML toggle for advanced users. Emits the same HTML that
  * lands in ci_blog.description — no data shape change.
  */
-export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange }) => {
+export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange, onUploadImage }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const savedRange = useRef<Range | null>(null);
   const [htmlMode, setHtmlMode] = useState(false);
+  const [insertingImg, setInsertingImg] = useState(false);
 
   // Load incoming HTML into the editable surface without clobbering the caret
   useEffect(() => {
@@ -32,6 +37,38 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange 
   const addLink = () => {
     const url = prompt('Link URL (https://…)');
     if (url) exec('createLink', url);
+  };
+
+  // Remember where the caret is before the file dialog steals focus.
+  const rememberCaret = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && ref.current?.contains(sel.anchorNode)) savedRange.current = sel.getRangeAt(0);
+  };
+  const pickImage = () => { rememberCaret(); imgInputRef.current?.click(); };
+  const onImageChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+    if (!onUploadImage) { alert('Image upload is only available on the live site.'); return; }
+    if (file.size > 8 * 1024 * 1024) { alert('Image is too large (max 8 MB).'); return; }
+    setInsertingImg(true);
+    try {
+      const path = await onUploadImage(file);
+      if (!path) return;
+      const url = resolveAssetUrl(path);
+      ref.current?.focus();
+      // Restore the caret so the image lands where the user was typing.
+      if (savedRange.current) {
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(savedRange.current);
+      }
+      document.execCommand('insertHTML', false, `<img src="${url}" alt="" style="max-width:100%;height:auto;" />`);
+      if (ref.current) onChange(ref.current.innerHTML);
+    } finally {
+      setInsertingImg(false);
+    }
   };
 
   const btn = 'p-1.5 rounded hover:bg-zinc-700 text-zinc-300 hover:text-white transition';
@@ -57,6 +94,20 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({ value, onChange 
         <Tool icon={List} label="Bullet list" on={() => exec('insertUnorderedList')} />
         <Tool icon={ListOrdered} label="Numbered list" on={() => exec('insertOrderedList')} />
         <Tool icon={Link2} label="Add link" on={addLink} />
+        {onUploadImage && (
+          <button
+            type="button"
+            title="Insert image into the article"
+            aria-label="Insert image"
+            onClick={pickImage}
+            disabled={insertingImg}
+            className={`${btn} ${insertingImg ? 'opacity-60 cursor-wait' : ''} flex items-center gap-1`}
+          >
+            <ImagePlus className="w-4 h-4" />
+            <span className="text-[10px] font-bold">{insertingImg ? '…' : 'Image'}</span>
+          </button>
+        )}
+        <input ref={imgInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" onChange={onImageChosen} className="hidden" />
         <span className="w-px h-5 bg-zinc-700 mx-1" />
         <Tool icon={Eraser} label="Clear formatting" on={() => exec('removeFormat')} />
         <button

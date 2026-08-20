@@ -438,6 +438,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   <RichTextEditor
                     value={formData.content || ''}
                     onChange={(html) => handleInputChange('content', html)}
+                    onUploadImage={onUploadImage}
                   />
                 </div>
               </div>
