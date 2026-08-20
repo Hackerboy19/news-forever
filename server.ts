@@ -533,6 +533,12 @@ async function startServer() {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
 
+    // Legacy CodeIgniter media served straight from the domain root so old
+    // image URLs (newsforever.in/assets/img/…, /uploads/…) keep working when
+    // this app fronts the main domain. No-ops when the folders are absent.
+    app.use("/assets", express.static(path.join(process.cwd(), "assets")));
+    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
     // Server-side meta injection: for article URLs, put the real title/desc/
     // OG tags into the initial HTML so Google, WhatsApp, Facebook, etc. show
     // the correct preview (the SPA still refreshes them client-side).
@@ -543,7 +549,7 @@ async function startServer() {
       return templateCache;
     };
     const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const RESERVED = new Set(["", "admin", "category", "api", "assets", "report.html", "favicon.ico"]);
+    const RESERVED = new Set(["", "admin", "category", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
 
     app.get("*", async (req, res) => {
       try {

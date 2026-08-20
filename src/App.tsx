@@ -50,7 +50,7 @@ import AdminSiteSettings, { SiteConfigValues } from './components/admin/AdminSit
  * Legacy article URLs are a single top-level segment (e.g. /my-article-slug).
  * Reserved first segments are not articles.
  */
-const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'report.html', 'favicon.ico']);
+const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'uploads', 'report.html', 'favicon.ico', 'sitemap.xml', 'robots.txt', 'rss.xml', 'feed.rss']);
 function slugFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const path = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
