@@ -209,7 +209,7 @@ export function App() {
     }
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      alert(body.error || 'Request failed');
+      alert(body.error || 'Something went wrong. Please check your internet and try again — your work is not lost.');
       return true;
     }
     return false;
@@ -241,7 +241,7 @@ export function App() {
       setEditingBlog(null);
       setAdminTab('Blog');
     } catch (err) {
-      alert('Error saving blog article');
+      alert('Could not save the article. Please try again — your text is still on screen.');
       console.error(err);
     } finally {
       setIsSavingBlog(false);
@@ -282,7 +282,7 @@ export function App() {
       const { path } = await res.json();
       return path || null;
     } catch {
-      alert('Upload failed');
+      alert('Could not upload that image. Use a JPG, PNG or WebP under 8 MB and try again.');
       return null;
     }
   };
@@ -300,7 +300,7 @@ export function App() {
       setBlogs(prev => prev.map(b => (b.id === id ? { ...b, ...updated } : b)));
       return true;
     } catch {
-      alert('SEO save failed');
+      alert('Could not save the search / SEO details. Please try again.');
       return false;
     }
   };
@@ -314,7 +314,7 @@ export function App() {
       const resLogs = await fetch('/api/activity-logs').then(r => r.json());
       setActivityLogs(resLogs);
     } catch (err) {
-      alert('Error deleting blog article');
+      alert('Could not delete the article. Please try again.');
     }
   };
 
@@ -329,7 +329,7 @@ export function App() {
       if (await handleWriteError(res)) return;
       await refreshAdminBlogs();
     } catch (err) {
-      alert('Bulk action failed');
+      alert('Could not complete that action on the selected articles. Please try again.');
     }
   };
 
@@ -363,7 +363,7 @@ export function App() {
         setCategories(resCats);
       }
     } catch (err) {
-      alert('Failed saving category');
+      alert('Could not save the category. Please try again.');
     }
   };
 
@@ -374,7 +374,7 @@ export function App() {
       if (await handleWriteError(res)) return;
       setCategories(prev => prev.filter(c => c.id !== id));
     } catch (err) {
-      alert('Failed deleting category');
+      alert('Could not delete the category. Please try again.');
     }
   };
 
@@ -413,7 +413,7 @@ export function App() {
         setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
       }
     } catch (err) {
-      alert('Failed saving ad');
+      alert('Could not save the ad. Please try again.');
     }
   };
 
@@ -424,7 +424,7 @@ export function App() {
       if (await handleWriteError(res)) return;
       setAds(prev => prev.filter(a => a.id !== id));
     } catch (err) {
-      alert('Failed deleting ad');
+      alert('Could not delete the ad. Please try again.');
     }
   };
 
@@ -439,7 +439,7 @@ export function App() {
       const created = await res.json();
       setImages(prev => [created, ...prev]);
     } catch (err) {
-      alert('Failed uploading image asset');
+      alert('Could not upload the image. Please try again.');
     }
   };
 
@@ -454,7 +454,7 @@ export function App() {
       const updated = await res.json();
       setSetting(updated);
     } catch (err) {
-      alert('Failed saving settings');
+      alert('Could not save the settings. Please try again.');
     }
   };
 

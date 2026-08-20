@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CIBlog, CICategory, CITag, CIImageLibrary } from '../../types';
 import RichTextEditor from './RichTextEditor';
+import { resolveAssetUrl } from '../../lib/assets';
 import { 
   FileText, 
   Image as ImageIcon, 
@@ -42,6 +43,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
   const [activeTab, setActiveTab] = useState<'general' | 'media' | 'seo' | 'headings'>('general');
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,6 +177,15 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowPreview(true)}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest text-emerald-300 border border-emerald-800 bg-emerald-950/40 hover:bg-emerald-900/40 transition"
+            title="See how this article will look to readers"
+          >
+            <Eye className="w-4 h-4" />
+            Preview
+          </button>
           <button
             type="button"
             onClick={onCancel}
@@ -761,6 +772,47 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Preview — how the article will look to readers */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full my-6 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 bg-stone-900 text-white sticky top-0">
+              <span className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                <Eye className="w-4 h-4 text-emerald-400" /> Reader Preview
+              </span>
+              <button type="button" onClick={() => setShowPreview(false)} className="text-stone-300 hover:text-white text-sm font-bold">✕ Close</button>
+            </div>
+            <div className="p-6 sm:p-8">
+              {formData.category_name && (
+                <span className="inline-block text-[11px] font-bold uppercase tracking-widest text-[#991B1B] mb-3">{formData.category_name}</span>
+              )}
+              <h1 className="text-2xl sm:text-3xl font-serif font-black text-stone-900 leading-tight mb-3">
+                {formData.title?.trim() || <span className="text-stone-400 italic">Untitled article — add a title</span>}
+              </h1>
+              {formData.short_content && (
+                <p className="text-stone-600 text-base mb-4">{formData.short_content}</p>
+              )}
+              {formData.image && (
+                <img
+                  src={resolveAssetUrl(formData.image)}
+                  alt={formData.alt_tag || 'Cover'}
+                  className="w-full rounded-xl border border-stone-200 mb-5 object-cover max-h-80"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              )}
+              <div
+                className="nf-rte prose prose-stone max-w-none text-stone-800 text-[15px] leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: formData.content || '<p style="color:#aaa">No article body yet — write it in the Article tab.</p>' }}
+              />
+              <div className="mt-6 pt-4 border-t border-stone-200 text-[11px] text-stone-400">
+                Google preview: <span className="text-blue-700">{formData.meta_title?.trim() || formData.title || 'Title'}</span> — {formData.meta_description?.trim() || formData.short_content || 'Description shown in search results.'}
+              </div>
+              <p className="mt-4 text-center text-[11px] text-stone-400">This is a preview. Press <strong>Save</strong> to publish your changes.</p>
             </div>
           </div>
         </div>
