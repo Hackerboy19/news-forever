@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { CICategory } from '../../types';
 import { Palette, Layout, Save, RotateCcw, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { resolveAssetUrl } from '../../lib/assets';
 
 export interface SiteConfigValues {
   headerColor?: string;
@@ -43,7 +44,9 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
     setUploadingLogo(true);
     try {
       const path = await onUploadImage(file);
-      if (path) setLogoUrl(path);
+      // Store the absolute URL so the public header renders it regardless of
+      // which origin the app is served from (uploads live on the asset host).
+      if (path) setLogoUrl(resolveAssetUrl(path));
     } finally {
       setUploadingLogo(false);
     }
@@ -104,7 +107,7 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
           {/* Preview */}
           <div className="w-20 h-20 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
             {logoUrl ? (
-              <img src={logoUrl} alt="Site logo preview" className="max-w-full max-h-full object-contain"
+              <img src={resolveAssetUrl(logoUrl)} alt="Site logo preview" className="max-w-full max-h-full object-contain"
                 onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }} />
             ) : (
               <span className="text-[10px] text-zinc-500 text-center px-1">Default logo</span>

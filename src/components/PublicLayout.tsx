@@ -41,6 +41,7 @@ interface PublicLayoutProps {
 import { NAV_UMBRELLAS } from '../lib/taxonomy';
 import LeaderboardAd from './LeaderboardAd';
 import Logo from './ui/Logo';
+import { resolveAssetUrl } from '../lib/assets';
 import NewsTicker from './NewsTicker';
 import PromotionalModal from './PromotionalModal';
 import { useI18n } from '../lib/i18n';
@@ -345,7 +346,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
               {siteConfig.logoUrl ? (
                 <img
-                  src={siteConfig.logoUrl}
+                  src={resolveAssetUrl(siteConfig.logoUrl)}
                   alt="Site logo"
                   className="w-12 h-12 object-contain group-hover:scale-105 transition-transform duration-300 drop-shadow-md"
                 />
