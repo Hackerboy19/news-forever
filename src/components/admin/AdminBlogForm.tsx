@@ -79,6 +79,28 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
     uploadFile(file);
   };
 
+  // Separate uploader for the social-share (OG) image.
+  const ogFileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingOg, setUploadingOg] = useState(false);
+  const uploadOgFile = async (file: File | undefined | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('That is not an image. Please use a JPG, PNG, WebP or GIF.'); return; }
+    if (!onUploadImage) { alert('Upload is only available on the live site.'); return; }
+    if (file.size > 8 * 1024 * 1024) { alert('Image is too large (max 8 MB).'); return; }
+    setUploadingOg(true);
+    try {
+      const path = await onUploadImage(file);
+      if (path) handleInputChange('og_image', path);
+    } finally {
+      setUploadingOg(false);
+    }
+  };
+  const handlePickOgFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    uploadOgFile(file);
+  };
+
   const [dragOver, setDragOver] = useState(false);
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -766,14 +788,56 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Picture when shared <span className="text-slate-500 font-normal">(auto-uses the cover image)</span>
+                      Picture when shared <span className="text-slate-500 font-normal">(shown on WhatsApp/Facebook — leave blank to use the cover image)</span><HelpTip text="The image people see when this article's link is shared. Best size is 1200×630. Leave blank and the cover image is used automatically." />
                     </label>
-                    <input
-                      type="text"
-                      value={formData.og_image || ''}
-                      onChange={(e) => handleInputChange('og_image', e.target.value)}
-                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-xs focus:outline-none focus:border-rose-500"
-                    />
+                    <div className="flex items-center gap-3">
+                      {formData.og_image ? (
+                        <img
+                          src={resolveAssetUrl(formData.og_image)}
+                          alt="Share preview"
+                          className="w-20 h-14 rounded object-cover border border-slate-700 shrink-0"
+                          onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }}
+                        />
+                      ) : (
+                        <div className="w-20 h-14 rounded bg-slate-900 border border-slate-800 flex items-center justify-center text-[9px] text-slate-500 text-center shrink-0 px-1">Uses cover</div>
+                      )}
+                      <div className="flex-1 space-y-2">
+                        <input
+                          ref={ogFileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/gif,image/webp"
+                          onChange={handlePickOgFile}
+                          className="hidden"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={uploadingOg}
+                            onClick={() => ogFileInputRef.current?.click()}
+                            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 disabled:cursor-wait text-xs font-bold text-white rounded flex items-center gap-1.5"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            {uploadingOg ? 'Uploading…' : 'Upload from computer'}
+                          </button>
+                          {formData.og_image && (
+                            <button
+                              type="button"
+                              onClick={() => handleInputChange('og_image', '')}
+                              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 rounded"
+                            >
+                              Use cover image
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={formData.og_image || ''}
+                          onChange={(e) => handleInputChange('og_image', e.target.value)}
+                          placeholder="…or paste an image link (URL)"
+                          className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded text-white font-mono text-[11px] focus:outline-none focus:border-rose-500"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>
