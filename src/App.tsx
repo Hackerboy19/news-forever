@@ -45,10 +45,28 @@ import AdminChangePassword from './components/admin/AdminChangePassword';
 import AdminSeoPanel from './components/admin/AdminSeoPanel';
 import AdminSiteSettings, { SiteConfigValues } from './components/admin/AdminSiteSettings';
 
+/**
+ * Map the browser path to an article slug so old/indexed URLs deep-link.
+ * Legacy article URLs are a single top-level segment (e.g. /my-article-slug).
+ * Reserved first segments are not articles.
+ */
+const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'report.html', 'favicon.ico']);
+function slugFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const path = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
+  if (!path) return null;
+  if (RESERVED_PATHS.has(path.split('/')[0])) return null;
+  return path;
+}
+function isAdminPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.hash === '#admin' || window.location.pathname.replace(/\/+$/, '') === '/admin';
+}
+
 export function App() {
   // Navigation & View Mode
-  const [viewMode, setViewMode] = useState<ViewMode>('public');
-  const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (isAdminPath() ? 'admin' : 'public'));
+  const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(() => slugFromPath());
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
   const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
@@ -119,15 +137,39 @@ export function App() {
 
   useEffect(() => {
     fetchData();
-    // Direct admin entry via https://<host>/#admin — on load AND when the
-    // hash is typed into an already-open page
-    const checkHash = () => {
-      if (window.location.hash === '#admin') setViewMode('admin');
+    // Admin entry via /#admin or /admin — on load AND when typed/navigated.
+    // Article deep-linking: keep the article in sync with the browser URL so
+    // old/indexed links open the article and Back/Forward work.
+    const syncFromUrl = () => {
+      if (isAdminPath()) { setViewMode('admin'); return; }
+      setViewMode('public');
+      setSelectedArticleUrl(slugFromPath());
     };
-    checkHash();
-    window.addEventListener('hashchange', checkHash);
-    return () => window.removeEventListener('hashchange', checkHash);
+    window.addEventListener('hashchange', syncFromUrl);
+    window.addEventListener('popstate', syncFromUrl);
+    return () => {
+      window.removeEventListener('hashchange', syncFromUrl);
+      window.removeEventListener('popstate', syncFromUrl);
+    };
   }, []);
+
+  // Open an article and reflect it in the URL (shareable / refreshable / SEO).
+  const openArticle = (urlSlug: string) => {
+    setSelectedArticleUrl(urlSlug);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/' + urlSlug.replace(/^\/+/, ''));
+      window.scrollTo(0, 0);
+    }
+  };
+  // Return to the homepage and reset the URL to "/".
+  const goHomeNav = () => {
+    setSelectedArticleUrl(null);
+    setActiveCategory('all');
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/');
+      window.scrollTo(0, 0);
+    }
+  };
 
   // --- ADMIN SESSION ---
   const handleAdminLogin = (creds: AdminCredentials) => {
@@ -594,12 +636,10 @@ export function App() {
       onCategorySelect={(catId) => {
         setActiveCategory(catId);
         setSelectedArticleUrl(null);
+        if (typeof window !== 'undefined' && window.location.pathname !== '/') window.history.pushState({}, '', '/');
       }}
-      onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
-      onGoHome={() => {
-        setSelectedArticleUrl(null);
-        setActiveCategory('all');
-      }}
+      onSelectArticle={openArticle}
+      onGoHome={goHomeNav}
       onSwitchToAdmin={() => setViewMode('admin')}
       onSubscribe={handleSubscribe}
       dateFilter={dateFilter}
@@ -620,8 +660,8 @@ export function App() {
           blogs={blogs}
           ads={publicAds}
           isLoading={loading}
-          onGoBack={() => setSelectedArticleUrl(null)}
-          onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
+          onGoBack={goHomeNav}
+          onSelectArticle={openArticle}
         />
       ) : (
         <PublicHome
@@ -632,7 +672,7 @@ export function App() {
           activeCategory={activeCategory}
           dateFilter={dateFilter}
           isLoading={loading}
-          onSelectArticle={(urlSlug) => setSelectedArticleUrl(urlSlug)}
+          onSelectArticle={openArticle}
           onCategorySelect={(catId) => setActiveCategory(catId)}
         />
       )}
