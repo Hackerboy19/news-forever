@@ -107,6 +107,44 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
     }
   }, [initialData]);
 
+  // --- Auto-save draft to the browser so work is never lost ---
+  const draftKey = `nf_blog_draft_${initialData?.id ?? 'new'}`;
+  const [draftSavedAt, setDraftSavedAt] = useState('');
+  const [pendingDraft, setPendingDraft] = useState<Partial<CIBlog> | null>(null);
+  const draftSkipFirst = useRef(true);
+
+  // On open, offer to restore a draft left over from a previous session.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) setPendingDraft(JSON.parse(raw));
+    } catch { /* ignore */ }
+  }, [draftKey]);
+
+  // Save the current form to the browser as the user types (debounced).
+  useEffect(() => {
+    if (draftSkipFirst.current) { draftSkipFirst.current = false; return; }
+    const id = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(formData));
+        setDraftSavedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } catch { /* quota / private mode — ignore */ }
+    }, 800);
+    return () => clearTimeout(id);
+  }, [formData, draftKey]);
+
+  const clearDraft = () => { try { localStorage.removeItem(draftKey); } catch { /* ignore */ } };
+
+  // Small "?" help bubble — plain-language explanation on hover/tap.
+  const HelpTip: React.FC<{ text: string }> = ({ text }) => (
+    <span
+      title={text}
+      role="img"
+      aria-label={text}
+      className="inline-flex items-center justify-center w-4 h-4 ml-1 rounded-full bg-zinc-700 text-zinc-200 text-[10px] font-bold cursor-help align-middle select-none"
+    >?</span>
+  );
+
   // Handle URL slug auto-generation from Title
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const title = e.target.value;
@@ -151,6 +189,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
       alert('Please enter an Article Title');
       return;
     }
+    clearDraft(); // saved to the server — drop the local backup
     onSave(formData);
   };
 
@@ -172,6 +211,9 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
             </h2>
             <p className="text-xs text-zinc-500 mt-0.5">
               Fill in the details below and press Save. Only the Title is required.
+              {draftSavedAt && (
+                <span className="ml-2 text-emerald-400">· Draft auto-saved {draftSavedAt}</span>
+              )}
             </p>
           </div>
         </div>
@@ -203,6 +245,29 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Restore-unsaved-draft banner */}
+      {pendingDraft && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-6 py-3 bg-amber-950/40 border-b border-amber-800/50 text-amber-200 text-xs">
+          <span>You have an unsaved draft from a previous session. Restore it?</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => { setFormData(pendingDraft); setPendingDraft(null); }}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded"
+            >
+              Restore draft
+            </button>
+            <button
+              type="button"
+              onClick={() => { clearDraft(); setPendingDraft(null); }}
+              className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold rounded"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs Bar */}
       <div className="flex border-b border-[#222222] bg-[#0D0D0D] px-6 gap-1 pt-4 overflow-x-auto">
@@ -283,7 +348,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-2 flex items-center justify-between">
-                    <span>Web address <span className="font-normal normal-case tracking-normal text-zinc-500">— auto-filled from the title, edit only if needed</span></span>
+                    <span>Web address <span className="font-normal normal-case tracking-normal text-zinc-500">— auto-filled from the title, edit only if needed</span><HelpTip text="This becomes the article's link (e.g. newsforever.in/your-slug). Changing it AFTER publishing breaks old links and Google results — only change it before the article is live." /></span>
                     <span className="text-amber-500/70 text-[10px] font-normal normal-case">⚠ changing this breaks old links</span>
                   </label>
                   <div className="flex bg-[#0A0A0A] border border-[#222222] p-3 text-xs font-mono text-zinc-300">
@@ -515,7 +580,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                   />
 
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
-                    Describe the image <span className="text-slate-500 normal-case font-normal">(helps Google &amp; screen readers)</span>
+                    Describe the image <span className="text-slate-500 normal-case font-normal">(helps Google &amp; screen readers)</span><HelpTip text="A short sentence saying what's in the picture, e.g. 'Nidhi Netra holding the trophy on stage'. Shown if the image can't load, read aloud to blind visitors, and helps the photo rank in Google Images." />
                   </label>
                   <input
                     type="text"
@@ -583,7 +648,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      Title on Google <span className="text-slate-500 font-normal">(blue clickable line)</span>
+                      Title on Google <span className="text-slate-500 font-normal">(blue clickable line)</span><HelpTip text="The headline shown in Google search results. Keep it under ~60 characters so it isn't cut off. Leave blank and the article title is used automatically." />
                     </label>
                     <input
                       type="text"
