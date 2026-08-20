@@ -693,15 +693,15 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
 
               <div className="space-y-4">
                 {[
-                  { key: 'h2_tag', label: 'Sub-heading 1' },
-                  { key: 'h3_tag', label: 'Sub-heading 2' },
-                  { key: 'h4_tag', label: 'Sub-heading 3' },
-                  { key: 'h5_tag', label: 'Sub-heading 4' },
-                  { key: 'h6_tag', label: 'Sub-heading 5' },
-                ].map(({ key, label }) => (
+                  { key: 'h2_tag', tag: 'H2', label: 'Sub-heading 1' },
+                  { key: 'h3_tag', tag: 'H3', label: 'Sub-heading 2' },
+                  { key: 'h4_tag', tag: 'H4', label: 'Sub-heading 3' },
+                  { key: 'h5_tag', tag: 'H5', label: 'Sub-heading 4' },
+                  { key: 'h6_tag', tag: 'H6', label: 'Sub-heading 5' },
+                ].map(({ key, tag, label }) => (
                   <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <span className="w-28 px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg text-center">
-                      {label}
+                    <span className="w-40 px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg text-center">
+                      <span className="text-rose-300">{tag}</span> · {label}
                     </span>
                     <input
                       type="text"
