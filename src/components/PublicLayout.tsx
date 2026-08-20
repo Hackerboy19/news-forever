@@ -34,7 +34,7 @@ interface PublicLayoutProps {
   onSubscribe: (email: string) => void;
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
-  siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[] };
+  siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[]; logoUrl?: string };
   children: React.ReactNode;
 }
 
@@ -343,7 +343,15 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           <div className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Logo: NEWS FOREVER */}
             <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
-              <Logo className="w-12 h-12 group-hover:scale-105 transition-transform duration-300 drop-shadow-md" />
+              {siteConfig.logoUrl ? (
+                <img
+                  src={siteConfig.logoUrl}
+                  alt="Site logo"
+                  className="w-12 h-12 object-contain group-hover:scale-105 transition-transform duration-300 drop-shadow-md"
+                />
+              ) : (
+                <Logo className="w-12 h-12 group-hover:scale-105 transition-transform duration-300 drop-shadow-md" />
+              )}
 
               <div className="flex flex-col leading-none">
                 <div className="flex items-center gap-1.5">

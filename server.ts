@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { siteSetting } from "./src/data/siteConfig";
 import { translateArticle, translateTitles } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
@@ -499,6 +498,8 @@ async function startServer() {
 
   // Vite development middleware or production static serving
   if (process.env.NODE_ENV !== "production") {
+    // Lazy-load vite only in dev so production can run on older Node (16+)
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",

@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { CICategory } from '../../types';
-import { Palette, Layout, Save, RotateCcw } from 'lucide-react';
+import { Palette, Layout, Save, RotateCcw, Upload, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 export interface SiteConfigValues {
   headerColor?: string;
   footerColor?: string;
   navExtra?: number[];
+  logoUrl?: string;
 }
 
 interface AdminSiteSettingsProps {
   config: SiteConfigValues;
   categories: CICategory[];
   onSave: (config: SiteConfigValues) => Promise<boolean>;
+  onUploadImage?: (file: File) => Promise<string | null>;
 }
 
 const DEFAULT_HEADER = '#132639';
@@ -22,12 +24,30 @@ const DEFAULT_FOOTER = '#FAFAFA';
  * category tabs pinned into the public navbar. Persists to the database so
  * every visitor sees the change.
  */
-export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, categories, onSave }) => {
+export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, categories, onSave, onUploadImage }) => {
   const [headerColor, setHeaderColor] = useState(config.headerColor || DEFAULT_HEADER);
   const [footerColor, setFooterColor] = useState(config.footerColor || DEFAULT_FOOTER);
   const [navExtra, setNavExtra] = useState<number[]>(config.navExtra || []);
+  const [logoUrl, setLogoUrl] = useState(config.logoUrl || '');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
+
+  const handleLogoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!onUploadImage) { alert('Upload is only available on the live site.'); return; }
+    if (file.size > 4 * 1024 * 1024) { alert('Logo is too large (max 4 MB). Please pick a smaller file.'); return; }
+    setUploadingLogo(true);
+    try {
+      const path = await onUploadImage(file);
+      if (path) setLogoUrl(path);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const topCats = categories.filter((c) => !c.parent_id && (c.article_count ?? 0) > 0);
 
@@ -37,7 +57,7 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
   const save = async () => {
     setSaving(true);
     setMsg('');
-    const ok = await onSave({ headerColor, footerColor, navExtra });
+    const ok = await onSave({ headerColor, footerColor, navExtra, logoUrl: logoUrl.trim() || undefined });
     setSaving(false);
     setMsg(ok ? 'Saved — live for every visitor after refresh.' : 'Save failed.');
   };
@@ -71,6 +91,62 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
         <p className="text-xs text-zinc-400 mt-0.5">
           Colours and navigation apply to the live public site for every visitor (saved in the database).
         </p>
+      </div>
+
+      <div className="bg-[#111111] border border-[#222222] p-6 space-y-4">
+        <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
+          <ImageIcon className="w-4 h-4 text-orange-400" /> Site Logo
+        </h2>
+        <p className="text-xs text-zinc-400 -mt-2">
+          The logo shown in the top-left of every page. Upload one from your computer, or leave empty to use the default NewsForever logo.
+        </p>
+        <div className="flex items-center gap-4">
+          {/* Preview */}
+          <div className="w-20 h-20 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden shrink-0">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Site logo preview" className="max-w-full max-h-full object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }} />
+            ) : (
+              <span className="text-[10px] text-zinc-500 text-center px-1">Default logo</span>
+            )}
+          </div>
+          <div className="flex-1 space-y-2">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+              onChange={handleLogoFile}
+              className="hidden"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={uploadingLogo}
+                onClick={() => logoInputRef.current?.click()}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-500 disabled:opacity-60 disabled:cursor-wait text-xs font-bold text-white rounded-lg transition flex items-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {uploadingLogo ? 'Uploading…' : 'Upload from computer'}
+              </button>
+              {logoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setLogoUrl('')}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 rounded-lg transition flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Use default
+                </button>
+              )}
+            </div>
+            <input
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="…or paste an image link (URL)"
+              className="w-full bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs font-mono text-zinc-200 outline-none focus:border-orange-500 rounded"
+            />
+            <p className="text-[10px] text-zinc-500">Press <strong className="text-zinc-300">Save Settings</strong> below to apply. PNG or SVG works best. Max 4 MB.</p>
+          </div>
+        </div>
       </div>
 
       <div className="bg-[#111111] border border-[#222222] p-6 space-y-4">

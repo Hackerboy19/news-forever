@@ -349,6 +349,7 @@ export interface SiteConfig {
   headerColor?: string;
   footerColor?: string;
   navExtra?: number[]; // extra ci_category ids pinned as top-level nav tabs
+  logoUrl?: string; // custom site logo path/URL; empty = built-in NewsForever logo
 }
 
 const CONFIG_KEY = 'nf_site_config';
@@ -370,6 +371,7 @@ export async function saveSiteConfig(config: SiteConfig): Promise<SiteConfig> {
     headerColor: config.headerColor || '',
     footerColor: config.footerColor || '',
     navExtra: Array.isArray(config.navExtra) ? config.navExtra.map(Number).slice(0, 12) : [],
+    logoUrl: (config.logoUrl || '').slice(0, 500),
   });
   const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [CONFIG_KEY]);
   if ((rows as any[]).length > 0) {

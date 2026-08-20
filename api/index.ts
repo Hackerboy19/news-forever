@@ -266,8 +266,9 @@ export default async function handler(req: any, res: any) {
               headerColor: body.headerColor || '',
               footerColor: body.footerColor || '',
               navExtra: Array.isArray(body.navExtra) ? body.navExtra.map(Number).slice(0, 12) : [],
+              logoUrl: (body.logoUrl || '').slice(0, 500),
             });
-            return res.json({ headerColor: body.headerColor || '', footerColor: body.footerColor || '', navExtra: body.navExtra || [] });
+            return res.json({ headerColor: body.headerColor || '', footerColor: body.footerColor || '', navExtra: body.navExtra || [], logoUrl: body.logoUrl || '' });
           } catch (e: any) {
             return res.status(503).json({ error: `Bridge config save failed: ${e?.message}` });
           }

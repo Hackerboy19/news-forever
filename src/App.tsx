@@ -544,6 +544,7 @@ export function App() {
                 config={siteConfig}
                 categories={categories}
                 onSave={handleSaveSiteConfig}
+                onUploadImage={handleImageUpload}
               />
             )}
 
