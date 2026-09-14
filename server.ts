@@ -446,19 +446,28 @@ async function startServer() {
     res.json({ success: true, clicks: ad?.click_count });
   });
 
-  // GET /api/activity-logs — real ci_activity_log + session actions
-  app.get("/api/activity-logs", async (_req, res) => {
+  // GET /api/activity-logs — real ci_activity_log + session actions.
+  // Admin-only: logs expose admin names, modules and IP addresses.
+  app.get("/api/activity-logs", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     const real = await getActivityLogs();
     res.json([...dbActivityLogs, ...real]);
   });
 
-  // GET /api/users — real ci_admin accounts (no passwords)
-  app.get("/api/users", async (_req, res) => {
+  // GET /api/users — real ci_admin accounts (no passwords).
+  // Admin-only: enumerating staff accounts aids credential-stuffing.
+  app.get("/api/users", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getAdminUsers());
   });
 
-  // GET /api/subscribers — real ci_subscribe rows
-  app.get("/api/subscribers", async (_req, res) => {
+  // GET /api/subscribers — real ci_subscribe rows.
+  // Admin-only: this is the newsletter mailing list (personal data).
+  app.get("/api/subscribers", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getSubscribers());
   });
 
@@ -482,13 +491,17 @@ async function startServer() {
     res.status(201).json({ message: "Subscribed successfully", subscriber: newSub });
   });
 
-  // GET /api/image-library — real ci_imagelibrary rows
-  app.get("/api/image-library", async (_req, res) => {
+  // GET /api/image-library — real ci_imagelibrary rows.
+  // Admin-only: the library lists unpublished/internal media paths.
+  app.get("/api/image-library", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getImageLibrary());
   });
 
   // POST /api/image-library
-  app.post("/api/image-library", (req, res) => {
+  app.post("/api/image-library", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
     const { file_name, file_path, alt_tag } = req.body;
     const newImg: CIImageLibrary = {
       id: dbImages.length ? Math.max(...dbImages.map(i => i.id)) + 1 : 1,

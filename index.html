@@ -7,7 +7,25 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-    <title>Global Gazette - Editorial Headless Portal</title>
+
+    <!--
+      Baseline metadata for the document shell. SEOManager overwrites these per
+      route once React mounts, but crawlers, link unfurlers and the browser tab
+      see this first — so it must already be correct for the homepage rather
+      than a placeholder.
+    -->
+    <title>News Forever - National &amp; International News Portal</title>
+    <meta name="description" content="News Forever delivers 24x7 national and international coverage — beauty pageants and Miss/Mrs India results, Forever Star India Awards, business, astrology, products and lifestyle reporting from across India." />
+    <link rel="canonical" href="https://newsforever.in/" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="News Forever" />
+    <meta property="og:locale" content="en_IN" />
+    <meta property="og:title" content="News Forever - National &amp; International News Portal" />
+    <meta property="og:description" content="News Forever delivers 24x7 national and international coverage — beauty pageants and Miss/Mrs India results, Forever Star India Awards, business, astrology, products and lifestyle reporting from across India." />
+    <meta property="og:url" content="https://newsforever.in/" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body class="bg-[#FAF8F5] text-[#1C1917] antialiased">
     <div id="root"></div>

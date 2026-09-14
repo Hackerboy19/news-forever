@@ -495,9 +495,13 @@ export default async function handler(req: any, res: any) {
       return res.json(realAds.length > 0 ? realAds : snapAds);
     }
 
-    // Admin-only collections — no demo data; real values come from the live
-    // DB once admin write support exists (out of scope, read-only mapping)
+    // ---- Admin-only collections ----
+    // These expose staff identities, internal media paths and the subscriber
+    // mailing list, so every one of them requires valid ci_admin credentials.
+    // They are deliberately never edge-cached.
     if (route === 'activity-logs') {
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: 'Unauthorized' });
+      res.setHeader('Cache-Control', 'no-store');
       let out = await getActivityLogs();
       if (out.length === 0 && bridgeConfigured()) {
         try {
@@ -508,6 +512,8 @@ export default async function handler(req: any, res: any) {
       return res.json(out);
     }
     if (route === 'users') {
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: 'Unauthorized' });
+      res.setHeader('Cache-Control', 'no-store');
       let out = await getAdminUsers();
       if (out.length === 0 && bridgeConfigured()) {
         try {
@@ -518,6 +524,8 @@ export default async function handler(req: any, res: any) {
       return res.json(out);
     }
     if (route === 'image-library') {
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: 'Unauthorized' });
+      res.setHeader('Cache-Control', 'no-store');
       let out = await getImageLibrary();
       if (out.length === 0 && bridgeConfigured()) {
         try {
@@ -530,14 +538,21 @@ export default async function handler(req: any, res: any) {
     if (route === 'settings') return res.json(siteSetting);
 
     if (route === 'subscribers') {
-      if (req.method === 'POST') {
-        const email = (req.body && req.body.email) || '';
-        if (!email.includes('@')) return res.status(400).json({ error: 'Invalid email address' });
+      // POST stays public — it is the newsletter sign-up form.
+      if (method === 'POST') {
+        const body = await readBody(req);
+        const email = String(body?.email || '').trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+          return res.status(400).json({ error: 'Invalid email address' });
+        }
         return res.status(201).json({
           message: 'Subscribed successfully',
           subscriber: { id: 0, email, status: 'subscribed', subscribed_at: new Date().toISOString() },
         });
       }
+      // GET is the mailing list itself — admin only.
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: 'Unauthorized' });
+      res.setHeader('Cache-Control', 'no-store');
       let out = await getSubscribers();
       if (out.length === 0 && bridgeConfigured()) {
         try {

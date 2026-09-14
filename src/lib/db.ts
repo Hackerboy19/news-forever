@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
+import { resolveAuthorName, NEWSROOM_BYLINE } from './editorial.js';
 
 /**
  * MySQL data provider for the legacy jaipurwe_fsianews CodeIgniter database.
@@ -115,7 +116,10 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     is_featured: index === 0,
     is_trending: index > 0 && index < 4,
     author_id: row.user_created_by,
-    author_name: author || 'News Forever Bureau',
+    // The ci_admin join above gives the account's real firstname/lastname.
+    // Shared operations logins ("Admin User") are not bylines — see
+    // resolveAuthorName — so those fall back to the newsroom.
+    author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
     views: 0,
     created_at: row.created_at || '',
     updated_at: row.created_at || '',

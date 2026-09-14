@@ -21,6 +21,13 @@ import {
   Globe
 } from 'lucide-react';
 
+/** Static legal routes surfaced in the footer (see src/components/LegalPage.tsx). */
+const LEGAL_LINKS: { slug: 'privacy-policy' | 'terms-of-service' | 'disclaimer'; label: string }[] = [
+  { slug: 'privacy-policy', label: 'Privacy Policy' },
+  { slug: 'terms-of-service', label: 'Terms of Service' },
+  { slug: 'disclaimer', label: 'Disclaimer' },
+];
+
 interface PublicLayoutProps {
   categories: CICategory[];
   ads: CIAdvertisement[];
@@ -31,6 +38,8 @@ interface PublicLayoutProps {
   onSelectArticle: (urlSlug: string) => void;
   onGoHome: () => void;
   onSwitchToAdmin: () => void;
+  /** Opens a static legal page (privacy-policy | terms-of-service | disclaimer). */
+  onOpenLegal?: (slug: 'privacy-policy' | 'terms-of-service' | 'disclaimer') => void;
   onSubscribe: (email: string) => void;
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
@@ -58,6 +67,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   onSelectArticle,
   onGoHome,
   onSwitchToAdmin,
+  onOpenLegal,
   onSubscribe,
   dateFilter = 'all',
   onDateFilterChange,
@@ -657,7 +667,30 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
           </div>
 
-          <div className="border-t border-stone-200 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
+          {/* Legal — real anchors so they are crawlable and can be opened in a
+              new tab, with SPA navigation on a plain left-click. */}
+          <nav
+            aria-label="Legal"
+            className="border-t border-stone-200 pt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[10px] uppercase tracking-widest font-mono"
+          >
+            {LEGAL_LINKS.map(({ slug, label }) => (
+              <a
+                key={slug}
+                href={`/${slug}`}
+                onClick={(e) => {
+                  if (!onOpenLegal) return;
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onOpenLegal(slug);
+                }}
+                className="text-stone-600 hover:text-[#7A0C0C] transition underline underline-offset-2"
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="border-t border-stone-200 mt-4 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
             <span>© 2026 News Forever. All rights reserved.</span>
             <button
               onClick={onSwitchToAdmin}

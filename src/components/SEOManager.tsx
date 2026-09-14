@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { CIBlog } from '../types';
+import { resolveAuthorName, NEWSROOM_BYLINE } from '../lib/editorial';
 
 export interface SEOProps {
   article?: CIBlog | null;
@@ -13,7 +14,29 @@ export interface SEOProps {
   og_url?: string;
   image?: string;
   defaultTitle?: string;
+  /** Description used when no article is in scope (e.g. the homepage). */
+  defaultDescription?: string;
   siteName?: string;
+}
+
+/** The site-wide homepage title and description. */
+export const DEFAULT_TITLE = 'News Forever - National & International News Portal';
+export const DEFAULT_DESCRIPTION =
+  'News Forever delivers 24x7 national and international coverage — beauty pageants and Miss/Mrs India results, Forever Star India Awards, business, astrology, products and lifestyle reporting from across India.';
+
+/**
+ * Build the canonical URL for the current view.
+ *
+ * Only `lang` survives from the query string: `?lang=hi` is a genuinely
+ * distinct, indexable translation (it has its own hreflang alternate), whereas
+ * campaign and pagination parameters are not. Letting `?utm_source=…`
+ * self-canonicalise would split ranking signals across endless duplicate URLs.
+ */
+export function canonicalUrl(loc: Location = window.location): string {
+  const url = new URL(loc.origin + loc.pathname);
+  const lang = new URLSearchParams(loc.search).get('lang');
+  if (lang === 'hi') url.searchParams.set('lang', 'hi');
+  return url.toString();
 }
 
 export type SEOManagerProps = SEOProps;
@@ -29,7 +52,8 @@ export const SEOManager: React.FC<SEOProps> = ({
   og_image,
   og_url,
   image,
-  defaultTitle = 'News Forever | National & International News Portal',
+  defaultTitle = DEFAULT_TITLE,
+  defaultDescription = DEFAULT_DESCRIPTION,
   siteName = 'News Forever',
 }) => {
   useEffect(() => {
@@ -64,7 +88,7 @@ export const SEOManager: React.FC<SEOProps> = ({
 
     // 2. Standard Meta Tags
     const activeDesc = article?.meta_description || article?.short_content || meta_description;
-    const finalDesc = activeDesc || 'News Forever provides 24x7 organic coverage on beauty pageants, national awards, business, and lifestyle news.';
+    const finalDesc = activeDesc || defaultDescription;
     setMetaTag('name', 'description', finalDesc);
 
     const activeKeywords = article?.meta_keyword || meta_keyword;
@@ -82,7 +106,10 @@ export const SEOManager: React.FC<SEOProps> = ({
     const activeImage = article?.og_image || article?.image || og_image || image || 'https://newsforever.in/assets/img/logo.png';
     setMetaTag('property', 'og:image', activeImage);
 
-    const activeUrl = article?.og_url || og_url || (typeof window !== 'undefined' ? window.location.href : '');
+    // Canonical: the article's stored og_url wins, then an explicit override,
+    // then the cleaned current URL (never the raw href — see canonicalUrl).
+    const activeUrl =
+      article?.og_url || og_url || (typeof window !== 'undefined' ? canonicalUrl() : '');
     if (activeUrl) {
       setMetaTag('property', 'og:url', activeUrl);
       setLinkTag('canonical', activeUrl);
@@ -129,7 +156,11 @@ export const SEOManager: React.FC<SEOProps> = ({
           image: [activeImage],
           keywords: article.meta_keyword || 'beauty pageant, miss india, forever star india awards, news',
           datePublished: (article.created_at || '').split(' ')[0],
-          author: { '@type': 'Person', name: article.author_name || 'News Forever Bureau' },
+          // A shared "Admin User" login is not a Person; attribute those to
+          // the organisation so the structured data stays truthful.
+          author: resolveAuthorName(article.author_name)
+            ? { '@type': 'Person', name: resolveAuthorName(article.author_name) }
+            : { '@type': 'Organization', name: NEWSROOM_BYLINE },
           publisher: { '@type': 'NewsMediaOrganization', name: siteName, url: 'https://newsforever.in/' },
           mainEntityOfPage: activeUrl,
         }
@@ -154,6 +185,7 @@ export const SEOManager: React.FC<SEOProps> = ({
     og_url,
     image,
     defaultTitle,
+    defaultDescription,
     siteName,
   ]);
 

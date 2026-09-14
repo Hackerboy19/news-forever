@@ -11,6 +11,9 @@ import TrendingSidebar from './TrendingSidebar';
 import SidebarAd from './SidebarAd';
 import Skeleton from './ui/Skeleton';
 import BlurImage from './ui/BlurImage';
+import ArticleLink from './ui/ArticleLink';
+import SponsoredBadge from './ui/SponsoredBadge';
+import { isSponsoredArticle, resolveAuthorName, NEWSROOM_BYLINE } from '../lib/editorial';
 import { useI18n } from '../lib/i18n';
 import { shuffleAds } from '../lib/adRotation';
 
@@ -181,9 +184,10 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           {/* Asymmetric magazine hero: 60% featured / 40% trending stack */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
             {/* Main Featured Banner */}
-            <div
-              onClick={() => onSelectArticle(heroArticle.url)}
-              className="lg:col-span-3 group cursor-pointer bg-white border border-[#E7E5E4] overflow-hidden shadow-xs hover:border-[#991B1B]/50 transition flex flex-col"
+            <ArticleLink
+              url={heroArticle.url}
+              onSelectArticle={onSelectArticle}
+              className="lg:col-span-3 group cursor-pointer bg-white border border-[#E7E5E4] overflow-hidden shadow-xs hover:border-[#991B1B]/50 transition flex flex-col no-underline text-inherit"
             >
               <div className="relative h-80 sm:h-96 w-full overflow-hidden bg-stone-100">
                 {/* Asset Mapping: src={heroArticle.image}, alt={heroArticle.alt_tag} */}
@@ -206,6 +210,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                     <span className="px-3 py-1 text-xs font-bold tracking-wider uppercase bg-stone-100 text-stone-700 border border-stone-200 rounded-sm">
                       {t('leadEditorial')}
                     </span>
+                    {isSponsoredArticle(heroArticle) && <SponsoredBadge size="md" />}
                   </div>
                   <h1 className="text-2xl sm:text-4xl font-serif font-black text-stone-900 group-hover:text-[#991B1B] transition leading-[1.15] tracking-tight border-l-4 border-[#991B1B] pl-4 decoration-[#991B1B]/60 decoration-2 underline-offset-4 group-hover:underline">
                     {tt(heroArticle.title)}
@@ -216,7 +221,9 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-stone-500 font-mono pt-4 border-t border-[#E7E5E4]">
-                  <span className="text-stone-700 font-bold uppercase tracking-wider">By {heroArticle.author_name}</span>
+                  <span className="text-stone-700 font-bold uppercase tracking-wider">
+                    By {resolveAuthorName(heroArticle.author_name) || NEWSROOM_BYLINE}
+                  </span>
                   <div className="flex items-center gap-4">
                     {heroArticle.views > 0 && (
                       <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5 text-[#991B1B]" /> {heroArticle.views.toLocaleString()}</span>
@@ -225,7 +232,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                   </div>
                 </div>
               </div>
-            </div>
+            </ArticleLink>
 
             {/* Trending Articles Column */}
             <div className="lg:col-span-2 space-y-4">
@@ -235,10 +242,11 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
               <div className="space-y-4">
                 {trendingArticles.map((article) => (
-                  <div
+                  <ArticleLink
                     key={article.id}
-                    onClick={() => onSelectArticle(article.url)}
-                    className="group cursor-pointer p-3 bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 flex gap-4 transition shadow-xs"
+                    url={article.url}
+                    onSelectArticle={onSelectArticle}
+                    className="group cursor-pointer p-3 bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 flex gap-4 transition shadow-xs no-underline text-inherit"
                   >
                     <BlurImage
                       src={article.image}
@@ -257,7 +265,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         {article.created_at ? article.created_at.split(' ')[0] : ''}
                       </span>
                     </div>
-                  </div>
+                  </ArticleLink>
                 ))}
               </div>
             </div>
@@ -292,10 +300,11 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
               <div className="flex overflow-x-auto snap-rail gap-5 pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 lg:grid lg:grid-cols-4 lg:overflow-visible lg:pb-0 hide-scrollbar">
                 {blockArticles.map((article) => (
-                  <div
+                  <ArticleLink
                     key={article.id}
-                    onClick={() => onSelectArticle(article.url)}
-                    className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col shrink-0 w-64 lg:w-auto"
+                    url={article.url}
+                    onSelectArticle={onSelectArticle}
+                    className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col shrink-0 w-64 lg:w-auto no-underline text-inherit"
                   >
                     <div className="relative h-40 w-full overflow-hidden bg-stone-100">
                       <BlurImage
@@ -316,7 +325,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         <span>{article.created_at ? article.created_at.split(' ')[0] : ''}</span>
                       </div>
                     </div>
-                  </div>
+                  </ArticleLink>
                 ))}
               </div>
             </section>
@@ -364,9 +373,10 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                   </div>
                 )}
 
-                <div
-                  onClick={() => onSelectArticle(article.url)}
-                  className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between"
+                <ArticleLink
+                  url={article.url}
+                  onSelectArticle={onSelectArticle}
+                  className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between no-underline text-inherit"
                 >
                   <div className="relative h-48 w-full overflow-hidden bg-stone-100">
                     <BlurImage
@@ -383,6 +393,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                         <span className="px-3 py-1 text-[10px] font-bold tracking-wider uppercase bg-stone-100 text-[#991B1B] border border-stone-200 rounded-sm">
                           {article.category_name}
                         </span>
+                        {isSponsoredArticle(article) && <SponsoredBadge />}
                       </div>
                       <h3 className="text-lg font-serif font-bold text-stone-900 group-hover:text-[#991B1B] transition leading-snug tracking-tight line-clamp-2 decoration-[#991B1B]/50 decoration-2 underline-offset-4 group-hover:underline">
                         {tt(article.title)}
@@ -399,7 +410,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       </span>
                     </div>
                   </div>
-                </div>
+                </ArticleLink>
               </React.Fragment>
             ))}
           </div>
