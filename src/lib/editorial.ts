@@ -59,6 +59,16 @@ const GENERIC_AUTHOR_NAMES = new Set([
   'test user',
   'user',
   'news forever',
+  // The house byline is itself a "no attributed person" sentinel, and it must
+  // survive a round trip. `mapBlogRow` substitutes it into `author_name`
+  // before the UI ever sees the row, so on the live-DB path the presentation
+  // layer receives "News Forever Bureau" rather than "Admin User". Without
+  // this entry it would read as a real name and be rendered as "Written by …"
+  // with Person microdata and a Person JSON-LD author — re-attributing the
+  // article to a person who does not exist, which is the exact failure this
+  // helper exists to prevent. Derived from the constant so the two cannot
+  // drift apart.
+  NEWSROOM_BYLINE.toLowerCase(),
 ]);
 
 /**
