@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
+import { resolveAuthorName, NEWSROOM_BYLINE } from './editorial.js';
 
 /**
  * MySQL data provider for the legacy jaipurwe_fsianews CodeIgniter database.
@@ -115,7 +116,10 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     is_featured: index === 0,
     is_trending: index > 0 && index < 4,
     author_id: row.user_created_by,
-    author_name: author || 'News Forever Bureau',
+    // The ci_admin join above gives the account's real firstname/lastname.
+    // Shared operations logins ("Admin User") are not bylines — see
+    // resolveAuthorName — so those fall back to the newsroom.
+    author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
     views: 0,
     created_at: row.created_at || '',
     updated_at: row.created_at || '',
@@ -686,6 +690,45 @@ interface RawAdRow {
 }
 
 /** Fetch active promotional ads from ci_advertisement, most prominent first. */
+/** Shared row -> CIAdvertisement mapping for both ad queries. */
+function mapAdRow(row: RawAdRow): CIAdvertisement {
+  return {
+    id: row.id,
+    title: row.advertisement_title,
+    advertisement_image: assetUrl(row.advertisement_image),
+    alt_tag: row.alt_tag || row.advertisement_title,
+    url: row.advertisement_url,
+    position: row.position,
+    priority: row.priority,
+    status: row.status,
+    click_count: 0,
+    impressions: 0,
+    created_at: row.created_at || '',
+  };
+}
+
+/**
+ * Every ad, whatever its status — for the admin manager only.
+ *
+ * The manager used to render the public `getActiveAds` list, which filters to
+ * `status = 1`. Deactivating an ad therefore removed it from the only screen
+ * that could edit it, so it could never be edited or switched back on again.
+ */
+export async function getAllAdsAdmin(): Promise<CIAdvertisement[]> {
+  try {
+    const [rows] = await dbPool.query(`
+      SELECT id, advertisement_title, advertisement_url, advertisement_image,
+             alt_tag, priority, position, status, created_at
+      FROM ci_advertisement
+      ORDER BY status DESC, priority ASC, id DESC
+    `);
+    return (rows as RawAdRow[]).map(mapAdRow);
+  } catch (err) {
+    handleDbError('getAllAdsAdmin', err);
+    return [];
+  }
+}
+
 export async function getActiveAds(): Promise<CIAdvertisement[]> {
   try {
     const query = `

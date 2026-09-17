@@ -16,6 +16,169 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Article body typography
+
+   Article HTML comes out of ci_blog.description via dangerouslySetInnerHTML,
+   so Tailwind's utility classes never reach it — only element selectors do.
+   Preflight resets headings to inherited size/weight, strips list markers and
+   removes link colour and underline, which left published articles with
+   invisible headings, bullet-less lists and inline links that read as plain
+   text. These rules put that formatting back for article content only.
+
+   (This previously relied on the `prose` class, but @tailwindcss/typography
+   is not installed and `plugins` is empty, so `prose` matched nothing.)
+--------------------------------------------------------------------------- */
+.article-body {
+  color: #334155;
+}
+
+.article-body > * + * {
+  margin-top: 1.15em;
+}
+
+/* Headings — the legacy H2–H6 hierarchy is load-bearing for on-page SEO,
+   so each level stays visually distinct. */
+.article-body h1,
+.article-body h2,
+.article-body h3,
+.article-body h4,
+.article-body h5,
+.article-body h6 {
+  font-family: 'Playfair Display', Georgia, serif;
+  color: #1C1917;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1.9em;
+  margin-bottom: 0.55em;
+  text-wrap: balance;
+}
+
+.article-body h1 { font-size: 1.9rem; }
+.article-body h2 { font-size: 1.6rem; }
+.article-body h3 { font-size: 1.35rem; }
+.article-body h4 { font-size: 1.15rem; }
+.article-body h5 { font-size: 1.02rem; }
+.article-body h6 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #57534E;
+}
+
+.article-body h2 {
+  border-bottom: 1px solid #E7E5E4;
+  padding-bottom: 0.3em;
+}
+
+/* Links must be obviously clickable inside running copy. */
+.article-body a {
+  color: #991B1B;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(153, 27, 27, 0.45);
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.article-body a:hover {
+  color: #7A0C0C;
+  text-decoration-color: #7A0C0C;
+}
+
+/* Lists — Preflight removes the markers; restore them. */
+.article-body ul,
+.article-body ol {
+  padding-left: 1.6em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.article-body ul { list-style: disc outside; }
+.article-body ol { list-style: decimal outside; }
+.article-body ul ul { list-style: circle outside; }
+.article-body ul ul ul { list-style: square outside; }
+
+.article-body li {
+  display: list-item;
+  margin-top: 0.4em;
+  padding-left: 0.25em;
+}
+
+.article-body li::marker {
+  color: #991B1B;
+}
+
+.article-body li > ul,
+.article-body li > ol {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+.article-body blockquote {
+  border-left: 4px solid #991B1B;
+  background: #FAF8F5;
+  padding: 0.9em 1.2em;
+  margin: 1.4em 0;
+  font-style: italic;
+  color: #44403C;
+}
+
+.article-body blockquote p:first-child { margin-top: 0; }
+
+.article-body strong, .article-body b { font-weight: 700; color: #1C1917; }
+.article-body em, .article-body i { font-style: italic; }
+
+.article-body img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #E7E5E4;
+  margin: 1.2em 0;
+}
+
+.article-body figure { margin: 1.4em 0; }
+.article-body figcaption {
+  font-size: 0.85rem;
+  color: #78716C;
+  font-style: italic;
+  margin-top: 0.5em;
+}
+
+/* Tables can be wider than the column; scroll them rather than the page. */
+.article-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.95rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.article-body th,
+.article-body td {
+  border: 1px solid #E7E5E4;
+  padding: 0.55em 0.8em;
+  text-align: left;
+}
+
+.article-body th {
+  background: #FAF8F5;
+  font-weight: 700;
+  color: #1C1917;
+}
+
+.article-body hr {
+  border: 0;
+  border-top: 1px solid #E7E5E4;
+  margin: 2em 0;
+}
+
+.article-body iframe {
+  max-width: 100%;
+  margin: 1.4em 0;
+}
+
 /* English Editorial light theme helper classes */
 .editorial-card {
   background-color: #FFFFFF;

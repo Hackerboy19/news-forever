@@ -24,6 +24,7 @@ import {
   getBlogByUrlSlug,
   getAllCategories,
   getActiveAds,
+  getAllAdsAdmin,
   getActiveTags,
   verifyAdmin,
   createBlog,
@@ -336,7 +337,14 @@ async function startServer() {
   });
 
   // GET /api/advertisements — real ci_advertisement rows
-  app.get("/api/advertisements", async (_req, res) => {
+  app.get("/api/advertisements", async (req, res) => {
+    // Admin manager list: every ad regardless of status, so a deactivated one
+    // stays editable. Requires ci_admin credentials and is never cached.
+    if (req.query.status === "all") {
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(await getAllAdsAdmin());
+    }
     const realAds = await getActiveAds();
     res.json(realAds.length > 0 ? realAds : dbAds);
   });
@@ -446,19 +454,28 @@ async function startServer() {
     res.json({ success: true, clicks: ad?.click_count });
   });
 
-  // GET /api/activity-logs — real ci_activity_log + session actions
-  app.get("/api/activity-logs", async (_req, res) => {
+  // GET /api/activity-logs — real ci_activity_log + session actions.
+  // Admin-only: logs expose admin names, modules and IP addresses.
+  app.get("/api/activity-logs", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     const real = await getActivityLogs();
     res.json([...dbActivityLogs, ...real]);
   });
 
-  // GET /api/users — real ci_admin accounts (no passwords)
-  app.get("/api/users", async (_req, res) => {
+  // GET /api/users — real ci_admin accounts (no passwords).
+  // Admin-only: enumerating staff accounts aids credential-stuffing.
+  app.get("/api/users", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getAdminUsers());
   });
 
-  // GET /api/subscribers — real ci_subscribe rows
-  app.get("/api/subscribers", async (_req, res) => {
+  // GET /api/subscribers — real ci_subscribe rows.
+  // Admin-only: this is the newsletter mailing list (personal data).
+  app.get("/api/subscribers", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getSubscribers());
   });
 
@@ -482,13 +499,17 @@ async function startServer() {
     res.status(201).json({ message: "Subscribed successfully", subscriber: newSub });
   });
 
-  // GET /api/image-library — real ci_imagelibrary rows
-  app.get("/api/image-library", async (_req, res) => {
+  // GET /api/image-library — real ci_imagelibrary rows.
+  // Admin-only: the library lists unpublished/internal media paths.
+  app.get("/api/image-library", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getImageLibrary());
   });
 
   // POST /api/image-library
-  app.post("/api/image-library", (req, res) => {
+  app.post("/api/image-library", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
     const { file_name, file_path, alt_tag } = req.body;
     const newImg: CIImageLibrary = {
       id: dbImages.length ? Math.max(...dbImages.map(i => i.id)) + 1 : 1,
@@ -535,9 +556,44 @@ async function startServer() {
 
     // Legacy CodeIgniter media served straight from the domain root so old
     // image URLs (newsforever.in/assets/img/…, /uploads/…) keep working when
-    // this app fronts the main domain. No-ops when the folders are absent.
-    app.use("/assets", express.static(path.join(process.cwd(), "assets")));
-    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+    // this app fronts the main domain.
+    //
+    // These folders usually do NOT live inside the app directory. The legacy
+    // uploads sit wherever CodeIgniter kept them (typically public_html), while
+    // this app is deployed beside them — so resolving them against the app's
+    // own working directory finds nothing and every image 404s even though the
+    // files are present on the server. Point LEGACY_MEDIA_ROOT at the directory
+    // that CONTAINS `assets/` and `uploads/` (e.g. /home/<user>/public_html).
+    // It is read at runtime, so changing it needs only a restart, no rebuild.
+    const mediaRoot = process.env.LEGACY_MEDIA_ROOT || process.cwd();
+    const assetsDir = path.join(mediaRoot, "assets");
+    const uploadsDir = path.join(mediaRoot, "uploads");
+    app.use("/assets", express.static(assetsDir));
+    app.use("/uploads", express.static(uploadsDir));
+
+    // Say plainly at boot whether the media is actually reachable. Without this
+    // a misconfigured root is invisible until someone notices broken images.
+    {
+      const { existsSync } = await import("fs");
+      const found = existsSync(assetsDir);
+      console.log(
+        `[media] LEGACY_MEDIA_ROOT=${mediaRoot} -> ${assetsDir} ${found ? "(found)" : "(MISSING)"}`
+      );
+      if (!found) {
+        console.warn(
+          "[media] No assets/ directory there, so /assets/* will 404. Set LEGACY_MEDIA_ROOT to the folder containing the legacy assets/ and uploads/ directories."
+        );
+      }
+    }
+
+    // A media path that matches no file must 404 — it must never reach the SPA
+    // catch-all below. Without this, a missing image answered 200 with the
+    // whole index.html shell: opening an og:image URL showed a news page
+    // instead of the picture, and Facebook/X/Google were handed HTML where
+    // they expected image bytes. A 404 is honest and debuggable.
+    app.use(["/assets", "/uploads"], (_req, res) => {
+      res.status(404).type("text/plain").send("Not found");
+    });
 
     // Server-side meta injection: for article URLs, put the real title/desc/
     // OG tags into the initial HTML so Google, WhatsApp, Facebook, etc. show
@@ -582,6 +638,32 @@ async function startServer() {
               imgEsc ? `<meta name="twitter:image" content="${imgEsc}">` : "",
             ].filter(Boolean).join("\n    ");
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}\n  </head>`);
+
+            // Server-rendered article body.
+            //
+            // Only <head> was being injected, so `view source` on an article
+            // showed correct OG tags above a completely empty <div id="root">
+            // — no <h1>, and none of the H2–H6 hierarchy the editors write.
+            // Anything that does not execute JavaScript (many crawlers, link
+            // previewers, reader modes, accessibility tooling) saw a blank
+            // page, which is a poor position for a news site that depends on
+            // that heading structure for ranking.
+            //
+            // React's createRoot() replaces the contents of #root when it
+            // mounts, so this is markup for non-JS consumers only and cannot
+            // desynchronise from what readers see.
+            const heroImg = imgEsc
+              ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">`
+              : "";
+            const shell = [
+              `<article>`,
+              `<h1>${esc(article.title)}</h1>`,
+              article.short_content ? `<p>${esc(article.short_content)}</p>` : "",
+              heroImg,
+              article.content || "",
+              `</article>`,
+            ].filter(Boolean).join("\n");
+            html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${shell}</div>`);
           }
         }
         res.set("Content-Type", "text/html; charset=utf-8").send(html);

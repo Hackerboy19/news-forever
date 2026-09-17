@@ -16,7 +16,8 @@ import {
 import PublicLayout from './components/PublicLayout';
 import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
-import SEOManager from './components/SEOManager';
+import SEOManager, { DEFAULT_TITLE, DEFAULT_DESCRIPTION } from './components/SEOManager';
+import LegalPage, { LEGAL_SLUGS, type LegalSlug } from './components/LegalPage';
 
 import { I18nProvider } from './lib/i18n';
 import { DEMO_ADS, isDemoAd } from './data/demoAds';
@@ -50,7 +51,31 @@ import AdminSiteSettings, { SiteConfigValues } from './components/admin/AdminSit
  * Legacy article URLs are a single top-level segment (e.g. /my-article-slug).
  * Reserved first segments are not articles.
  */
-const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'uploads', 'report.html', 'favicon.ico', 'sitemap.xml', 'robots.txt', 'rss.xml', 'feed.rss']);
+const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'uploads', 'report.html', 'favicon.ico', 'sitemap.xml', 'robots.txt', 'rss.xml', 'feed.rss', ...LEGAL_SLUGS]);
+/**
+ * The public category slug for the current path, if any.
+ *
+ * `/category/<slug>` URLs are already indexed and are linked from the header,
+ * the footer and the category rails, but nothing parsed them: the path was
+ * only ever treated as "not an article", so every one of them rendered the
+ * unfiltered homepage. Reading the slug here makes those links resolve to the
+ * section they name, and makes the filtered view shareable.
+ */
+function categoryFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const parts = decodeURIComponent(window.location.pathname)
+    .replace(/^\/+|\/+$/g, '')
+    .split('/');
+  if (parts[0] !== 'category' || !parts[1]) return null;
+  return parts[1].toLowerCase();
+}
+
+/** The static legal route for the current path, if any. */
+function legalFromPath(): LegalSlug | null {
+  if (typeof window === 'undefined') return null;
+  const path = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
+  return (LEGAL_SLUGS as string[]).includes(path) ? (path as LegalSlug) : null;
+}
 function slugFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const path = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
@@ -67,8 +92,11 @@ export function App() {
   // Navigation & View Mode
   const [viewMode, setViewMode] = useState<ViewMode>(() => (isAdminPath() ? 'admin' : 'public'));
   const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(() => slugFromPath());
+  const [legalSlug, setLegalSlug] = useState<LegalSlug | null>(() => legalFromPath());
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
-  const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
+  const [activeCategory, setActiveCategory] = useState<number | string | 'all'>(
+    () => categoryFromPath() ?? 'all'
+  );
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
   const [adminAuth, setAdminAuth] = useState<AdminCredentials | null>(() => loadAdminSession());
@@ -83,6 +111,14 @@ export function App() {
   const [categories, setCategories] = useState<CICategory[]>([]);
   const [tags, setTags] = useState<CITag[]>([]);
   const [ads, setAds] = useState<CIAdvertisement[]>([]);
+  /**
+   * Ads for the admin manager: every row from ci_advertisement regardless of
+   * status, and no demo placeholders. `ads` above is the public list — it is
+   * filtered to status = 1 and has DEMO_ADS appended for the front-end, and
+   * demo entries are deliberately not editable, so rendering the manager from
+   * it meant a site with no active ads showed nothing but uneditable samples.
+   */
+  const [adminAds, setAdminAds] = useState<CIAdvertisement[]>([]);
   const [activityLogs, setActivityLogs] = useState<CIActivityLog[]>([]);
   const [users, setUsers] = useState<CIUser[]>([]);
   const [subscribers, setSubscribers] = useState<CISubscriber[]>([]);
@@ -93,28 +129,19 @@ export function App() {
   // Loading state
   const [loading, setLoading] = useState(true);
 
-  // Fetch initial data from REST API
+  /**
+   * Public data only. The subscriber list, admin accounts, activity log and
+   * image library are NOT fetched here — they are personal/staff data and the
+   * API now rejects them without ci_admin credentials. Fetching them on the
+   * public homepage would have leaked the mailing list to every visitor.
+   */
   const fetchData = async () => {
     try {
-      const [
-        resBlogs,
-        resCats,
-        resTags,
-        resAds,
-        resLogs,
-        resUsers,
-        resSubs,
-        resImgs,
-        resSetting
-      ] = await Promise.all([
+      const [resBlogs, resCats, resTags, resAds, resSetting] = await Promise.all([
         fetch('/api/blogs').then(r => r.json()),
         fetch('/api/categories').then(r => r.json()),
         fetch('/api/tags').then(r => r.json()),
         fetch('/api/advertisements').then(r => r.json()),
-        fetch('/api/activity-logs').then(r => r.json()),
-        fetch('/api/users').then(r => r.json()),
-        fetch('/api/subscribers').then(r => r.json()),
-        fetch('/api/image-library').then(r => r.json()),
         fetch('/api/settings').then(r => r.json()),
       ]);
 
@@ -122,10 +149,6 @@ export function App() {
       setCategories(resCats);
       setTags(resTags);
       setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      setActivityLogs(resLogs);
-      setUsers(resUsers);
-      setSubscribers(resSubs);
-      setImages(resImgs);
       setSetting(resSetting);
       fetch('/api/site-config').then(r => r.ok ? r.json() : {}).then(setSiteConfig).catch(() => {});
     } catch (err) {
@@ -133,6 +156,43 @@ export function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Admin-only collections, loaded lazily once a ci_admin session exists and
+   * always sent with credentials. A 401 simply leaves the list empty.
+   */
+  const fetchAdminData = async (creds: AdminCredentials | null = adminAuth) => {
+    if (!creds) {
+      setActivityLogs([]);
+      setUsers([]);
+      setSubscribers([]);
+      setImages([]);
+      return;
+    }
+    const headers = adminHeaders(creds);
+    const load = async (path: string) => {
+      try {
+        const res = await fetch(path, { headers });
+        if (!res.ok) return [];
+        const json = await res.json();
+        return Array.isArray(json) ? json : [];
+      } catch {
+        return [];
+      }
+    };
+    const [logs, users, subs, imgs, allAds] = await Promise.all([
+      load('/api/activity-logs'),
+      load('/api/users'),
+      load('/api/subscribers'),
+      load('/api/image-library'),
+      load('/api/advertisements?status=all'),
+    ]);
+    setActivityLogs(logs);
+    setUsers(users);
+    setSubscribers(subs);
+    setImages(imgs);
+    setAdminAds(allAds);
   };
 
   useEffect(() => {
@@ -144,6 +204,8 @@ export function App() {
       if (isAdminPath()) { setViewMode('admin'); return; }
       setViewMode('public');
       setSelectedArticleUrl(slugFromPath());
+      setLegalSlug(legalFromPath());
+      setActiveCategory(categoryFromPath() ?? 'all');
     };
     window.addEventListener('hashchange', syncFromUrl);
     window.addEventListener('popstate', syncFromUrl);
@@ -153,8 +215,14 @@ export function App() {
     };
   }, []);
 
+  // Admin collections follow the session: loaded on login, cleared on logout.
+  useEffect(() => {
+    fetchAdminData(adminAuth);
+  }, [adminAuth]);
+
   // Open an article and reflect it in the URL (shareable / refreshable / SEO).
   const openArticle = (urlSlug: string) => {
+    setLegalSlug(null);
     setSelectedArticleUrl(urlSlug);
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', '/' + urlSlug.replace(/^\/+/, ''));
@@ -164,9 +232,20 @@ export function App() {
   // Return to the homepage and reset the URL to "/".
   const goHomeNav = () => {
     setSelectedArticleUrl(null);
+    setLegalSlug(null);
     setActiveCategory('all');
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', '/');
+      window.scrollTo(0, 0);
+    }
+  };
+
+  // Open a static legal page (/privacy-policy, /terms-of-service, /disclaimer).
+  const openLegal = (slug: LegalSlug) => {
+    setSelectedArticleUrl(null);
+    setLegalSlug(slug);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/' + slug);
       window.scrollTo(0, 0);
     }
   };
@@ -234,8 +313,9 @@ export function App() {
       if (await handleWriteError(res)) return;
       await refreshAdminBlogs();
 
-      const resLogs = await fetch('/api/activity-logs').then(r => r.json());
-      setActivityLogs(resLogs);
+      const resLogs = await fetch('/api/activity-logs', { headers: adminHeaders(adminAuth) })
+        .then(r => (r.ok ? r.json() : []));
+      setActivityLogs(Array.isArray(resLogs) ? resLogs : []);
 
       setIsBlogFormOpen(false);
       setEditingBlog(null);
@@ -311,8 +391,9 @@ export function App() {
       const res = await fetch(`/api/blogs/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
       setBlogs(prev => prev.filter(b => b.id !== id));
-      const resLogs = await fetch('/api/activity-logs').then(r => r.json());
-      setActivityLogs(resLogs);
+      const resLogs = await fetch('/api/activity-logs', { headers: adminHeaders(adminAuth) })
+        .then(r => (r.ok ? r.json() : []));
+      setActivityLogs(Array.isArray(resLogs) ? resLogs : []);
     } catch (err) {
       alert('Could not delete the article. Please try again.');
     }
@@ -406,14 +487,35 @@ export function App() {
         body: JSON.stringify(payload),
       });
       if (await handleWriteError(res)) return;
-      const data = await res.json();
-      if (Array.isArray(data)) setAds(data);
-      else {
-        const resAds = await fetch('/api/advertisements').then(r => r.json());
-        setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      }
+      await refreshAds();
     } catch (err) {
       alert('Could not save the ad. Please try again.');
+    }
+  };
+
+  /**
+   * Re-read both ad lists after a write.
+   *
+   * They are genuinely different queries — the public one is active-only with
+   * the demo placeholders appended, the admin one is every row and no demos —
+   * so refreshing only the public list left the manager showing stale rows
+   * (and, for a newly deactivated ad, a row that had silently vanished).
+   */
+  const refreshAds = async (creds: AdminCredentials | null = adminAuth) => {
+    try {
+      const publicAdsRes = await fetch('/api/advertisements').then(r => (r.ok ? r.json() : []));
+      setAds([...(Array.isArray(publicAdsRes) ? publicAdsRes : []), ...DEMO_ADS]);
+    } catch {
+      /* leave the current public list in place */
+    }
+    if (!creds) return;
+    try {
+      const res = await fetch('/api/advertisements?status=all', { headers: adminHeaders(creds) });
+      if (!res.ok) return;
+      const json = await res.json();
+      setAdminAds(Array.isArray(json) ? json : []);
+    } catch {
+      /* leave the current admin list in place */
     }
   };
 
@@ -422,7 +524,8 @@ export function App() {
     try {
       const res = await fetch(`/api/advertisements/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
-      setAds(prev => prev.filter(a => a.id !== id));
+      setAdminAds(prev => prev.filter(a => a.id !== id));
+      await refreshAds();
     } catch (err) {
       alert('Could not delete the ad. Please try again.');
     }
@@ -433,7 +536,7 @@ export function App() {
     try {
       const res = await fetch('/api/image-library', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...adminHeaders(adminAuth) },
         body: JSON.stringify(img),
       });
       const created = await res.json();
@@ -459,6 +562,9 @@ export function App() {
   };
 
   // --- SUBSCRIBE ---
+  // Public visitors POST their own address and get nothing back but a status.
+  // The list is only re-read when an admin is signed in (see fetchAdminData);
+  // a visitor must never be able to pull the mailing list down to the browser.
   const handleSubscribe = async (email: string) => {
     try {
       await fetch('/api/subscribers', {
@@ -466,8 +572,7 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      const resSubs = await fetch('/api/subscribers').then(r => r.json());
-      setSubscribers(resSubs);
+      if (adminAuth) await fetchAdminData(adminAuth);
     } catch (err) {
       console.error(err);
     }
@@ -564,7 +669,7 @@ export function App() {
 
             {adminTab === 'Advertisement' && (
               <AdminAds
-                ads={ads}
+                ads={adminAds}
                 onSaveAd={handleSaveAd}
                 onDeleteAd={handleDeleteAd}
               />
@@ -636,25 +741,35 @@ export function App() {
       onCategorySelect={(catId) => {
         setActiveCategory(catId);
         setSelectedArticleUrl(null);
-        if (typeof window !== 'undefined' && window.location.pathname !== '/') window.history.pushState({}, '', '/');
+        setLegalSlug(null);
+        if (typeof window === 'undefined') return;
+        // Keep the address bar in step with the filter so the view is
+        // shareable. Public nav slugs are strings and map to a real
+        // /category/<slug> URL; a bare ci_category id has no public slug, so
+        // those fall back to "/" as before.
+        const next = typeof catId === 'string' && catId !== 'all' ? `/category/${catId}` : '/';
+        if (window.location.pathname !== next) window.history.pushState({}, '', next);
       }}
       onSelectArticle={openArticle}
       onGoHome={goHomeNav}
       onSwitchToAdmin={() => setViewMode('admin')}
+      onOpenLegal={openLegal}
       onSubscribe={handleSubscribe}
       dateFilter={dateFilter}
       onDateFilterChange={setDateFilter}
       siteConfig={siteConfig}
       ads={publicAds}
     >
-      {!selectedArticleUrl && (
+      {!selectedArticleUrl && !legalSlug && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
-          defaultTitle="News Forever | National & International News Portal"
-          defaultDescription={setting?.site_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          defaultTitle={DEFAULT_TITLE}
+          defaultDescription={setting?.site_description || DEFAULT_DESCRIPTION}
         />
       )}
-      {selectedArticleUrl ? (
+      {legalSlug ? (
+        <LegalPage slug={legalSlug} onGoHome={goHomeNav} />
+      ) : selectedArticleUrl ? (
         <PublicArticlePage
           urlSlug={selectedArticleUrl}
           blogs={blogs}
