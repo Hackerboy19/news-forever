@@ -548,9 +548,35 @@ async function startServer() {
 
     // Legacy CodeIgniter media served straight from the domain root so old
     // image URLs (newsforever.in/assets/img/…, /uploads/…) keep working when
-    // this app fronts the main domain. No-ops when the folders are absent.
-    app.use("/assets", express.static(path.join(process.cwd(), "assets")));
-    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+    // this app fronts the main domain.
+    //
+    // These folders usually do NOT live inside the app directory. The legacy
+    // uploads sit wherever CodeIgniter kept them (typically public_html), while
+    // this app is deployed beside them — so resolving them against the app's
+    // own working directory finds nothing and every image 404s even though the
+    // files are present on the server. Point LEGACY_MEDIA_ROOT at the directory
+    // that CONTAINS `assets/` and `uploads/` (e.g. /home/<user>/public_html).
+    // It is read at runtime, so changing it needs only a restart, no rebuild.
+    const mediaRoot = process.env.LEGACY_MEDIA_ROOT || process.cwd();
+    const assetsDir = path.join(mediaRoot, "assets");
+    const uploadsDir = path.join(mediaRoot, "uploads");
+    app.use("/assets", express.static(assetsDir));
+    app.use("/uploads", express.static(uploadsDir));
+
+    // Say plainly at boot whether the media is actually reachable. Without this
+    // a misconfigured root is invisible until someone notices broken images.
+    {
+      const { existsSync } = await import("fs");
+      const found = existsSync(assetsDir);
+      console.log(
+        `[media] LEGACY_MEDIA_ROOT=${mediaRoot} -> ${assetsDir} ${found ? "(found)" : "(MISSING)"}`
+      );
+      if (!found) {
+        console.warn(
+          "[media] No assets/ directory there, so /assets/* will 404. Set LEGACY_MEDIA_ROOT to the folder containing the legacy assets/ and uploads/ directories."
+        );
+      }
+    }
 
     // A media path that matches no file must 404 — it must never reach the SPA
     // catch-all below. Without this, a missing image answered 200 with the
