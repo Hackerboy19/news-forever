@@ -352,8 +352,25 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Main Logo and Navigation Container matching NewsForever layout */}
           <div className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            {/* Logo: NEWS FOREVER */}
-            <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
+            {/* Logo: NEWS FOREVER — a real <a href="/">, not a button.
+                As a button it only worked when React was already driving the
+                page; on any URL the SPA does not own (a legacy page, or a
+                route it renders as "article not found") the click updated
+                state without navigating, so the address bar changed but the
+                homepage never loaded. An anchor always gets the reader home:
+                the SPA intercepts a plain left-click, and anything else is a
+                normal browser navigation. It is also the home link crawlers
+                expect to find on the masthead. */}
+            <a
+              href="/"
+              aria-label="News Forever — go to the homepage"
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                e.preventDefault();
+                onGoHome();
+              }}
+              className="flex items-center gap-3 text-left group shrink-0 py-0.5 no-underline"
+            >
               {siteConfig.logoUrl ? (
                 <img
                   src={resolveAssetUrl(siteConfig.logoUrl)}
@@ -378,7 +395,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                   {t('tagline')}
                 </span>
               </div>
-            </button>
+            </a>
 
             {/* Desktop Main Navigation — full live ci_category tree */}
             <nav className="hidden md:flex items-center flex-wrap gap-x-1 gap-y-0.5 text-xs font-bold uppercase tracking-wider text-slate-100">
@@ -645,12 +662,35 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             <div className="space-y-2">
               <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">{t('topSubcategories')}</h4>
-              <ul className="space-y-1 text-stone-600 text-[11px]">
-                <li>• Fashion &amp; Glamour</li>
-                <li>• Entertainment</li>
-                <li>• Business News</li>
-                <li>• Lifestyle &amp; Products</li>
-                <li>• Astrology</li>
+              {/* These were five hardcoded strings with typed-in "•" bullets and
+                  no links — dead text that named the sections but went nowhere
+                  and taught crawlers nothing. They now come from the same
+                  NAV_UMBRELLAS the header uses, as real /category/<slug>
+                  anchors, so the list cannot drift out of step with the nav. */}
+              <ul className="space-y-1.5 text-[11px]">
+                {navItems
+                  // Same source and same filtering as the header, so the two
+                  // can never disagree — an umbrella with no published
+                  // articles is hidden in both rather than linking to an
+                  // empty section. Umbrellas are the entries carrying a public
+                  // slug (a string id); "Home", the numeric ci_category
+                  // extras and the external About/Contact links are not.
+                  .filter((item) => typeof item.id === 'string' && item.id !== 'all')
+                  .map((item) => (
+                    <li key={String(item.id)}>
+                      <a
+                        href={`/category/${item.id}`}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                          e.preventDefault();
+                          handleCatSelect(item.id as string, null);
+                        }}
+                        className="text-stone-600 hover:text-[#7A0C0C] transition"
+                      >
+                        {item.name}
+                      </a>
+                    </li>
+                  ))}
               </ul>
             </div>
 

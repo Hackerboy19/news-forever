@@ -52,6 +52,24 @@ import AdminSiteSettings, { SiteConfigValues } from './components/admin/AdminSit
  * Reserved first segments are not articles.
  */
 const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'uploads', 'report.html', 'favicon.ico', 'sitemap.xml', 'robots.txt', 'rss.xml', 'feed.rss', ...LEGAL_SLUGS]);
+/**
+ * The public category slug for the current path, if any.
+ *
+ * `/category/<slug>` URLs are already indexed and are linked from the header,
+ * the footer and the category rails, but nothing parsed them: the path was
+ * only ever treated as "not an article", so every one of them rendered the
+ * unfiltered homepage. Reading the slug here makes those links resolve to the
+ * section they name, and makes the filtered view shareable.
+ */
+function categoryFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const parts = decodeURIComponent(window.location.pathname)
+    .replace(/^\/+|\/+$/g, '')
+    .split('/');
+  if (parts[0] !== 'category' || !parts[1]) return null;
+  return parts[1].toLowerCase();
+}
+
 /** The static legal route for the current path, if any. */
 function legalFromPath(): LegalSlug | null {
   if (typeof window === 'undefined') return null;
@@ -76,7 +94,9 @@ export function App() {
   const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(() => slugFromPath());
   const [legalSlug, setLegalSlug] = useState<LegalSlug | null>(() => legalFromPath());
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
-  const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
+  const [activeCategory, setActiveCategory] = useState<number | string | 'all'>(
+    () => categoryFromPath() ?? 'all'
+  );
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
   const [adminAuth, setAdminAuth] = useState<AdminCredentials | null>(() => loadAdminSession());
@@ -175,6 +195,7 @@ export function App() {
       setViewMode('public');
       setSelectedArticleUrl(slugFromPath());
       setLegalSlug(legalFromPath());
+      setActiveCategory(categoryFromPath() ?? 'all');
     };
     window.addEventListener('hashchange', syncFromUrl);
     window.addEventListener('popstate', syncFromUrl);
@@ -688,7 +709,14 @@ export function App() {
       onCategorySelect={(catId) => {
         setActiveCategory(catId);
         setSelectedArticleUrl(null);
-        if (typeof window !== 'undefined' && window.location.pathname !== '/') window.history.pushState({}, '', '/');
+        setLegalSlug(null);
+        if (typeof window === 'undefined') return;
+        // Keep the address bar in step with the filter so the view is
+        // shareable. Public nav slugs are strings and map to a real
+        // /category/<slug> URL; a bare ci_category id has no public slug, so
+        // those fall back to "/" as before.
+        const next = typeof catId === 'string' && catId !== 'all' ? `/category/${catId}` : '/';
+        if (window.location.pathname !== next) window.history.pushState({}, '', next);
       }}
       onSelectArticle={openArticle}
       onGoHome={goHomeNav}

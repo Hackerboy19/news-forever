@@ -552,6 +552,15 @@ async function startServer() {
     app.use("/assets", express.static(path.join(process.cwd(), "assets")));
     app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
+    // A media path that matches no file must 404 — it must never reach the SPA
+    // catch-all below. Without this, a missing image answered 200 with the
+    // whole index.html shell: opening an og:image URL showed a news page
+    // instead of the picture, and Facebook/X/Google were handed HTML where
+    // they expected image bytes. A 404 is honest and debuggable.
+    app.use(["/assets", "/uploads"], (_req, res) => {
+      res.status(404).type("text/plain").send("Not found");
+    });
+
     // Server-side meta injection: for article URLs, put the real title/desc/
     // OG tags into the initial HTML so Google, WhatsApp, Facebook, etc. show
     // the correct preview (the SPA still refreshes them client-side).
@@ -595,6 +604,32 @@ async function startServer() {
               imgEsc ? `<meta name="twitter:image" content="${imgEsc}">` : "",
             ].filter(Boolean).join("\n    ");
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}\n  </head>`);
+
+            // Server-rendered article body.
+            //
+            // Only <head> was being injected, so `view source` on an article
+            // showed correct OG tags above a completely empty <div id="root">
+            // — no <h1>, and none of the H2–H6 hierarchy the editors write.
+            // Anything that does not execute JavaScript (many crawlers, link
+            // previewers, reader modes, accessibility tooling) saw a blank
+            // page, which is a poor position for a news site that depends on
+            // that heading structure for ranking.
+            //
+            // React's createRoot() replaces the contents of #root when it
+            // mounts, so this is markup for non-JS consumers only and cannot
+            // desynchronise from what readers see.
+            const heroImg = imgEsc
+              ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">`
+              : "";
+            const shell = [
+              `<article>`,
+              `<h1>${esc(article.title)}</h1>`,
+              article.short_content ? `<p>${esc(article.short_content)}</p>` : "",
+              heroImg,
+              article.content || "",
+              `</article>`,
+            ].filter(Boolean).join("\n");
+            html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${shell}</div>`);
           }
         }
         res.set("Content-Type", "text/html; charset=utf-8").send(html);

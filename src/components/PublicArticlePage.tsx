@@ -408,7 +408,12 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             <React.Fragment key={i}>
               {i > 0 && <InArticleAd ad={inContentAds[i - 1]} />}
               <div
-                className="prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
+                /* `article-body` (src/index.css) styles this HTML by element
+                   selector — Tailwind utilities cannot reach content injected
+                   via dangerouslySetInnerHTML. It replaces `prose`, which
+                   matched nothing because @tailwindcss/typography is not
+                   installed, leaving lists unmarked and links unstyled. */
+                className="article-body max-w-none font-serif leading-relaxed text-base sm:text-lg"
                 dangerouslySetInnerHTML={{ __html: segment }}
               />
             </React.Fragment>
