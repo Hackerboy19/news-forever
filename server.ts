@@ -24,6 +24,7 @@ import {
   getBlogByUrlSlug,
   getAllCategories,
   getActiveAds,
+  getAllAdsAdmin,
   getActiveTags,
   verifyAdmin,
   createBlog,
@@ -336,7 +337,14 @@ async function startServer() {
   });
 
   // GET /api/advertisements — real ci_advertisement rows
-  app.get("/api/advertisements", async (_req, res) => {
+  app.get("/api/advertisements", async (req, res) => {
+    // Admin manager list: every ad regardless of status, so a deactivated one
+    // stays editable. Requires ci_admin credentials and is never cached.
+    if (req.query.status === "all") {
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(await getAllAdsAdmin());
+    }
     const realAds = await getActiveAds();
     res.json(realAds.length > 0 ? realAds : dbAds);
   });

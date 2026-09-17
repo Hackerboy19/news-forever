@@ -690,6 +690,45 @@ interface RawAdRow {
 }
 
 /** Fetch active promotional ads from ci_advertisement, most prominent first. */
+/** Shared row -> CIAdvertisement mapping for both ad queries. */
+function mapAdRow(row: RawAdRow): CIAdvertisement {
+  return {
+    id: row.id,
+    title: row.advertisement_title,
+    advertisement_image: assetUrl(row.advertisement_image),
+    alt_tag: row.alt_tag || row.advertisement_title,
+    url: row.advertisement_url,
+    position: row.position,
+    priority: row.priority,
+    status: row.status,
+    click_count: 0,
+    impressions: 0,
+    created_at: row.created_at || '',
+  };
+}
+
+/**
+ * Every ad, whatever its status — for the admin manager only.
+ *
+ * The manager used to render the public `getActiveAds` list, which filters to
+ * `status = 1`. Deactivating an ad therefore removed it from the only screen
+ * that could edit it, so it could never be edited or switched back on again.
+ */
+export async function getAllAdsAdmin(): Promise<CIAdvertisement[]> {
+  try {
+    const [rows] = await dbPool.query(`
+      SELECT id, advertisement_title, advertisement_url, advertisement_image,
+             alt_tag, priority, position, status, created_at
+      FROM ci_advertisement
+      ORDER BY status DESC, priority ASC, id DESC
+    `);
+    return (rows as RawAdRow[]).map(mapAdRow);
+  } catch (err) {
+    handleDbError('getAllAdsAdmin', err);
+    return [];
+  }
+}
+
 export async function getActiveAds(): Promise<CIAdvertisement[]> {
   try {
     const query = `

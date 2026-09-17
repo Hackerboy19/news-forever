@@ -20,6 +20,7 @@ import {
   getBlogByUrlSlug,
   getAllCategories,
   getActiveAds,
+  getAllAdsAdmin,
   getActiveTags,
   verifyAdmin,
   createBlog,
@@ -491,6 +492,13 @@ export default async function handler(req: any, res: any) {
       return res.json(tags.length > 0 ? tags : snapTags);
     }
     if (route === 'advertisements') {
+      // Admin manager list: every ad regardless of status, so a deactivated
+      // one stays editable. Requires ci_admin credentials and is never cached.
+      if (url.searchParams.get('status') === 'all') {
+        if (!(await requireAdmin(req))) return res.status(401).json({ error: 'Unauthorized' });
+        res.setHeader('Cache-Control', 'no-store');
+        return res.json(await getAllAdsAdmin());
+      }
       const realAds = await getActiveAds();
       return res.json(realAds.length > 0 ? realAds : snapAds);
     }

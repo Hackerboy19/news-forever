@@ -111,6 +111,14 @@ export function App() {
   const [categories, setCategories] = useState<CICategory[]>([]);
   const [tags, setTags] = useState<CITag[]>([]);
   const [ads, setAds] = useState<CIAdvertisement[]>([]);
+  /**
+   * Ads for the admin manager: every row from ci_advertisement regardless of
+   * status, and no demo placeholders. `ads` above is the public list — it is
+   * filtered to status = 1 and has DEMO_ADS appended for the front-end, and
+   * demo entries are deliberately not editable, so rendering the manager from
+   * it meant a site with no active ads showed nothing but uneditable samples.
+   */
+  const [adminAds, setAdminAds] = useState<CIAdvertisement[]>([]);
   const [activityLogs, setActivityLogs] = useState<CIActivityLog[]>([]);
   const [users, setUsers] = useState<CIUser[]>([]);
   const [subscribers, setSubscribers] = useState<CISubscriber[]>([]);
@@ -173,16 +181,18 @@ export function App() {
         return [];
       }
     };
-    const [logs, users, subs, imgs] = await Promise.all([
+    const [logs, users, subs, imgs, allAds] = await Promise.all([
       load('/api/activity-logs'),
       load('/api/users'),
       load('/api/subscribers'),
       load('/api/image-library'),
+      load('/api/advertisements?status=all'),
     ]);
     setActivityLogs(logs);
     setUsers(users);
     setSubscribers(subs);
     setImages(imgs);
+    setAdminAds(allAds);
   };
 
   useEffect(() => {
@@ -477,14 +487,35 @@ export function App() {
         body: JSON.stringify(payload),
       });
       if (await handleWriteError(res)) return;
-      const data = await res.json();
-      if (Array.isArray(data)) setAds(data);
-      else {
-        const resAds = await fetch('/api/advertisements').then(r => r.json());
-        setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      }
+      await refreshAds();
     } catch (err) {
       alert('Could not save the ad. Please try again.');
+    }
+  };
+
+  /**
+   * Re-read both ad lists after a write.
+   *
+   * They are genuinely different queries — the public one is active-only with
+   * the demo placeholders appended, the admin one is every row and no demos —
+   * so refreshing only the public list left the manager showing stale rows
+   * (and, for a newly deactivated ad, a row that had silently vanished).
+   */
+  const refreshAds = async (creds: AdminCredentials | null = adminAuth) => {
+    try {
+      const publicAdsRes = await fetch('/api/advertisements').then(r => (r.ok ? r.json() : []));
+      setAds([...(Array.isArray(publicAdsRes) ? publicAdsRes : []), ...DEMO_ADS]);
+    } catch {
+      /* leave the current public list in place */
+    }
+    if (!creds) return;
+    try {
+      const res = await fetch('/api/advertisements?status=all', { headers: adminHeaders(creds) });
+      if (!res.ok) return;
+      const json = await res.json();
+      setAdminAds(Array.isArray(json) ? json : []);
+    } catch {
+      /* leave the current admin list in place */
     }
   };
 
@@ -493,7 +524,8 @@ export function App() {
     try {
       const res = await fetch(`/api/advertisements/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
-      setAds(prev => prev.filter(a => a.id !== id));
+      setAdminAds(prev => prev.filter(a => a.id !== id));
+      await refreshAds();
     } catch (err) {
       alert('Could not delete the ad. Please try again.');
     }
@@ -637,7 +669,7 @@ export function App() {
 
             {adminTab === 'Advertisement' && (
               <AdminAds
-                ads={ads}
+                ads={adminAds}
                 onSaveAd={handleSaveAd}
                 onDeleteAd={handleDeleteAd}
               />
