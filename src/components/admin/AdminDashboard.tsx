@@ -67,8 +67,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <FileText className="w-4 h-4 text-rose-400" />
           </div>
           <div className="text-2xl font-black text-white">{activeBlogs} <span className="text-xs text-slate-400 font-normal">/ {blogs.length} Total</span></div>
-          <div className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
-            <TrendingUp className="w-3 h-3" /> +12.4% this week
+          <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+            <TrendingUp className="w-3 h-3" /> {Math.max(0, blogs.length - activeBlogs)} drafts / hidden
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div className="text-2xl font-black text-white">{totalViews.toLocaleString()}</div>
           <div className="text-[11px] text-slate-400 font-mono">
-            Organic Pageviews
+            Total article views
           </div>
         </div>
 
@@ -100,8 +100,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <MousePointer className="w-4 h-4 text-purple-400" />
           </div>
           <div className="text-2xl font-black text-white">{totalAdClicks.toLocaleString()}</div>
-          <div className="text-[11px] text-purple-400 font-mono">
-            Monetization CTR 2.8%
+          <div className="text-[11px] text-slate-400 font-mono">
+            Click tracking not enabled
           </div>
         </div>
       </div>

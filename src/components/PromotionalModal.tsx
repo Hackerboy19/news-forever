@@ -74,7 +74,7 @@ export const PromotionalModal: React.FC<PromotionalModalProps> = ({ ads, delayMs
           rel="noopener noreferrer sponsored"
           title={ad.title}
           className="block p-4 hover:opacity-95 transition"
-          onClick={() => setVisible(false)}
+          onClick={() => { try { navigator.sendBeacon(`/api/advertisements/${ad.id}/click`); } catch { /* ignore */ } setVisible(false); }}
         >
           <img
             src={ad.advertisement_image}

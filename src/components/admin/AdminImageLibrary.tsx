@@ -5,9 +5,15 @@ import { Image as ImageIcon, Plus, Edit3, Trash2, Check, Upload } from 'lucide-r
 interface AdminImageLibraryProps {
   images: CIImageLibrary[];
   onUploadImage: (img: Partial<CIImageLibrary>) => void;
+  onDelete?: (id: number) => Promise<boolean>;
 }
 
-export const AdminImageLibrary: React.FC<AdminImageLibraryProps> = ({ images, onUploadImage }) => {
+export const AdminImageLibrary: React.FC<AdminImageLibraryProps> = ({ images, onUploadImage, onDelete }) => {
+  const del = async (img: CIImageLibrary) => {
+    if (!onDelete) return;
+    if (!confirm(`Remove "${img.file_name}" from the library? (The image file itself stays on the server.)`)) return;
+    await onDelete(img.id);
+  };
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newFilePath, setNewFilePath] = useState('assets/img/blog/2026/08/sample-upload.jpg');
@@ -69,6 +75,11 @@ export const AdminImageLibrary: React.FC<AdminImageLibraryProps> = ({ images, on
               <div className="p-2 bg-slate-950 rounded border border-slate-800/80 text-[11px] text-rose-300 font-mono truncate">
                 alt="{img.alt_tag}"
               </div>
+              {onDelete && (
+                <button onClick={() => del(img)} className="w-full mt-1 inline-flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-800 hover:bg-rose-600/80 text-slate-300 hover:text-white text-xs font-semibold rounded transition">
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
+                </button>
+              )}
             </div>
           </div>
         ))}

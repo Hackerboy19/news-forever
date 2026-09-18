@@ -110,8 +110,38 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   const [copied, setCopied] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
 
-  // Find exact article matching url column in ci_blog table
-  const baseArticle = blogs.find((b) => b.url === urlSlug);
+  // Find exact article matching url column in ci_blog table. The public list
+  // only holds the latest ~200, so OLDER articles won't be here — fetch those
+  // on demand by slug so every legacy URL keeps working (no 404).
+  const [fetched, setFetched] = useState<(typeof blogs)[number] | null>(null);
+  const [fetchTried, setFetchTried] = useState(false);
+  const inList = blogs.find((b) => b.url === urlSlug);
+  const baseArticle = inList || fetched;
+
+  useEffect(() => {
+    if (inList) { setFetched(null); setFetchTried(true); return; }
+    let cancelled = false;
+    setFetchTried(false);
+    fetch(`/api/blogs/slug/${encodeURIComponent(urlSlug)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setFetched(d && d.id ? d : null); })
+      .catch(() => { if (!cancelled) setFetched(null); })
+      .finally(() => { if (!cancelled) setFetchTried(true); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSlug, inList?.id]);
+
+  // Count a view once per browser session per article (self-hosted counter).
+  useEffect(() => {
+    const id = baseArticle?.id;
+    if (!id) return;
+    const key = `nf_viewed_${id}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch { /* private mode */ }
+    fetch(`/api/blogs/${id}/view`, { method: 'POST' }).catch(() => {});
+  }, [baseArticle?.id]);
 
   // Server-side Hindi translation (cached at the edge) when HI is active
   const [hiPayload, setHiPayload] = useState<any>(null);
@@ -157,7 +187,9 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
     [ads]
   );
 
-  if (isLoading || (!article && blogs.length === 0)) {
+  // Still loading if the initial list hasn't arrived, or we're fetching this
+  // (older) article by slug and the request hasn't finished yet.
+  if (isLoading || (!article && (blogs.length === 0 || !fetchTried))) {
     return <PublicArticleSkeleton onGoBack={onGoBack} />;
   }
 
@@ -205,7 +237,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
         <SEOManager defaultTitle="Article Not Found | News Forever" />
         <h2 className="text-2xl font-serif italic font-bold text-stone-900">404 - Article Not Found</h2>
         <p className="text-sm text-stone-600">
-          No legacy news record exists matching <code className="text-[#991B1B] font-mono">/article/{urlSlug}</code>.
+          No legacy news record exists matching <code className="text-[#991B1B] font-mono">/{urlSlug}</code>.
         </p>
         <button
           onClick={onGoBack}
@@ -395,12 +427,33 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             </div>
           )}
 
+          {/* Article body styling — restore list bullets/headings that Tailwind's
+              base reset strips (the content is raw legacy HTML). */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            /* Editor-chosen fonts/sizes (inline styles) are respected. Only
+               strip pasted background highlights. */
+            .nf-article [style*="background"] { background: transparent !important; }
+            .nf-article ul { list-style: disc; padding-left: 1.5em; margin: .75em 0; }
+            .nf-article ol { list-style: decimal; padding-left: 1.5em; margin: .75em 0; }
+            .nf-article li { margin: .3em 0; display: list-item; }
+            .nf-article h1 { font-size: 1.8em; font-weight: 800; margin: .8em 0 .4em; }
+            .nf-article h2 { font-size: 1.5em; font-weight: 700; margin: .8em 0 .4em; }
+            .nf-article h3 { font-size: 1.25em; font-weight: 700; margin: .7em 0 .3em; }
+            .nf-article h4 { font-size: 1.1em; font-weight: 700; margin: .6em 0 .3em; }
+            .nf-article p { margin: .6em 0; }
+            .nf-article a { color: #991B1B; text-decoration: underline; }
+            .nf-article blockquote { border-left: 3px solid #991B1B; padding-left: 1em; color: #555; font-style: italic; margin: .8em 0; }
+            .nf-article img { max-width: 100%; height: auto; }
+            .nf-article table { border-collapse: collapse; width: 100%; margin: .8em 0; }
+            .nf-article td, .nf-article th { border: 1px solid #e7e5e4; padding: .5em .7em; }
+          ` }} />
+
           {/* HTML Article Body — ads injected after the 3rd and 6th paragraphs */}
           {splitHtmlAtParagraphs(article.content, [3, 6]).map((segment, i) => (
             <React.Fragment key={i}>
               {i > 0 && <InArticleAd ad={inContentAds[i - 1]} />}
               <div
-                className="prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
+                className="nf-article prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
                 dangerouslySetInnerHTML={{ __html: segment }}
               />
             </React.Fragment>

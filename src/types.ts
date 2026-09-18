@@ -32,6 +32,7 @@ export interface CIBlog {
   og_url: string;
   og_description: string;
   og_image: string;
+  person_name?: string; // Featured person for Person JSON-LD (name-based ranking)
 
   // Video Fields (legacy ci_blog)
   youtube_video_link?: string;

@@ -75,6 +75,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ blogs, onQuickSave
       meta_keyword: b.meta_keyword,
       alt_tag: b.alt_tag,
       og_title: b.og_title,
+      og_description: b.og_description,
       og_image: b.og_image,
       og_url: b.og_url,
     });

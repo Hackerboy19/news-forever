@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CIBlog, CICategory } from '../../types';
 import { 
   Search, 
@@ -51,7 +51,9 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
       b.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
       b.meta_title.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesCategory = categoryFilter === 'all' || b.category_id === categoryFilter;
+    // Match parent OR sub-category, same rule the Category tab uses to count,
+    // so the two totals agree.
+    const matchesCategory = categoryFilter === 'all' || b.category_id === categoryFilter || b.sub_category_id === categoryFilter;
     const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
 
     return matchesSearch && matchesCategory && matchesStatus;
@@ -71,6 +73,16 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
       ? (aVal as number) - (bVal as number)
       : (bVal as number) - (aVal as number);
   });
+
+  // Pagination — render 50 at a time so the page stays fast even with 600+
+  // articles. Filters/counts still run over the full set above.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(sortedBlogs.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedBlogs = sortedBlogs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  // Reset to page 1 whenever the filter/search/sort changes.
+  useEffect(() => { setPage(1); }, [searchTerm, categoryFilter, statusFilter, sortField, sortDirection]);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === sortedBlogs.length) {
@@ -253,7 +265,7 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
                   </td>
                 </tr>
               ) : (
-                sortedBlogs.map((blog) => {
+                pagedBlogs.map((blog) => {
                   const isSelected = selectedIds.includes(blog.id);
                   return (
                     <tr
@@ -283,7 +295,7 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
                               {blog.title}
                             </p>
                             <p className="text-[11px] font-mono text-slate-400 truncate">
-                              /article/{blog.url}
+                              /{blog.url}
                             </p>
                           </div>
                         </div>
@@ -344,6 +356,40 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {sortedBlogs.length > PAGE_SIZE && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-800 text-xs text-slate-400">
+            <span>
+              Showing <b className="text-slate-200">{(currentPage - 1) * PAGE_SIZE + 1}</b>–
+              <b className="text-slate-200">{Math.min(currentPage * PAGE_SIZE, sortedBlogs.length)}</b> of{' '}
+              <b className="text-slate-200">{sortedBlogs.length}</b> articles
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage(1)}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700"
+              >« First</button>
+              <button
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700"
+              >‹ Prev</button>
+              <span className="px-3 py-1.5 text-slate-200 font-semibold">Page {currentPage} / {totalPages}</span>
+              <button
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700"
+              >Next ›</button>
+              <button
+                onClick={() => setPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1.5 rounded bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700"
+              >Last »</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

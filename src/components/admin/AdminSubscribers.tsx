@@ -1,12 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CISubscriber } from '../../types';
-import { Mail, Download, CheckCircle } from 'lucide-react';
+import { Mail, Download, Trash2 } from 'lucide-react';
 
 interface AdminSubscribersProps {
   subscribers: CISubscriber[];
+  onDelete?: (id: number) => Promise<boolean>;
+  onBulkDelete?: (ids: number[]) => Promise<boolean>;
 }
 
-export const AdminSubscribers: React.FC<AdminSubscribersProps> = ({ subscribers }) => {
+export const AdminSubscribers: React.FC<AdminSubscribersProps> = ({ subscribers, onDelete, onBulkDelete }) => {
+  const [selected, setSelected] = useState<number[]>([]);
+  const allSelected = subscribers.length > 0 && selected.length === subscribers.length;
+  const toggle = (id: number) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const toggleAll = () => setSelected(allSelected ? [] : subscribers.map((s) => s.id));
+  const del = async (s: CISubscriber) => {
+    if (!onDelete) return;
+    if (!confirm(`Remove subscriber ${s.email}?`)) return;
+    await onDelete(s.id);
+  };
+  const bulkDelete = async () => {
+    if (!onBulkDelete || selected.length === 0) return;
+    if (!confirm(`Remove ${selected.length} selected subscriber(s)? This cannot be undone.`)) return;
+    const ok = await onBulkDelete(selected);
+    if (ok) setSelected([]);
+  };
   const exportCSV = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
       + ["ID,Email,Status,SubscribedAt", ...subscribers.map(s => `${s.id},${s.email},${s.status},${s.subscribed_at}`)].join("\n");
@@ -31,28 +48,38 @@ export const AdminSubscribers: React.FC<AdminSubscribersProps> = ({ subscribers 
           </p>
         </div>
 
-        <button
-          onClick={exportCSV}
-          className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-sm rounded-xl transition"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV List
-        </button>
+        <div className="flex items-center gap-2">
+          {onBulkDelete && selected.length > 0 && (
+            <button onClick={bulkDelete} className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-500 text-white font-semibold text-sm rounded-xl transition">
+              <Trash2 className="w-4 h-4" /> Delete selected ({selected.length})
+            </button>
+          )}
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-sm rounded-xl transition"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV List
+          </button>
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
         <table className="w-full text-left text-sm text-slate-300">
           <thead className="bg-slate-950 border-b border-slate-800 text-xs font-semibold uppercase tracking-wider text-slate-400">
             <tr>
+              <th className="p-4">{onBulkDelete && <input type="checkbox" checked={allSelected} onChange={toggleAll} />}</th>
               <th className="p-4">ID</th>
               <th className="p-4">Email Address</th>
               <th className="p-4">Status</th>
-              <th className="p-4 text-right">Subscribed At</th>
+              <th className="p-4">Subscribed At</th>
+              <th className="p-4 text-right">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {subscribers.map((sub) => (
               <tr key={sub.id} className="hover:bg-slate-800/40 transition">
+                <td className="p-4">{onBulkDelete && <input type="checkbox" checked={selected.includes(sub.id)} onChange={() => toggle(sub.id)} />}</td>
                 <td className="p-4 font-mono text-xs text-slate-400">#{sub.id}</td>
                 <td className="p-4 font-bold text-white flex items-center gap-2">
                   <Mail className="w-3.5 h-3.5 text-rose-400" />
@@ -63,7 +90,10 @@ export const AdminSubscribers: React.FC<AdminSubscribersProps> = ({ subscribers 
                     {sub.status}
                   </span>
                 </td>
-                <td className="p-4 text-right font-mono text-xs text-slate-400">{sub.subscribed_at}</td>
+                <td className="p-4 font-mono text-xs text-slate-400">{sub.subscribed_at}</td>
+                <td className="p-4 text-right">
+                  {onDelete && <button onClick={() => del(sub)} className="p-1.5 text-rose-400 hover:bg-slate-800 rounded" title="Remove subscriber"><Trash2 className="w-4 h-4" /></button>}
+                </td>
               </tr>
             ))}
           </tbody>

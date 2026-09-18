@@ -143,6 +143,7 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
     og_url: '',
     og_description: '',
     og_image: '',
+    person_name: '',
 
     // Headings
     h2_tag: '',
@@ -754,6 +755,20 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                       onChange={(e) => handleInputChange('meta_description', e.target.value)}
                       className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Featured person name <span className="text-slate-500 font-normal">(article is mainly about this person — helps name searches)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={(formData as any).person_name || ''}
+                      onChange={(e) => handleInputChange('person_name' as any, e.target.value)}
+                      placeholder="e.g. Enisha Chopra"
+                      className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">Adds a Person schema so Google connects the article to this name. Leave blank if the article isn’t about one person.</p>
                   </div>
                 </div>
 

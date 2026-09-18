@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   CIBlog, 
   CICategory, 
@@ -16,10 +16,13 @@ import {
 import PublicLayout from './components/PublicLayout';
 import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
+import StaticPage from './components/StaticPage';
 import SEOManager from './components/SEOManager';
 
 import { I18nProvider } from './lib/i18n';
 import { DEMO_ADS, isDemoAd } from './data/demoAds';
+import { siteSetting } from './data/siteConfig';
+import { resolveAssetUrl } from './lib/assets';
 
 // Admin Components
 import AdminLayout from './components/AdminLayout';
@@ -41,16 +44,29 @@ import AdminImageLibrary from './components/admin/AdminImageLibrary';
 import AdminSettings from './components/admin/AdminSettings';
 import AdminSubscribers from './components/admin/AdminSubscribers';
 import AdminUsers from './components/admin/AdminUsers';
+import AdminTags from './components/admin/AdminTags';
 import AdminChangePassword from './components/admin/AdminChangePassword';
 import AdminSeoPanel from './components/admin/AdminSeoPanel';
 import AdminSiteSettings, { SiteConfigValues } from './components/admin/AdminSiteSettings';
+import AdminPages from './components/admin/AdminPages';
 
 /**
  * Map the browser path to an article slug so old/indexed URLs deep-link.
  * Legacy article URLs are a single top-level segment (e.g. /my-article-slug).
  * Reserved first segments are not articles.
  */
-const RESERVED_PATHS = new Set(['', 'admin', 'category', 'api', 'assets', 'uploads', 'report.html', 'favicon.ico', 'sitemap.xml', 'robots.txt', 'rss.xml', 'feed.rss']);
+const RESERVED_PATHS = new Set(['', 'admin', 'category', 'tag', 'api', 'assets', 'uploads', 'report.html', 'favicon.ico', 'sitemap.xml', 'robots.txt', 'rss.xml', 'feed.rss',
+  // Legacy landing path that renders the homepage latest feed (not an article).
+  'latest-news']);
+
+/** The single-segment path slug (about-us, privacy-policy, an article slug…), or null. */
+function pathSlug(): string | null {
+  if (typeof window === 'undefined') return null;
+  const p = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
+  if (!p || p.includes('/')) return null;
+  if (RESERVED_PATHS.has(p.toLowerCase())) return null;
+  return p;
+}
 function slugFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const path = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
@@ -62,11 +78,38 @@ function isAdminPath(): boolean {
   if (typeof window === 'undefined') return false;
   return window.location.hash === '#admin' || window.location.pathname.replace(/\/+$/, '') === '/admin';
 }
+/** If the path is /category/<slug>, return the slug; else null. */
+function categorySlugFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const p = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
+  if (!p.toLowerCase().startsWith('category/')) return null;
+  return p.slice('category/'.length).split('/')[0] || null;
+}
+/** If the path is /tag/<slug>, return the slug; else null. */
+function tagSlugFromPath(): string | null {
+  if (typeof window === 'undefined') return null;
+  const p = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
+  if (!p.toLowerCase().startsWith('tag/')) return null;
+  return p.slice('tag/'.length).split('/')[0] || null;
+}
 
 export function App() {
   // Navigation & View Mode
   const [viewMode, setViewMode] = useState<ViewMode>(() => (isAdminPath() ? 'admin' : 'public'));
   const [selectedArticleUrl, setSelectedArticleUrl] = useState<string | null>(() => slugFromPath());
+  const [activeTag, setActiveTag] = useState<string | null>(() => tagSlugFromPath());
+  // Articles for the active tag — fetched from the server so ALL tagged
+  // articles show (not just those in the latest-200 list), covering duplicate
+  // tag-slug rows too.
+  const [tagBlogs, setTagBlogs] = useState<CIBlog[]>([]);
+  const [tagLoading, setTagLoading] = useState(false);
+  // Admin-created static pages (routing + which slug is currently open).
+  const [staticPages, setStaticPages] = useState<{ slug: string; title: string }[]>([
+    { slug: 'about-us', title: 'About Us' },
+    { slug: 'contact-us', title: 'Contact Us' },
+  ]);
+  const [pagesLoaded, setPagesLoaded] = useState(false);
+  const [currentSlug, setCurrentSlug] = useState<string | null>(() => pathSlug());
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
   const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
@@ -85,9 +128,12 @@ export function App() {
   const [ads, setAds] = useState<CIAdvertisement[]>([]);
   const [activityLogs, setActivityLogs] = useState<CIActivityLog[]>([]);
   const [users, setUsers] = useState<CIUser[]>([]);
+  const [subAdmins, setSubAdmins] = useState<CIUser[]>([]);
   const [subscribers, setSubscribers] = useState<CISubscriber[]>([]);
   const [images, setImages] = useState<CIImageLibrary[]>([]);
-  const [setting, setSetting] = useState<CISetting | null>(null);
+  // Start with the built-in default so the site renders instantly (no blank
+  // screen); the real ci_setting row replaces it once the API responds.
+  const [setting, setSetting] = useState<CISetting>(siteSetting);
   const [siteConfig, setSiteConfig] = useState<SiteConfigValues>({});
 
   // Loading state
@@ -126,8 +172,10 @@ export function App() {
       setUsers(resUsers);
       setSubscribers(resSubs);
       setImages(resImgs);
-      setSetting(resSetting);
+      setSetting(resSetting && typeof resSetting === 'object' ? { ...siteSetting, ...resSetting } : siteSetting);
       fetch('/api/site-config').then(r => r.ok ? r.json() : {}).then(setSiteConfig).catch(() => {});
+      fetch('/api/sub-admins').then(r => r.ok ? r.json() : []).then((d) => Array.isArray(d) && setSubAdmins(d)).catch(() => {});
+      fetch('/api/pages').then(r => r.ok ? r.json() : []).then((d) => { if (Array.isArray(d) && d.length) setStaticPages(d); }).catch(() => {}).finally(() => setPagesLoaded(true));
     } catch (err) {
       console.error('Failed to fetch REST API data', err);
     } finally {
@@ -142,7 +190,14 @@ export function App() {
     // old/indexed links open the article and Back/Forward work.
     const syncFromUrl = () => {
       if (isAdminPath()) { setViewMode('admin'); return; }
+      // (tag fetch handled by its own effect below)
       setViewMode('public');
+      setCurrentSlug(pathSlug());
+      const tg = tagSlugFromPath();
+      if (tg) { setSelectedArticleUrl(null); setActiveCategory('all'); setActiveTag(tg); return; }
+      setActiveTag(null);
+      if (categorySlugFromPath()) { applyCategoryFromUrl(); return; }
+      setActiveCategory('all');
       setSelectedArticleUrl(slugFromPath());
     };
     window.addEventListener('hashchange', syncFromUrl);
@@ -153,11 +208,71 @@ export function App() {
     };
   }, []);
 
+  // Fetch every article for the active tag from the server (covers old articles
+  // + duplicate-slug tag ids). Runs whenever the active tag changes.
+  useEffect(() => {
+    if (!activeTag) { setTagBlogs([]); return; }
+    let cancelled = false;
+    setTagLoading(true);
+    fetch(`/api/blogs?tag_slug=${encodeURIComponent(activeTag)}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { if (!cancelled) setTagBlogs(Array.isArray(d) ? d : []); })
+      .catch(() => { if (!cancelled) setTagBlogs([]); })
+      .finally(() => { if (!cancelled) setTagLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeTag]);
+
+  // Google Tag Manager: fire a virtual page_view on every SPA navigation so
+  // GTM/GA4 records route changes (a plain SPA only fires once on load).
+  useEffect(() => {
+    const dl = (window as any).dataLayer;
+    if (!dl) return;
+    dl.push({
+      event: 'page_view',
+      page_path: window.location.pathname + window.location.search,
+      page_location: window.location.href,
+      page_title: document.title,
+    });
+  }, [selectedArticleUrl, activeCategory, activeTag, viewMode]);
+
   // Open an article and reflect it in the URL (shareable / refreshable / SEO).
   const openArticle = (urlSlug: string) => {
     setSelectedArticleUrl(urlSlug);
+    setActiveTag(null);
+    setCurrentSlug(null);
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', '/' + urlSlug.replace(/^\/+/, ''));
+      window.scrollTo(0, 0);
+    }
+  };
+  // Open a tag page and reflect it in the URL: /tag/<slug>.
+  const openTag = (slug: string) => {
+    setSelectedArticleUrl(null);
+    setActiveCategory('all');
+    setActiveTag(slug);
+    setCurrentSlug(null);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/tag/' + encodeURIComponent(slug));
+      window.scrollTo(0, 0);
+    }
+  };
+  // Build the URL slug for a category value (numeric ci_category id or nav slug).
+  const categoryUrlSlug = (catId: number | string): string => {
+    if (typeof catId === 'string') return catId;
+    const c = categories.find((x) => x.id === catId);
+    return (c?.slug || String(catId)).trim();
+  };
+  // Open a category page and reflect it in the URL: /category/<slug>.
+  const openCategory = (catId: number | string) => {
+    setSelectedArticleUrl(null);
+    setActiveTag(null);
+    setActiveCategory(catId);
+    setCurrentSlug(null);
+    if (typeof window !== 'undefined' && catId !== 'all') {
+      window.history.pushState({}, '', '/category/' + encodeURIComponent(categoryUrlSlug(catId)));
+      window.scrollTo(0, 0);
+    } else if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/');
       window.scrollTo(0, 0);
     }
   };
@@ -165,11 +280,30 @@ export function App() {
   const goHomeNav = () => {
     setSelectedArticleUrl(null);
     setActiveCategory('all');
+    setActiveTag(null);
+    setCurrentSlug(null); // leave any static (about/contact/custom) page
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', '/');
       window.scrollTo(0, 0);
     }
   };
+
+  // Resolve /category/<slug> to an activeCategory once categories are loaded
+  // (and on Back/Forward), so category URLs deep-link and refresh correctly.
+  // categoriesRef keeps the resolver fresh inside the mount-time listener.
+  const categoriesRef = useRef<CICategory[]>(categories);
+  categoriesRef.current = categories;
+  const applyCategoryFromUrl = () => {
+    const slug = categorySlugFromPath();
+    if (!slug) return;
+    const match = categoriesRef.current.find((c) => (c.slug || '').toLowerCase() === slug.toLowerCase());
+    setSelectedArticleUrl(null);
+    setActiveCategory(match ? match.id : slug); // fall back to treating it as a public nav slug
+  };
+  useEffect(() => {
+    if (categories.length) applyCategoryFromUrl();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
 
   // --- ADMIN SESSION ---
   const handleAdminLogin = (creds: AdminCredentials) => {
@@ -214,6 +348,46 @@ export function App() {
     }
     return false;
   };
+
+  // --- Generic admin CRUD (tags, users, sub-admins, subscribers, images) ---
+  const crudWrite = async (url: string, method: 'POST' | 'PUT' | 'DELETE', body?: any): Promise<boolean> => {
+    try {
+      const res = await fetch(url, { method, headers: writeHeaders(), body: body ? JSON.stringify(body) : undefined });
+      if (await handleWriteError(res)) return false;
+      return true;
+    } catch { alert('Network error. Try again.'); return false; }
+  };
+  const refetch = (url: string, setter: (d: any) => void) =>
+    fetch(url, { headers: adminHeaders(adminAuth) }).then(r => r.ok ? r.json() : null).then(d => { if (d) setter(d); }).catch(() => {});
+
+  // Tags
+  const handleTagSave = async (t: { id?: number; tag_name: string; slug?: string; status?: number }) => {
+    const ok = t.id ? await crudWrite(`/api/tags/${t.id}`, 'PUT', t) : await crudWrite('/api/tags', 'POST', t);
+    if (ok) refetch('/api/tags', setTags);
+    return ok;
+  };
+  const handleTagDelete = async (id: number) => { const ok = await crudWrite(`/api/tags/${id}`, 'DELETE'); if (ok) refetch('/api/tags', setTags); return ok; };
+
+  // Admin users (ci_admin)
+  const handleUserSave = async (u: any) => {
+    const ok = u.id ? await crudWrite(`/api/users/${u.id}`, 'PUT', u) : await crudWrite('/api/users', 'POST', u);
+    if (ok) refetch('/api/users', setUsers);
+    return ok;
+  };
+  const handleUserDelete = async (id: number) => { const ok = await crudWrite(`/api/users/${id}`, 'DELETE'); if (ok) refetch('/api/users', setUsers); return ok; };
+
+  // Sub-admins (ci_subadmin)
+  const handleSubAdminSave = async (u: any) => {
+    const ok = u.id ? await crudWrite(`/api/sub-admins/${u.id}`, 'PUT', u) : await crudWrite('/api/sub-admins', 'POST', u);
+    if (ok) refetch('/api/sub-admins', setSubAdmins);
+    return ok;
+  };
+  const handleSubAdminDelete = async (id: number) => { const ok = await crudWrite(`/api/sub-admins/${id}`, 'DELETE'); if (ok) refetch('/api/sub-admins', setSubAdmins); return ok; };
+
+  // Subscribers + images (delete only)
+  const handleSubscriberDelete = async (id: number) => { const ok = await crudWrite(`/api/subscribers/${id}`, 'DELETE'); if (ok) refetch('/api/subscribers', setSubscribers); return ok; };
+  const handleSubscriberBulkDelete = async (ids: number[]) => { const ok = await crudWrite('/api/subscribers/bulk-delete', 'POST', { ids }); if (ok) refetch('/api/subscribers', setSubscribers); return ok; };
+  const handleImageDelete = async (id: number) => { const ok = await crudWrite(`/api/image-library/${id}`, 'DELETE'); if (ok) refetch('/api/image-library', setImages); return ok; };
 
   // --- BLOG CRUD OPERATIONS (real ci_blog writes) ---
   const handleSaveBlog = async (formData: Partial<CIBlog>) => {
@@ -473,11 +647,13 @@ export function App() {
     }
   };
 
-  if (loading || !setting) {
+  // No blocking loading screen — the site renders immediately and each
+  // section shows its own lightweight skeleton while data arrives. The admin
+  // login still needs the base data, so gate only the admin view.
+  if ((loading || !setting) && viewMode === 'admin' && !adminAuth) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-100 font-sans">
-        <div className="w-12 h-12 rounded-full border-4 border-rose-500 border-t-transparent animate-spin mb-4" />
-        <p className="text-sm font-mono text-slate-400">Loading Headless CodeIgniter REST Bridge...</p>
+        <div className="w-12 h-12 rounded-full border-4 border-rose-500 border-t-transparent animate-spin" />
       </div>
     );
   }
@@ -545,8 +721,8 @@ export function App() {
                   setIsBlogFormOpen(true);
                 }}
                 onViewArticleOnFrontend={(urlSlug) => {
-                  setSelectedArticleUrl(urlSlug);
-                  setViewMode('public');
+                  // Open the real public URL (plain slug, matches sitemap) in a new tab.
+                  window.open('/' + encodeURIComponent(String(urlSlug).trim()), '_blank', 'noopener');
                 }}
                 onDeleteBlog={handleDeleteBlog}
                 onBulkAction={handleBulkAction}
@@ -578,6 +754,41 @@ export function App() {
               <AdminImageLibrary
                 images={images}
                 onUploadImage={handleUploadImage}
+                onDelete={handleImageDelete}
+              />
+            )}
+
+            {adminTab === 'Pages' && (
+              <AdminPages
+                onList={async () => {
+                  const r = await fetch('/api/pages');
+                  return r.ok ? r.json() : [];
+                }}
+                onLoad={async (slug) => {
+                  const r = await fetch(`/api/pages/${slug}`);
+                  return r.ok ? r.json() : {};
+                }}
+                onSave={async (slug, data) => {
+                  try {
+                    const r = await fetch(`/api/pages/${slug}`, {
+                      method: 'PUT',
+                      headers: writeHeaders(),
+                      body: JSON.stringify(data),
+                    });
+                    if (await handleWriteError(r)) return false;
+                    fetch('/api/pages').then(x => x.ok ? x.json() : []).then((d) => { if (Array.isArray(d) && d.length) setStaticPages(d); }).catch(() => {});
+                    return true;
+                  } catch { return false; }
+                }}
+                onDelete={async (slug) => {
+                  try {
+                    const r = await fetch(`/api/pages/${slug}`, { method: 'DELETE', headers: writeHeaders() });
+                    if (await handleWriteError(r)) return false;
+                    fetch('/api/pages').then(x => x.ok ? x.json() : []).then((d) => { if (Array.isArray(d) && d.length) setStaticPages(d); }).catch(() => {});
+                    return true;
+                  } catch { return false; }
+                }}
+                onUploadImage={handleImageUpload}
               />
             )}
 
@@ -591,11 +802,11 @@ export function App() {
             )}
 
             {adminTab === 'Subscribe' && (
-              <AdminSubscribers subscribers={subscribers} />
+              <AdminSubscribers subscribers={subscribers} onDelete={handleSubscriberDelete} onBulkDelete={handleSubscriberBulkDelete} />
             )}
 
             {adminTab === 'Users' && (
-              <AdminUsers users={users} />
+              <AdminUsers users={users} kind="Admin" onSave={handleUserSave} onDelete={handleUserDelete} currentAdminId={adminAuth?.admin_id} />
             )}
 
             {adminTab === 'SEO' && (
@@ -606,13 +817,11 @@ export function App() {
               <AdminChangePassword adminAuth={adminAuth} onPasswordChanged={setAdminAuth} />
             )}
 
-            {(adminTab === 'Tag' || adminTab === 'Sub Admin') && (
-              <div className="bg-white border border-[#E7E5E4] p-8 text-center space-y-3 shadow-xs">
-                <h2 className="text-xl font-bold font-serif italic text-stone-900">{adminTab} Module</h2>
-                <p className="text-xs text-stone-600 font-mono">
-                  Module synchronized with CodeIgniter MySQL schema tables (<code className="text-[#991B1B]">ci_admin / ci_tags / ci_users</code>).
-                </p>
-              </div>
+            {adminTab === 'Tag' && (
+              <AdminTags tags={tags} blogs={blogs} onSave={handleTagSave} onDelete={handleTagDelete} />
+            )}
+            {adminTab === 'Sub Admin' && (
+              <AdminUsers users={subAdmins} kind="Sub Admin" onSave={handleSubAdminSave} onDelete={handleSubAdminDelete} />
             )}
           </>
         )}
@@ -622,8 +831,11 @@ export function App() {
 
   // Public site shows the dummy brand campaigns (demo) in place of the
   // real ad slots; the admin panel keeps the full real+demo list.
-  const demoAds = ads.filter(isDemoAd);
-  const publicAds = demoAds.length > 0 ? demoAds : ads;
+  // Public site shows the REAL ads from the admin panel. Demo banners appear
+  // only as a fallback when no real ads exist yet.
+  const realAds = ads.filter((a) => !isDemoAd(a));
+  // Public site shows ONLY real ads — no demo/sample fallback. No real ad = no ad.
+  const publicAds = realAds;
 
   // RENDER PUBLIC FRONTEND VIEW
   return (
@@ -633,11 +845,7 @@ export function App() {
       setting={setting}
       blogs={blogs}
       activeCategory={activeCategory}
-      onCategorySelect={(catId) => {
-        setActiveCategory(catId);
-        setSelectedArticleUrl(null);
-        if (typeof window !== 'undefined' && window.location.pathname !== '/') window.history.pushState({}, '', '/');
-      }}
+      onCategorySelect={openCategory}
       onSelectArticle={openArticle}
       onGoHome={goHomeNav}
       onSwitchToAdmin={() => setViewMode('admin')}
@@ -650,32 +858,42 @@ export function App() {
       {!selectedArticleUrl && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
-          defaultTitle="News Forever | National & International News Portal"
-          defaultDescription={setting?.site_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          defaultTitle={siteConfig.siteTitle || setting?.meta_default_title || "News Forever | National & International News Portal"}
+          meta_description={siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          meta_keyword={siteConfig.siteKeywords || setting?.meta_default_keywords}
+          og_image={siteConfig.ogImage ? resolveAssetUrl(siteConfig.ogImage) : undefined}
         />
       )}
-      {selectedArticleUrl ? (
-        <PublicArticlePage
-          urlSlug={selectedArticleUrl}
-          blogs={blogs}
-          ads={publicAds}
-          isLoading={loading}
-          onGoBack={goHomeNav}
-          onSelectArticle={openArticle}
-        />
-      ) : (
+      {(() => {
+        const pageMatch = currentSlug ? staticPages.find(p => p.slug.toLowerCase() === currentSlug.toLowerCase()) : null;
+        if (pageMatch) {
+          return <StaticPage page={pageMatch.slug} setting={setting} siteConfig={siteConfig} onGoHome={goHomeNav} />;
+        }
+        return selectedArticleUrl ? (
+          <PublicArticlePage
+            urlSlug={selectedArticleUrl}
+            blogs={blogs}
+            ads={publicAds}
+            isLoading={loading || !pagesLoaded}
+            onGoBack={goHomeNav}
+            onSelectArticle={openArticle}
+          />
+        ) : (
         <PublicHome
-          blogs={blogs}
+          blogs={activeTag ? tagBlogs : blogs}
           ads={publicAds}
           categories={categories}
           tags={tags}
-          activeCategory={activeCategory}
+          activeCategory={activeTag ? 'all' : activeCategory}
           dateFilter={dateFilter}
-          isLoading={loading}
+          isLoading={activeTag ? tagLoading : loading}
           onSelectArticle={openArticle}
-          onCategorySelect={(catId) => setActiveCategory(catId)}
+          onCategorySelect={openCategory}
+          homeH1={activeTag ? undefined : (siteConfig as any).homeH1}
+          homeIntro={activeTag ? undefined : (siteConfig as any).homeIntro}
         />
-      )}
+        );
+      })()}
     </PublicLayout>
     </I18nProvider>
   );

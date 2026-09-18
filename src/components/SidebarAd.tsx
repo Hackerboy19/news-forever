@@ -34,6 +34,7 @@ export const SidebarAd: React.FC<SidebarAdProps> = ({ ads, max = 2, sticky = fal
           key={ad.id}
           data-ad-panel
           href={ad.url}
+          onClick={() => { try { navigator.sendBeacon(`/api/advertisements/${ad.id}/click`); } catch { /* ignore */ } }}
           target="_blank"
           rel="noopener noreferrer sponsored"
           title={ad.title}
