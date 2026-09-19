@@ -225,14 +225,16 @@ export function App() {
   // Google Tag Manager: fire a virtual page_view on every SPA navigation so
   // GTM/GA4 records route changes (a plain SPA only fires once on load).
   useEffect(() => {
+    const page_path = window.location.pathname + window.location.search;
+    const page_location = window.location.href;
+    const page_title = document.title;
     const dl = (window as any).dataLayer;
-    if (!dl) return;
-    dl.push({
-      event: 'page_view',
-      page_path: window.location.pathname + window.location.search,
-      page_location: window.location.href,
-      page_title: document.title,
-    });
+    if (dl) dl.push({ event: 'page_view', page_path, page_location, page_title });
+    // Direct GA4 (gtag.js) too, in case GA4 is not configured inside the GTM container.
+    const gtag = (window as any).gtag;
+    if (typeof gtag === 'function') {
+      gtag('event', 'page_view', { page_path, page_location, page_title });
+    }
   }, [selectedArticleUrl, activeCategory, activeTag, viewMode]);
 
   // Open an article and reflect it in the URL (shareable / refreshable / SEO).

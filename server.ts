@@ -908,12 +908,15 @@ async function startServer() {
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}\n  </head>`);
             // SSR the article body into #root so crawlers see real <h1>/<h2>/<p>/
             // lists in view-source. React (createRoot) replaces it on mount.
+            // Each h#_tag may hold multiple headings, one per line → emit each.
+            const headLevel = (tag: string, raw?: string) =>
+              (raw || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => `<${tag}>${esc(t)}</${tag}>`).join("\n");
             const heads = [
-              article.h2_tag ? `<h2>${esc(article.h2_tag)}</h2>` : "",
-              article.h3_tag ? `<h3>${esc(article.h3_tag)}</h3>` : "",
-              article.h4_tag ? `<h4>${esc(article.h4_tag)}</h4>` : "",
-              article.h5_tag ? `<h5>${esc(article.h5_tag)}</h5>` : "",
-              article.h6_tag ? `<h6>${esc(article.h6_tag)}</h6>` : "",
+              headLevel("h2", article.h2_tag),
+              headLevel("h3", article.h3_tag),
+              headLevel("h4", article.h4_tag),
+              headLevel("h5", article.h5_tag),
+              headLevel("h6", article.h6_tag),
             ].filter(Boolean).join("\n");
             const ssrBody = `<article><h1>${esc(article.title)}</h1>${heads}<div>${article.content || ""}</div></article>`;
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);

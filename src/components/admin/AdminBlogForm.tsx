@@ -897,27 +897,44 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <p className="text-[11px] text-slate-500">Add as many sub-headings per level as you need — each becomes its own heading tag for search engines.</p>
+              <div className="space-y-5">
                 {[
-                  { key: 'h2_tag', tag: 'H2', label: 'Sub-heading 1' },
-                  { key: 'h3_tag', tag: 'H3', label: 'Sub-heading 2' },
-                  { key: 'h4_tag', tag: 'H4', label: 'Sub-heading 3' },
-                  { key: 'h5_tag', tag: 'H5', label: 'Sub-heading 4' },
-                  { key: 'h6_tag', tag: 'H6', label: 'Sub-heading 5' },
-                ].map(({ key, tag, label }) => (
-                  <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-3">
-                    <span className="w-40 px-3 py-1.5 bg-slate-800 text-slate-300 text-xs font-bold rounded-lg text-center">
-                      <span className="text-rose-300">{tag}</span> · {label}
-                    </span>
-                    <input
-                      type="text"
-                      value={(formData as any)[key] || ''}
-                      onChange={(e) => handleInputChange(key as keyof CIBlog, e.target.value)}
-                      placeholder="Leave blank if not needed"
-                      className="flex-1 px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
-                    />
-                  </div>
-                ))}
+                  { key: 'h2_tag', tag: 'H2' },
+                  { key: 'h3_tag', tag: 'H3' },
+                  { key: 'h4_tag', tag: 'H4' },
+                  { key: 'h5_tag', tag: 'H5' },
+                  { key: 'h6_tag', tag: 'H6' },
+                ].map(({ key, tag }) => {
+                  const raw = ((formData as any)[key] || '') as string;
+                  const items = raw.length ? raw.split('\n') : [''];
+                  const commit = (arr: string[]) => handleInputChange(key as keyof CIBlog, arr.join('\n') as any);
+                  return (
+                    <div key={key} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-rose-300 text-xs font-bold">{tag}</span>
+                        <span className="text-[10px] text-slate-500 uppercase tracking-widest">headings</span>
+                        <button type="button" onClick={() => commit([...items, ''])}
+                          className="ml-auto text-[11px] font-bold text-rose-300 hover:underline">+ Add {tag}</button>
+                      </div>
+                      {items.map((val, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={val}
+                            onChange={(e) => { const a = [...items]; a[i] = e.target.value; commit(a); }}
+                            placeholder={`${tag} heading ${i + 1} — leave blank if not needed`}
+                            className="flex-1 px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
+                          />
+                          {items.length > 1 && (
+                            <button type="button" onClick={() => commit(items.filter((_, j) => j !== i))}
+                              className="px-2 py-2 text-rose-400 hover:bg-slate-800 rounded" title="Remove">✕</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
