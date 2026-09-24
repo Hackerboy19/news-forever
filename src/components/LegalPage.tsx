@@ -277,9 +277,12 @@ export const LegalPage: React.FC<LegalPageProps> = ({ slug, onGoHome }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 py-2">
+      {/* `title`, not `meta_title`: these are page headings ("Privacy
+          Policy"), not hand-written full titles, so they take the
+          "| News Forever" suffix. meta_title is reserved for a title an
+          editor wrote to stand alone, and is used verbatim. */}
       <SEOManager
         title={title}
-        meta_title={title}
         meta_description={LEGAL_DESCRIPTIONS[slug]}
         siteName="News Forever"
       />

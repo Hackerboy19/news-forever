@@ -2038,9 +2038,9 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
         if (!injected) {
           const cfg = await getSiteConfig();
           const assetBase = (process.env.LEGACY_ASSET_BASE || "https://newsforever.in/").replace(/\/$/, "") + "/";
-          const st = esc(cfg.siteTitle || "News Forever | National & International News Portal");
-          const sd = esc(cfg.siteDescription || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
-          const sk = cfg.siteKeywords ? esc(cfg.siteKeywords) : "";
+          const st = esc(cfg.siteTitle || siteSetting.meta_default_title || "News Forever | National & International News Portal");
+          const sd = esc(cfg.siteDescription || siteSetting.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
+          const sk = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
           const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
           const url = esc(`${proto}://${req.get("host")}${req.path}`);
           const oiRaw = cfg.ogImage ? /^https?:/i.test(cfg.ogImage) ? cfg.ogImage : assetBase + cfg.ogImage.replace(/^\/+/, "") : "";

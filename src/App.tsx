@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   CIBlog, 
   CICategory, 
@@ -233,6 +233,36 @@ export function App() {
       window.removeEventListener('popstate', syncFromUrl);
     };
   }, []);
+
+  /**
+   * Meta title/description for the category currently being viewed.
+   *
+   * The server already injects these from ci_category for /category/<slug>,
+   * but SEOManager knew nothing about categories: with no article in scope it
+   * fell through to the site-wide defaults and overwrote the correct tags the
+   * moment React mounted. An editor who set a category's meta in admin saw
+   * the generic site description on the page and reasonably concluded the
+   * save had not worked — the value was in the database the whole time, the
+   * browser was throwing it away a few hundred milliseconds after paint.
+   *
+   * The fallback strings below are worded exactly as the server words them,
+   * so the pre- and post-hydration documents agree character for character.
+   */
+  const activeCategoryMeta = useMemo(() => {
+    if (!activeCategory || activeCategory === 'all') return null;
+    const key = String(activeCategory).toLowerCase();
+    const cat = categories.find(
+      (c) => String(c.id) === key || (c.slug || '').toLowerCase() === key
+    );
+    if (!cat) return null;
+    const name = cat.category_name;
+    return {
+      title: cat.meta_title?.trim() || `${name} — News Forever`,
+      description:
+        cat.meta_description?.trim() ||
+        `Latest ${name} news, updates and articles on News Forever.`,
+    };
+  }, [activeCategory, categories]);
 
   // Admin collections follow the session: loaded on login, cleared on logout.
   useEffect(() => {
@@ -895,8 +925,9 @@ export function App() {
       {!selectedArticleUrl && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
+          meta_title={activeCategoryMeta?.title}
           defaultTitle={siteConfig.siteTitle || setting?.meta_default_title || "News Forever | National & International News Portal"}
-          meta_description={siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          meta_description={activeCategoryMeta?.description || siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
           meta_keyword={siteConfig.siteKeywords || setting?.meta_default_keywords}
           og_image={siteConfig.ogImage ? resolveAssetUrl(siteConfig.ogImage) : undefined}
         />

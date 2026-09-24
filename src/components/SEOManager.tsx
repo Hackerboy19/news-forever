@@ -58,8 +58,24 @@ export const SEOManager: React.FC<SEOProps> = ({
 }) => {
   useEffect(() => {
     // Extract props from article object if present, else fallback to individual props
-    const activeTitle = article?.meta_title || article?.title || meta_title || title;
-    const finalTitle = activeTitle ? `${activeTitle} | ${siteName}` : defaultTitle;
+    //
+    // An explicit meta title is used exactly as written. It is the field an
+    // editor fills in to control the full <title>, the admin panel scores its
+    // length as the whole thing, and the server writes it verbatim into the
+    // server-rendered <head>. Appending "| News Forever" here meant the
+    // document that crawlers fetched and the document a reader's browser
+    // ended up with disagreed on every page, and pushed long titles past the
+    // length Google will display. The site name is only added when falling
+    // back to the raw article headline, which was never written to stand
+    // alone as a title.
+    const explicitTitle = article?.meta_title || meta_title;
+    const rawTitle = article?.title || title;
+    const finalTitle = explicitTitle
+      ? explicitTitle
+      : rawTitle
+      ? `${rawTitle} | ${siteName}`
+      : defaultTitle;
+    const activeTitle = explicitTitle || rawTitle;
     document.title = finalTitle;
 
     // Helper function to update or create meta tags
