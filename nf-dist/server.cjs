@@ -25,6 +25,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var import_config = require("dotenv/config");
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
 
 // src/data/siteConfig.ts
 var siteSetting = {
@@ -193,6 +194,34 @@ function resolveCategoryIds(slug, categories) {
   return matched;
 }
 
+// src/lib/editorial.ts
+var NEWSROOM_BYLINE = "News Forever Bureau";
+var GENERIC_AUTHOR_NAMES = /* @__PURE__ */ new Set([
+  "admin",
+  "admin user",
+  "administrator",
+  "superadmin",
+  "super admin",
+  "test user",
+  "user",
+  "news forever",
+  // The house byline is itself a "no attributed person" sentinel, and it must
+  // survive a round trip. `mapBlogRow` substitutes it into `author_name`
+  // before the UI ever sees the row, so on the live-DB path the presentation
+  // layer receives "News Forever Bureau" rather than "Admin User". Without
+  // this entry it would read as a real name and be rendered as "Written by …"
+  // with Person microdata and a Person JSON-LD author — re-attributing the
+  // article to a person who does not exist, which is the exact failure this
+  // helper exists to prevent. Derived from the constant so the two cannot
+  // drift apart.
+  NEWSROOM_BYLINE.toLowerCase()
+]);
+function resolveAuthorName(rawName) {
+  const name = String(rawName || "").trim().replace(/\s+/g, " ");
+  if (!name) return null;
+  return GENERIC_AUTHOR_NAMES.has(name.toLowerCase()) ? null : name;
+}
+
 // src/lib/db.ts
 var dbPool = import_promise.default.createPool({
   host: process.env.MYSQL_HOST || "localhost",
@@ -236,14 +265,21 @@ function mapBlogRow(row, index = 0) {
     is_featured: index === 0,
     is_trending: index > 0 && index < 4,
     author_id: row.user_created_by,
-    author_name: author || "News Forever Bureau",
+    // The ci_admin join above gives the account's real firstname/lastname.
+    // Shared operations logins ("Admin User") are not bylines — see
+    // resolveAuthorName — so those fall back to the newsroom.
+    author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
     views: row.views ?? 0,
     created_at: row.created_at || "",
     updated_at: row.created_at || "",
     meta_title: row.meta_title || row.title,
     meta_description: row.meta_description || summary,
     meta_keyword: row.meta_keyword || "",
-    og_title: row.og_title || row.title,
+    // Fall through to meta_title, not straight to title. An editor who
+    // rewrites the Meta Title and leaves OG Title blank expects the share
+    // card to follow; with `|| row.title` it silently kept the old headline,
+    // because every consumer downstream sees og_title as already set.
+    og_title: row.og_title?.trim() || row.meta_title?.trim() || row.title,
     // Use the stored og_url only if it is clean (no whitespace); otherwise
     // rebuild it from the trimmed slug so legacy "…/ slug" values can't break
     // the canonical / share URL.
@@ -932,6 +968,35 @@ async function getAllBlogsAdmin(limit = 500) {
     return [];
   }
 }
+function mapAdRow(row) {
+  return {
+    id: row.id,
+    title: row.advertisement_title,
+    advertisement_image: assetUrl(row.advertisement_image),
+    alt_tag: row.alt_tag || row.advertisement_title,
+    url: row.advertisement_url,
+    position: row.position,
+    priority: row.priority,
+    status: row.status,
+    click_count: 0,
+    impressions: 0,
+    created_at: row.created_at || ""
+  };
+}
+async function getAllAdsAdmin() {
+  try {
+    const [rows] = await dbPool.query(`
+      SELECT id, advertisement_title, advertisement_url, advertisement_image,
+             alt_tag, priority, position, status, created_at
+      FROM ci_advertisement
+      ORDER BY status DESC, priority ASC, id DESC
+    `);
+    return rows.map(mapAdRow);
+  } catch (err) {
+    handleDbError("getAllAdsAdmin", err);
+    return [];
+  }
+}
 async function getActiveAds() {
   try {
     const query = `
@@ -1384,7 +1449,12 @@ async function startServer() {
     const ok = await deleteTag(parseInt(req.params.id, 10));
     res.json({ success: ok });
   });
-  app.get("/api/advertisements", async (_req, res) => {
+  app.get("/api/advertisements", async (req, res) => {
+    if (req.query.status === "all") {
+      if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(await getAllAdsAdmin());
+    }
     const realAds = await getActiveAds();
     res.json(realAds.length > 0 ? realAds : dbAds);
   });
@@ -1475,11 +1545,15 @@ async function startServer() {
     if (id) await incrementAdClick(id);
     res.json({ success: true });
   });
-  app.get("/api/activity-logs", async (_req, res) => {
+  app.get("/api/activity-logs", async (req, res) => {
+    if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     const real = await getActivityLogs();
     res.json([...dbActivityLogs, ...real]);
   });
-  app.get("/api/users", async (_req, res) => {
+  app.get("/api/users", async (req, res) => {
+    if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getAdminUsers());
   });
   app.post("/api/users", async (req, res) => {
@@ -1510,7 +1584,9 @@ async function startServer() {
     const ok = await deleteAdminUser(id);
     res.json({ success: ok });
   });
-  app.get("/api/sub-admins", async (_req, res) => {
+  app.get("/api/sub-admins", async (req, res) => {
+    if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getSubAdmins());
   });
   app.post("/api/sub-admins", async (req, res) => {
@@ -1539,7 +1615,9 @@ async function startServer() {
     const ok = await deleteSubAdmin(parseInt(req.params.id, 10));
     res.json({ success: ok });
   });
-  app.get("/api/subscribers", async (_req, res) => {
+  app.get("/api/subscribers", async (req, res) => {
+    if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getSubscribers());
   });
   app.post("/api/subscribers", (req, res) => {
@@ -1573,7 +1651,9 @@ async function startServer() {
     const ok = await deleteSubscriber(parseInt(req.params.id, 10));
     res.json({ success: ok });
   });
-  app.get("/api/image-library", async (_req, res) => {
+  app.get("/api/image-library", async (req, res) => {
+    if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getImageLibrary());
   });
   app.delete("/api/image-library/:id", async (req, res) => {
@@ -1582,7 +1662,8 @@ async function startServer() {
     const ok = await deleteImage(parseInt(req.params.id, 10));
     res.json({ success: ok });
   });
-  app.post("/api/image-library", (req, res) => {
+  app.post("/api/image-library", async (req, res) => {
+    if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
     const { file_name, file_path, alt_tag } = req.body;
     const newImg = {
       id: dbImages.length ? Math.max(...dbImages.map((i) => i.id)) + 1 : 1,
@@ -1687,11 +1768,87 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
     });
     app.use(vite.middlewares);
   } else {
+    let imageDimensions = function(absUrl, root) {
+      if (!absUrl) return null;
+      if (dimCache.has(absUrl)) return dimCache.get(absUrl) ?? null;
+      let result = null;
+      try {
+        let pathname;
+        try {
+          pathname = new URL(absUrl).pathname;
+        } catch {
+          pathname = absUrl;
+        }
+        const rel = decodeURIComponent(pathname).replace(/^\/+/, "");
+        const file = import_path.default.resolve(root, rel);
+        if (file.startsWith(import_path.default.resolve(root)) && import_fs.default.existsSync(file)) {
+          const fd = import_fs.default.openSync(file, "r");
+          const buf = Buffer.alloc(32);
+          const read = import_fs.default.readSync(fd, buf, 0, 32, 0);
+          import_fs.default.closeSync(fd);
+          if (read >= 24 && buf.slice(0, 8).toString("hex") === "89504e470d0a1a0a") {
+            result = { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), mime: "image/png" };
+          } else if (read >= 3 && buf[0] === 255 && buf[1] === 216) {
+            const whole = import_fs.default.readFileSync(file);
+            let off = 2;
+            while (off + 9 < whole.length) {
+              if (whole[off] !== 255) {
+                off++;
+                continue;
+              }
+              const marker = whole[off + 1];
+              const len = whole.readUInt16BE(off + 2);
+              if (marker >= 192 && marker <= 207 && ![196, 200, 204].includes(marker)) {
+                result = {
+                  height: whole.readUInt16BE(off + 5),
+                  width: whole.readUInt16BE(off + 7),
+                  mime: "image/jpeg"
+                };
+                break;
+              }
+              off += 2 + len;
+            }
+          } else if (read >= 10 && buf.slice(0, 3).toString("ascii") === "GIF") {
+            result = { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8), mime: "image/gif" };
+          } else if (read >= 30 && buf.slice(8, 12).toString("ascii") === "WEBP") {
+            const whole = import_fs.default.readFileSync(file);
+            if (whole.slice(12, 16).toString("ascii") === "VP8X") {
+              result = {
+                width: 1 + (whole[24] | whole[25] << 8 | whole[26] << 16),
+                height: 1 + (whole[27] | whole[28] << 8 | whole[29] << 16),
+                mime: "image/webp"
+              };
+            }
+          }
+        }
+      } catch {
+        result = null;
+      }
+      dimCache.set(absUrl, result);
+      return result;
+    };
     const distPath = import_path.default.join(process.cwd(), "dist");
     app.use(import_express.default.static(distPath));
-    app.use("/assets", import_express.default.static(import_path.default.join(process.cwd(), "assets")));
-    app.use("/uploads", import_express.default.static(import_path.default.join(process.cwd(), "uploads")));
-    app.use(["/assets", "/uploads"], (_req, res) => res.status(404).type("txt").send("Not found"));
+    const mediaRoot = process.env.LEGACY_MEDIA_ROOT || process.cwd();
+    const assetsDir = import_path.default.join(mediaRoot, "assets");
+    const uploadsDir = import_path.default.join(mediaRoot, "uploads");
+    app.use("/assets", import_express.default.static(assetsDir));
+    app.use("/uploads", import_express.default.static(uploadsDir));
+    {
+      const { existsSync } = await import("fs");
+      const found = existsSync(assetsDir);
+      console.log(
+        `[media] LEGACY_MEDIA_ROOT=${mediaRoot} -> ${assetsDir} ${found ? "(found)" : "(MISSING)"}`
+      );
+      if (!found) {
+        console.warn(
+          "[media] No assets/ directory there, so /assets/* will 404. Set LEGACY_MEDIA_ROOT to the folder containing the legacy assets/ and uploads/ directories."
+        );
+      }
+    }
+    app.use(["/assets", "/uploads"], (_req, res) => {
+      res.status(404).type("text/plain").send("Not found");
+    });
     const fs = await import("fs/promises");
     let templateCache = "";
     const getTemplate = async () => {
@@ -1700,6 +1857,8 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
     };
     const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const RESERVED = /* @__PURE__ */ new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
+    const BUILTIN_PAGES = /* @__PURE__ */ new Set(["privacy-policy", "terms-of-service", "disclaimer"]);
+    const dimCache = /* @__PURE__ */ new Map();
     app.get("*", async (req, res) => {
       try {
         let html = await getTemplate();
@@ -1743,6 +1902,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             const url = esc(urlRaw);
             const img = /^https?:/i.test(article.og_image || "") ? article.og_image : article.image;
             const imgEsc = esc(img);
+            const dim = imageDimensions(img, mediaRoot);
             const ogTitle = esc(article.og_title || article.meta_title || article.title);
             const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
             const ld = {
@@ -1786,7 +1946,14 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
               `<meta property="og:title" content="${ogTitle}">`,
               `<meta property="og:description" content="${ogDesc}">`,
               imgEsc ? `<meta property="og:image" content="${imgEsc}">` : "",
+              imgEsc ? `<meta property="og:image:secure_url" content="${imgEsc}">` : "",
+              imgEsc ? `<meta property="og:image:alt" content="${esc(article.alt_tag || article.title)}">` : "",
+              dim ? `<meta property="og:image:type" content="${dim.mime}">` : "",
+              dim ? `<meta property="og:image:width" content="${dim.width}">` : "",
+              dim ? `<meta property="og:image:height" content="${dim.height}">` : "",
               `<meta property="og:url" content="${url}">`,
+              `<meta property="og:site_name" content="News Forever">`,
+              `<meta property="og:locale" content="en_IN">`,
               `<meta name="twitter:card" content="summary_large_image">`,
               `<meta name="twitter:title" content="${ogTitle}">`,
               `<meta name="twitter:description" content="${ogDesc}">`,
@@ -1797,16 +1964,26 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             ].filter(Boolean).join("\n    ");
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}
   </head>`);
+            const headLevel = (tag, raw) => (raw || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => `<${tag}>${esc(t)}</${tag}>`).join("\n");
             const heads = [
-              article.h2_tag ? `<h2>${esc(article.h2_tag)}</h2>` : "",
-              article.h3_tag ? `<h3>${esc(article.h3_tag)}</h3>` : "",
-              article.h4_tag ? `<h4>${esc(article.h4_tag)}</h4>` : "",
-              article.h5_tag ? `<h5>${esc(article.h5_tag)}</h5>` : "",
-              article.h6_tag ? `<h6>${esc(article.h6_tag)}</h6>` : ""
+              headLevel("h2", article.h2_tag),
+              headLevel("h3", article.h3_tag),
+              headLevel("h4", article.h4_tag),
+              headLevel("h5", article.h5_tag),
+              headLevel("h6", article.h6_tag)
             ].filter(Boolean).join("\n");
-            const ssrBody = `<article><h1>${esc(article.title)}</h1>${heads}<div>${article.content || ""}</div></article>`;
+            const heroImg = imgEsc ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">` : "";
+            const ssrBody = [
+              `<article>`,
+              `<h1>${esc(article.title)}</h1>`,
+              article.short_content ? `<p>${esc(article.short_content)}</p>` : "",
+              heroImg,
+              heads,
+              `<div>${article.content || ""}</div>`,
+              `</article>`
+            ].filter(Boolean).join("\n");
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
-          } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news") {
+          } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news" && !BUILTIN_PAGES.has(seg.toLowerCase())) {
             status = 404;
           }
         }
@@ -1861,9 +2038,9 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
         if (!injected) {
           const cfg = await getSiteConfig();
           const assetBase = (process.env.LEGACY_ASSET_BASE || "https://newsforever.in/").replace(/\/$/, "") + "/";
-          const st = esc(cfg.siteTitle || "News Forever | National & International News Portal");
-          const sd = esc(cfg.siteDescription || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
-          const sk = cfg.siteKeywords ? esc(cfg.siteKeywords) : "";
+          const st = esc(cfg.siteTitle || siteSetting.meta_default_title || "News Forever | National & International News Portal");
+          const sd = esc(cfg.siteDescription || siteSetting.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
+          const sk = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
           const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
           const url = esc(`${proto}://${req.get("host")}${req.path}`);
           const oiRaw = cfg.ogImage ? /^https?:/i.test(cfg.ogImage) ? cfg.ogImage : assetBase + cfg.ogImage.replace(/^\/+/, "") : "";
@@ -1926,7 +2103,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
           html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags.filter(Boolean).join("\n    ")}
   </head>`);
         }
-        res.status(status).set("Content-Type", "text/html; charset=utf-8").send(html);
+        res.status(status).set("Content-Type", "text/html; charset=utf-8").set("Cache-Control", "public, max-age=0, must-revalidate").send(html);
       } catch {
         res.sendFile(import_path.default.join(distPath, "index.html"));
       }

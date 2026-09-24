@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   CIBlog, 
   CICategory, 
@@ -17,6 +17,8 @@ import PublicLayout from './components/PublicLayout';
 import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
 import StaticPage from './components/StaticPage';
+import LegalPage, { LEGAL_SLUGS, type LegalSlug } from './components/LegalPage';
+import { resizeForUpload, describeResize } from './lib/imageResize';
 import SEOManager from './components/SEOManager';
 
 import { I18nProvider } from './lib/i18n';
@@ -139,7 +141,13 @@ export function App() {
   // Loading state
   const [loading, setLoading] = useState(true);
 
-  // Fetch initial data from REST API
+  // Fetch initial data from REST API.
+  //
+  // Public only. The subscriber list, the ci_admin accounts, the activity log
+  // and the image library used to be fetched here too — on every homepage
+  // load, by every visitor, with no credentials. That made a newsletter list
+  // and a roster of admin usernames readable by anyone who opened the network
+  // tab. Those four now live in fetchAdminData below, behind the session.
   const fetchData = async () => {
     try {
       const [
@@ -147,20 +155,12 @@ export function App() {
         resCats,
         resTags,
         resAds,
-        resLogs,
-        resUsers,
-        resSubs,
-        resImgs,
         resSetting
       ] = await Promise.all([
         fetch('/api/blogs').then(r => r.json()),
         fetch('/api/categories').then(r => r.json()),
         fetch('/api/tags').then(r => r.json()),
         fetch('/api/advertisements').then(r => r.json()),
-        fetch('/api/activity-logs').then(r => r.json()),
-        fetch('/api/users').then(r => r.json()),
-        fetch('/api/subscribers').then(r => r.json()),
-        fetch('/api/image-library').then(r => r.json()),
         fetch('/api/settings').then(r => r.json()),
       ]);
 
@@ -168,19 +168,45 @@ export function App() {
       setCategories(resCats);
       setTags(resTags);
       setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      setActivityLogs(resLogs);
-      setUsers(resUsers);
-      setSubscribers(resSubs);
-      setImages(resImgs);
       setSetting(resSetting && typeof resSetting === 'object' ? { ...siteSetting, ...resSetting } : siteSetting);
       fetch('/api/site-config').then(r => r.ok ? r.json() : {}).then(setSiteConfig).catch(() => {});
-      fetch('/api/sub-admins').then(r => r.ok ? r.json() : []).then((d) => Array.isArray(d) && setSubAdmins(d)).catch(() => {});
       fetch('/api/pages').then(r => r.ok ? r.json() : []).then((d) => { if (Array.isArray(d) && d.length) setStaticPages(d); }).catch(() => {}).finally(() => setPagesLoaded(true));
     } catch (err) {
       console.error('Failed to fetch REST API data', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Admin-only collections, sent with the session credentials.
+   *
+   * Called when a session starts and cleared when it ends, so a logged-out
+   * browser never holds this data and never asks the server for it.
+   */
+  const fetchAdminData = async (creds: AdminCredentials | null) => {
+    if (!creds) {
+      setActivityLogs([]);
+      setUsers([]);
+      setSubscribers([]);
+      setImages([]);
+      setSubAdmins([]);
+      return;
+    }
+    const headers = adminHeaders(creds);
+    const get = (url: string) => fetch(url, { headers }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    const [resLogs, resUsers, resSubs, resImgs, resSubAdmins] = await Promise.all([
+      get('/api/activity-logs'),
+      get('/api/users'),
+      get('/api/subscribers'),
+      get('/api/image-library'),
+      get('/api/sub-admins'),
+    ]);
+    if (Array.isArray(resLogs)) setActivityLogs(resLogs);
+    if (Array.isArray(resUsers)) setUsers(resUsers);
+    if (Array.isArray(resSubs)) setSubscribers(resSubs);
+    if (Array.isArray(resImgs)) setImages(resImgs);
+    if (Array.isArray(resSubAdmins)) setSubAdmins(resSubAdmins);
   };
 
   useEffect(() => {
@@ -207,6 +233,42 @@ export function App() {
       window.removeEventListener('popstate', syncFromUrl);
     };
   }, []);
+
+  /**
+   * Meta title/description for the category currently being viewed.
+   *
+   * The server already injects these from ci_category for /category/<slug>,
+   * but SEOManager knew nothing about categories: with no article in scope it
+   * fell through to the site-wide defaults and overwrote the correct tags the
+   * moment React mounted. An editor who set a category's meta in admin saw
+   * the generic site description on the page and reasonably concluded the
+   * save had not worked — the value was in the database the whole time, the
+   * browser was throwing it away a few hundred milliseconds after paint.
+   *
+   * The fallback strings below are worded exactly as the server words them,
+   * so the pre- and post-hydration documents agree character for character.
+   */
+  const activeCategoryMeta = useMemo(() => {
+    if (!activeCategory || activeCategory === 'all') return null;
+    const key = String(activeCategory).toLowerCase();
+    const cat = categories.find(
+      (c) => String(c.id) === key || (c.slug || '').toLowerCase() === key
+    );
+    if (!cat) return null;
+    const name = cat.category_name;
+    return {
+      title: cat.meta_title?.trim() || `${name} — News Forever`,
+      description:
+        cat.meta_description?.trim() ||
+        `Latest ${name} news, updates and articles on News Forever.`,
+    };
+  }, [activeCategory, categories]);
+
+  // Admin collections follow the session: loaded on login, cleared on logout.
+  useEffect(() => {
+    fetchAdminData(adminAuth);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminAuth]);
 
   // Fetch every article for the active tag from the server (covers old articles
   // + duplicate-slug tag ids). Runs whenever the active tag changes.
@@ -410,8 +472,9 @@ export function App() {
       if (await handleWriteError(res)) return;
       await refreshAdminBlogs();
 
-      const resLogs = await fetch('/api/activity-logs').then(r => r.json());
-      setActivityLogs(resLogs);
+      const resLogs = await fetch('/api/activity-logs', { headers: adminHeaders(adminAuth) })
+        .then(r => (r.ok ? r.json() : []));
+      setActivityLogs(Array.isArray(resLogs) ? resLogs : []);
 
       setIsBlogFormOpen(false);
       setEditingBlog(null);
@@ -443,19 +506,20 @@ export function App() {
   /** Upload an image via the bridge; returns the stored assets path. */
   const handleImageUpload = async (file: File): Promise<string | null> => {
     try {
-      const base64: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Downscale before upload. Straight from a phone or a design tool an
+      // image is routinely several megabytes, which readers then pay for on
+      // every page load and which WhatsApp refuses outright as a share
+      // image. See src/lib/imageResize.ts for what is and is not touched.
+      const resized = await resizeForUpload(file);
       const res = await fetch('/api/upload-image', {
         method: 'POST',
         headers: writeHeaders(),
-        body: JSON.stringify({ folder: 'blog', filename: file.name, data: base64 }),
+        body: JSON.stringify({ folder: 'blog', filename: resized.filename, data: resized.data }),
       });
       if (await handleWriteError(res)) return null;
       const { path } = await res.json();
+      const note = describeResize(resized);
+      if (note) console.info(`[upload] ${file.name} resized: ${note}`);
       return path || null;
     } catch {
       alert('Could not upload that image. Use a JPG, PNG or WebP under 8 MB and try again.');
@@ -487,8 +551,9 @@ export function App() {
       const res = await fetch(`/api/blogs/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
       setBlogs(prev => prev.filter(b => b.id !== id));
-      const resLogs = await fetch('/api/activity-logs').then(r => r.json());
-      setActivityLogs(resLogs);
+      const resLogs = await fetch('/api/activity-logs', { headers: adminHeaders(adminAuth) })
+        .then(r => (r.ok ? r.json() : []));
+      setActivityLogs(Array.isArray(resLogs) ? resLogs : []);
     } catch (err) {
       alert('Could not delete the article. Please try again.');
     }
@@ -642,8 +707,8 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      const resSubs = await fetch('/api/subscribers').then(r => r.json());
-      setSubscribers(resSubs);
+      // No re-fetch here: a reader subscribing must not pull down the whole
+      // subscriber list. The admin panel loads it with credentials instead.
     } catch (err) {
       console.error(err);
     }
@@ -860,8 +925,9 @@ export function App() {
       {!selectedArticleUrl && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
+          meta_title={activeCategoryMeta?.title}
           defaultTitle={siteConfig.siteTitle || setting?.meta_default_title || "News Forever | National & International News Portal"}
-          meta_description={siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          meta_description={activeCategoryMeta?.description || siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
           meta_keyword={siteConfig.siteKeywords || setting?.meta_default_keywords}
           og_image={siteConfig.ogImage ? resolveAssetUrl(siteConfig.ogImage) : undefined}
         />
@@ -870,6 +936,13 @@ export function App() {
         const pageMatch = currentSlug ? staticPages.find(p => p.slug.toLowerCase() === currentSlug.toLowerCase()) : null;
         if (pageMatch) {
           return <StaticPage page={pageMatch.slug} setting={setting} siteConfig={siteConfig} onGoHome={goHomeNav} />;
+        }
+        // Built-in copy for the three legal routes the footer links to, so
+        // they are never dead. An admin-created page of the same slug wins
+        // (handled above), which is how this gets replaced with real,
+        // counsel-reviewed text without a deploy.
+        if (currentSlug && (LEGAL_SLUGS as readonly string[]).includes(currentSlug.toLowerCase())) {
+          return <LegalPage slug={currentSlug.toLowerCase() as LegalSlug} onGoHome={goHomeNav} />;
         }
         return selectedArticleUrl ? (
           <PublicArticlePage
