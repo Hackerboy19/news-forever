@@ -18,6 +18,7 @@ import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
 import StaticPage from './components/StaticPage';
 import LegalPage, { LEGAL_SLUGS, type LegalSlug } from './components/LegalPage';
+import { resizeForUpload, describeResize } from './lib/imageResize';
 import SEOManager from './components/SEOManager';
 
 import { I18nProvider } from './lib/i18n';
@@ -475,19 +476,20 @@ export function App() {
   /** Upload an image via the bridge; returns the stored assets path. */
   const handleImageUpload = async (file: File): Promise<string | null> => {
     try {
-      const base64: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Downscale before upload. Straight from a phone or a design tool an
+      // image is routinely several megabytes, which readers then pay for on
+      // every page load and which WhatsApp refuses outright as a share
+      // image. See src/lib/imageResize.ts for what is and is not touched.
+      const resized = await resizeForUpload(file);
       const res = await fetch('/api/upload-image', {
         method: 'POST',
         headers: writeHeaders(),
-        body: JSON.stringify({ folder: 'blog', filename: file.name, data: base64 }),
+        body: JSON.stringify({ folder: 'blog', filename: resized.filename, data: resized.data }),
       });
       if (await handleWriteError(res)) return null;
       const { path } = await res.json();
+      const note = describeResize(resized);
+      if (note) console.info(`[upload] ${file.name} resized: ${note}`);
       return path || null;
     } catch {
       alert('Could not upload that image. Use a JPG, PNG or WebP under 8 MB and try again.');
