@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
 import { translateArticle, translateTitles } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
@@ -607,6 +608,86 @@ async function startServer() {
     const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const RESERVED = new Set(["", "admin", "category", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
 
+    /**
+     * Real pixel size and MIME type of a share image, read from the file
+     * header on disk.
+     *
+     * Only images this server hosts can be measured — the URL's path is mapped
+     * back under LEGACY_MEDIA_ROOT. Anything remote, missing, or in a format
+     * not parsed here returns null and the width/height tags are simply
+     * omitted, which is exactly the previous behaviour.
+     *
+     * Just the first 32 bytes are read, and results are cached, so this costs
+     * effectively nothing per request.
+     */
+    const dimCache = new Map<string, { width: number; height: number; mime: string } | null>();
+    function imageDimensions(
+      absUrl: string,
+      root: string
+    ): { width: number; height: number; mime: string } | null {
+      if (!absUrl) return null;
+      if (dimCache.has(absUrl)) return dimCache.get(absUrl) ?? null;
+
+      let result: { width: number; height: number; mime: string } | null = null;
+      try {
+        let pathname: string;
+        try {
+          pathname = new URL(absUrl).pathname;
+        } catch {
+          pathname = absUrl;
+        }
+        // Keep the lookup inside the media root: reject traversal outright.
+        const rel = decodeURIComponent(pathname).replace(/^\/+/, "");
+        const file = path.resolve(root, rel);
+        if (file.startsWith(path.resolve(root)) && nodeFs.existsSync(file)) {
+          const fd = nodeFs.openSync(file, "r");
+          const buf = Buffer.alloc(32);
+          const read = nodeFs.readSync(fd, buf, 0, 32, 0);
+          nodeFs.closeSync(fd);
+
+          if (read >= 24 && buf.slice(0, 8).toString("hex") === "89504e470d0a1a0a") {
+            // PNG: IHDR width/height are big-endian at offsets 16 and 20.
+            result = { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), mime: "image/png" };
+          } else if (read >= 3 && buf[0] === 0xff && buf[1] === 0xd8) {
+            // JPEG: walk the segment markers for the SOFn frame header.
+            const whole = nodeFs.readFileSync(file);
+            let off = 2;
+            while (off + 9 < whole.length) {
+              if (whole[off] !== 0xff) { off++; continue; }
+              const marker = whole[off + 1];
+              const len = whole.readUInt16BE(off + 2);
+              // SOFn frames carry the dimensions; skip DHT/DAC/RST variants.
+              if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+                result = {
+                  height: whole.readUInt16BE(off + 5),
+                  width: whole.readUInt16BE(off + 7),
+                  mime: "image/jpeg",
+                };
+                break;
+              }
+              off += 2 + len;
+            }
+          } else if (read >= 10 && buf.slice(0, 3).toString("ascii") === "GIF") {
+            result = { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8), mime: "image/gif" };
+          } else if (read >= 30 && buf.slice(8, 12).toString("ascii") === "WEBP") {
+            const whole = nodeFs.readFileSync(file);
+            if (whole.slice(12, 16).toString("ascii") === "VP8X") {
+              result = {
+                width: 1 + (whole[24] | (whole[25] << 8) | (whole[26] << 16)),
+                height: 1 + (whole[27] | (whole[28] << 8) | (whole[29] << 16)),
+                mime: "image/webp",
+              };
+            }
+          }
+        }
+      } catch {
+        result = null; // never let a share-image probe break the page render
+      }
+
+      dimCache.set(absUrl, result);
+      return result;
+    }
+
     app.get("*", async (req, res) => {
       try {
         let html = await getTemplate();
@@ -620,6 +701,13 @@ async function startServer() {
             const url = esc(article.og_url || `${proto}://${req.get("host")}/${seg}`);
             const img = /^https?:/i.test(article.og_image || "") ? article.og_image : article.image; // already absolute
             const imgEsc = esc(img);
+            // Facebook, LinkedIn and WhatsApp render a share card from the tags
+            // alone on first encounter, before they have downloaded the image.
+            // Without og:image:width/height they must fetch and measure it
+            // first, which is why a freshly shared link so often previews with
+            // no picture. The file is on our own disk, so read the real numbers
+            // out of its header rather than guessing or omitting them.
+            const dim = imageDimensions(img, mediaRoot);
             const ogTitle = esc(article.og_title || article.meta_title || article.title);
             const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
             const tags = [
@@ -631,7 +719,14 @@ async function startServer() {
               `<meta property="og:title" content="${ogTitle}">`,
               `<meta property="og:description" content="${ogDesc}">`,
               imgEsc ? `<meta property="og:image" content="${imgEsc}">` : "",
+              imgEsc ? `<meta property="og:image:secure_url" content="${imgEsc}">` : "",
+              imgEsc ? `<meta property="og:image:alt" content="${esc(article.alt_tag || article.title)}">` : "",
+              dim ? `<meta property="og:image:type" content="${dim.mime}">` : "",
+              dim ? `<meta property="og:image:width" content="${dim.width}">` : "",
+              dim ? `<meta property="og:image:height" content="${dim.height}">` : "",
               `<meta property="og:url" content="${url}">`,
+              `<meta property="og:site_name" content="News Forever">`,
+              `<meta property="og:locale" content="en_IN">`,
               `<meta name="twitter:card" content="summary_large_image">`,
               `<meta name="twitter:title" content="${ogTitle}">`,
               `<meta name="twitter:description" content="${ogDesc}">`,
