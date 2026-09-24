@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* The committed deploy bundle (nf-dist/) contains the previous build's
+   JavaScript, which Tailwind's automatic source detection happily scans —
+   so every build re-emitted the classes of the build before it, and the
+   stylesheet grew a little each time while its hash changed for no real
+   reason. Exclude it so the CSS depends on the source alone. */
+@source not "../nf-dist";
+
 @layer base {
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
