@@ -70,6 +70,8 @@ interface RawBlogRow {
   og_url: string;
   og_description: string;
   og_image: string;
+  person_name?: string;
+  views?: number;
   description: string;
   status: number;
   created_at: string;
@@ -120,14 +122,19 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     // Shared operations logins ("Admin User") are not bylines — see
     // resolveAuthorName — so those fall back to the newsroom.
     author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
-    views: 0,
+    views: row.views ?? 0,
     created_at: row.created_at || '',
     updated_at: row.created_at || '',
     meta_title: row.meta_title || row.title,
     meta_description: row.meta_description || summary,
     meta_keyword: row.meta_keyword || '',
     og_title: row.og_title || row.title,
-    og_url: row.og_url || `https://newsforever.in/${(row.url || '').trim()}`,
+    // Use the stored og_url only if it is clean (no whitespace); otherwise
+    // rebuild it from the trimmed slug so legacy "…/ slug" values can't break
+    // the canonical / share URL.
+    og_url: ((row.og_url || '').trim() && !/\s/.test((row.og_url || '').trim()))
+      ? (row.og_url || '').trim()
+      : `https://newsforever.in/${(row.url || '').trim()}`,
     og_description: row.og_description || summary,
     og_image: assetUrl(row.og_image || row.image),
     h2_tag: row.h2_tag,
@@ -135,6 +142,7 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     h4_tag: row.h4_tag,
     h5_tag: row.h5_tag,
     h6_tag: row.h6_tag,
+    person_name: (row.person_name || '').trim(),
     youtube_video_link: (row.youtube_video_link || '').trim() || undefined,
   };
 }
@@ -172,6 +180,7 @@ const BLOG_SELECT = `
          b.image, b.alt_tag, b.url, b.meta_title, b.meta_keyword, b.meta_description,
          b.h2_tag, b.h3_tag, b.h4_tag, b.h5_tag, b.h6_tag,
          b.og_title, b.og_url, b.og_description, b.og_image,
+         b.person_name, b.views,
          b.description, b.status, b.created_at,
          c.cat_name AS category_name,
          sc.cat_name AS sub_category_name,
@@ -214,6 +223,22 @@ export async function getPublishedBlogs(limit = 50, categorySlug?: string): Prom
 }
 
 /** Fetch a single article by exact ci_blog.url slug (legacy rows carry stray whitespace). */
+export async function incrementBlogViews(id: number): Promise<void> {
+  try {
+    await dbPool.query(`UPDATE ci_blog SET views = views + 1 WHERE id = ?`, [id]);
+  } catch (err) {
+    handleDbError('incrementBlogViews', err);
+  }
+}
+
+export async function incrementAdClick(id: number): Promise<void> {
+  try {
+    await dbPool.query(`UPDATE ci_advertisement SET click_count = click_count + 1 WHERE id = ?`, [id]);
+  } catch (err) {
+    handleDbError('incrementAdClick', err);
+  }
+}
+
 export async function getBlogByUrlSlug(urlSlug: string): Promise<CIBlog | null> {
   try {
     const query = `${BLOG_SELECT} WHERE TRIM(b.url) = ? AND b.status = 1 LIMIT 1`;
@@ -321,6 +346,27 @@ export async function getAdminUsers(): Promise<CIUser[]> {
   }
 }
 
+/** Real sub-admins from ci_subadmin. */
+export async function getSubAdmins(): Promise<CIUser[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT id, username, firstname, lastname, email, mobile_no, is_active, is_verify, created_at FROM ci_subadmin ORDER BY id ASC`
+    );
+    return (rows as any[]).map((r) => ({
+      id: r.id,
+      username: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username,
+      email: r.email || '',
+      role: 'Contributor',
+      avatar: '',
+      status: r.is_active ? 1 : 0,
+      last_login: r.created_at ? String(r.created_at) : '',
+    }));
+  } catch (err) {
+    handleDbError('getSubAdmins', err);
+    return [];
+  }
+}
+
 /** Real activity trail from ci_activity_log (labels joined from ci_activity_status). */
 export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
   try {
@@ -354,6 +400,14 @@ export interface SiteConfig {
   footerColor?: string;
   navExtra?: number[]; // extra ci_category ids pinned as top-level nav tabs
   logoUrl?: string; // custom site logo path/URL; empty = built-in NewsForever logo
+  siteTitle?: string;       // site-wide <title> / OG title default (homepage + site share)
+  siteDescription?: string; // site-wide meta description default
+  siteKeywords?: string;    // site-wide meta keywords default
+  ogImage?: string;         // site-wide OG/Twitter share image
+  showTicker?: boolean;     // breaking-news ticker visible? (default true)
+  tickerText?: string;      // custom ticker lines (one per line); blank = latest articles
+  homeH1?: string;          // visible homepage H1 heading (SEO)
+  homeIntro?: string;       // short intro paragraph under the homepage H1
 }
 
 const CONFIG_KEY = 'nf_site_config';
@@ -376,6 +430,14 @@ export async function saveSiteConfig(config: SiteConfig): Promise<SiteConfig> {
     footerColor: config.footerColor || '',
     navExtra: Array.isArray(config.navExtra) ? config.navExtra.map(Number).slice(0, 12) : [],
     logoUrl: (config.logoUrl || '').slice(0, 500),
+    siteTitle: (config.siteTitle || '').slice(0, 300),
+    siteDescription: (config.siteDescription || '').slice(0, 600),
+    siteKeywords: (config.siteKeywords || '').slice(0, 600),
+    ogImage: (config.ogImage || '').slice(0, 500),
+    showTicker: config.showTicker !== false, // default visible
+    tickerText: (config.tickerText || '').slice(0, 2000),
+    homeH1: (config.homeH1 || '').slice(0, 200),
+    homeIntro: (config.homeIntro || '').slice(0, 600),
   });
   const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [CONFIG_KEY]);
   if ((rows as any[]).length > 0) {
@@ -390,6 +452,91 @@ export async function saveSiteConfig(config: SiteConfig): Promise<SiteConfig> {
 }
 
 // ---- ci_advertisement CRUD ----
+
+// --- Static pages (About Us / Contact Us) stored as JSON in ci_setting ---
+export interface StaticPageData {
+  title?: string;
+  content?: string;        // HTML body
+  meta_title?: string;
+  meta_description?: string;
+  meta_keyword?: string;
+}
+const PAGE_PREFIX = 'nf_page_';
+
+export async function getStaticPage(slug: string): Promise<StaticPageData> {
+  // Read one ci_setting row: our JSON format, or legacy raw-HTML page bodies.
+  const readKey = async (key: string): Promise<StaticPageData | null> => {
+    const [rows] = await dbPool.query(`SELECT page_description FROM ci_setting WHERE page_key = ? LIMIT 1`, [key]);
+    const list = rows as any[];
+    if (list.length === 0) return null;
+    const raw = (list[0].page_description || '').trim();
+    if (!raw) return {};
+    try {
+      const j = JSON.parse(raw);
+      if (j && typeof j === 'object') return j as StaticPageData;
+    } catch { /* not JSON → legacy raw HTML body */ }
+    return { content: raw };
+  };
+  try {
+    // Prefer our saved page; fall back to the legacy key (about-us → about_us).
+    const primary = await readKey(PAGE_PREFIX + slug);
+    if (primary && (primary.content || primary.title || primary.meta_title || primary.meta_description)) return primary;
+    const legacy = await readKey(slug.replace(/-/g, '_'));
+    return legacy || primary || {};
+  } catch (err) {
+    handleDbError('getStaticPage', err);
+    return {};
+  }
+}
+
+export async function getAllStaticPages(): Promise<{ slug: string; title: string }[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT page_key, page_description FROM ci_setting WHERE page_key LIKE ?`,
+      [PAGE_PREFIX + '%']
+    );
+    return (rows as any[]).map((r) => {
+      const slug = String(r.page_key).slice(PAGE_PREFIX.length);
+      let title = slug;
+      try { const d = JSON.parse(r.page_description || '{}'); title = d.title || d.meta_title || slug; } catch { /* keep slug */ }
+      return { slug, title };
+    });
+  } catch (err) {
+    handleDbError('getAllStaticPages', err);
+    return [];
+  }
+}
+
+export async function deleteStaticPage(slug: string): Promise<boolean> {
+  try {
+    const [r] = await dbPool.query(`DELETE FROM ci_setting WHERE page_key = ?`, [PAGE_PREFIX + slug]);
+    return (r as any).affectedRows > 0;
+  } catch (err) {
+    handleDbError('deleteStaticPage', err);
+    return false;
+  }
+}
+
+export async function saveStaticPage(slug: string, data: StaticPageData): Promise<StaticPageData> {
+  const json = JSON.stringify({
+    title: (data.title || '').slice(0, 300),
+    content: (data.content || '').slice(0, 100000),
+    meta_title: (data.meta_title || '').slice(0, 300),
+    meta_description: (data.meta_description || '').slice(0, 600),
+    meta_keyword: (data.meta_keyword || '').slice(0, 600),
+  });
+  const key = PAGE_PREFIX + slug;
+  const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [key]);
+  if ((rows as any[]).length > 0) {
+    await dbPool.query(`UPDATE ci_setting SET page_description = ? WHERE page_key = ?`, [json, key]);
+  } else {
+    await dbPool.query(
+      `INSERT INTO ci_setting (page_key, page_description, email, phone, address, map, status) VALUES (?, ?, '', '', '', '', 1)`,
+      [key, json]
+    );
+  }
+  return getStaticPage(slug);
+}
 
 function toAdColumns(payload: Partial<CIAdvertisement>): Record<string, string | number> {
   const cols: Record<string, string | number> = {};
@@ -500,6 +647,107 @@ export async function getActiveTags(): Promise<CITag[]> {
   }
 }
 
+const slugifyTag = (s: string) => (s || '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+
+// --- Tag CRUD (ci_tag) ---
+export async function createTag(data: { tag_name: string; slug?: string; status?: number }) {
+  const url = (data.slug && data.slug.trim()) || slugifyTag(data.tag_name);
+  await dbPool.query(
+    `INSERT INTO ci_tag (url, tag_name, meta_title, meta_keyword, meta_description, h2_tag, h3_tag, h4_tag, h5_tag, h6_tag, og_title, og_url, og_description, og_image, status, created_at)
+     VALUES (?, ?, '', '', '', '', '', '', '', '', '', '', '', '', ?, ?)`,
+    [url, data.tag_name, data.status ?? 1, legacyNow()]
+  );
+  return getActiveTags();
+}
+export async function updateTag(id: number, data: { tag_name?: string; slug?: string; status?: number }) {
+  const cols: Record<string, any> = {};
+  if (data.tag_name !== undefined) cols.tag_name = data.tag_name;
+  if (data.slug !== undefined) cols.url = data.slug.trim() || slugifyTag(data.tag_name || '');
+  if (data.status !== undefined) cols.status = data.status;
+  const names = Object.keys(cols);
+  if (names.length) {
+    await dbPool.query(`UPDATE ci_tag SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`, [...names.map((n) => cols[n]), id]);
+  }
+  return getActiveTags();
+}
+export async function deleteTag(id: number): Promise<boolean> {
+  const [r] = await dbPool.query(`DELETE FROM ci_tag WHERE id = ?`, [id]);
+  return (r as any).affectedRows > 0;
+}
+
+// --- Subscriber delete (ci_subscribe) ---
+export async function deleteSubscriber(id: number): Promise<boolean> {
+  const [r] = await dbPool.query(`DELETE FROM ci_subscribe WHERE id = ?`, [id]);
+  return (r as any).affectedRows > 0;
+}
+export async function deleteSubscribersBulk(ids: number[]): Promise<number> {
+  if (!ids.length) return 0;
+  const ph = ids.map(() => '?').join(',');
+  const [r] = await dbPool.query(`DELETE FROM ci_subscribe WHERE id IN (${ph})`, ids);
+  return (r as any).affectedRows || 0;
+}
+
+// --- Image library delete (ci_imagelibrary) ---
+export async function deleteImage(id: number): Promise<boolean> {
+  const [r] = await dbPool.query(`DELETE FROM ci_imagelibrary WHERE id = ?`, [id]);
+  return (r as any).affectedRows > 0;
+}
+
+// --- Admin users CRUD (ci_admin) — legacy plaintext password scheme ---
+export async function createAdminUser(data: { username: string; firstname?: string; lastname?: string; email?: string; password: string; is_active?: number; is_supper?: number }) {
+  await dbPool.query(
+    `INSERT INTO ci_admin (admin_role_id, username, firstname, lastname, email, mobile_no, address, image, password, is_verify, is_admin, is_active, is_supper, created_at, updated_at)
+     VALUES (0, ?, ?, ?, ?, '', '', '', ?, 1, 1, ?, ?, NOW(), NOW())`,
+    [data.username, data.firstname || '', data.lastname || '', data.email || '', data.password, data.is_active ?? 1, data.is_supper ?? 0]
+  );
+  return getAdminUsers();
+}
+export async function updateAdminUser(id: number, data: { firstname?: string; lastname?: string; email?: string; password?: string; is_active?: number; is_supper?: number }) {
+  const cols: Record<string, any> = {};
+  if (data.firstname !== undefined) cols.firstname = data.firstname;
+  if (data.lastname !== undefined) cols.lastname = data.lastname;
+  if (data.email !== undefined) cols.email = data.email;
+  if (data.password) cols.password = data.password;
+  if (data.is_active !== undefined) cols.is_active = data.is_active;
+  if (data.is_supper !== undefined) cols.is_supper = data.is_supper;
+  const names = Object.keys(cols);
+  if (names.length) {
+    await dbPool.query(`UPDATE ci_admin SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE admin_id = ?`, [...names.map((n) => cols[n]), id]);
+  }
+  return getAdminUsers();
+}
+export async function deleteAdminUser(id: number): Promise<boolean> {
+  const [r] = await dbPool.query(`DELETE FROM ci_admin WHERE admin_id = ?`, [id]);
+  return (r as any).affectedRows > 0;
+}
+
+// --- Sub-admin CRUD (ci_subadmin) ---
+export async function createSubAdmin(data: { username: string; firstname?: string; lastname?: string; email?: string; password: string; is_active?: number }) {
+  await dbPool.query(
+    `INSERT INTO ci_subadmin (username, firstname, lastname, email, mobile_no, password, address, is_active, is_verify, created_at)
+     VALUES (?, ?, ?, ?, '', ?, '', ?, 1, ?)`,
+    [data.username, data.firstname || '', data.lastname || '', data.email || '', data.password, data.is_active ?? 1, legacyNow()]
+  );
+  return getSubAdmins();
+}
+export async function updateSubAdmin(id: number, data: { firstname?: string; lastname?: string; email?: string; password?: string; is_active?: number }) {
+  const cols: Record<string, any> = {};
+  if (data.firstname !== undefined) cols.firstname = data.firstname;
+  if (data.lastname !== undefined) cols.lastname = data.lastname;
+  if (data.email !== undefined) cols.email = data.email;
+  if (data.password) cols.password = data.password;
+  if (data.is_active !== undefined) cols.is_active = data.is_active;
+  const names = Object.keys(cols);
+  if (names.length) {
+    await dbPool.query(`UPDATE ci_subadmin SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`, [...names.map((n) => cols[n]), id]);
+  }
+  return getSubAdmins();
+}
+export async function deleteSubAdmin(id: number): Promise<boolean> {
+  const [r] = await dbPool.query(`DELETE FROM ci_subadmin WHERE id = ?`, [id]);
+  return (r as any).affectedRows > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Admin authentication + ci_blog write support
 // ---------------------------------------------------------------------------
@@ -592,6 +840,7 @@ function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number
   if (payload.h4_tag !== undefined) cols.h4_tag = payload.h4_tag;
   if (payload.h5_tag !== undefined) cols.h5_tag = payload.h5_tag;
   if (payload.h6_tag !== undefined) cols.h6_tag = payload.h6_tag;
+  if (payload.person_name !== undefined) cols.person_name = payload.person_name;
   if (payload.og_title !== undefined) cols.og_title = payload.og_title;
   if (payload.og_url !== undefined) cols.og_url = payload.og_url;
   if (payload.og_description !== undefined) cols.og_description = payload.og_description;
@@ -686,6 +935,7 @@ interface RawAdRow {
   priority: number;
   position: string;
   status: number;
+  click_count?: number;
   created_at: string;
 }
 
@@ -733,7 +983,7 @@ export async function getActiveAds(): Promise<CIAdvertisement[]> {
   try {
     const query = `
       SELECT id, advertisement_title, advertisement_url, advertisement_image,
-             alt_tag, priority, position, status, created_at
+             alt_tag, priority, position, status, click_count, created_at
       FROM ci_advertisement
       WHERE status = 1
       ORDER BY priority ASC, id DESC
@@ -748,7 +998,7 @@ export async function getActiveAds(): Promise<CIAdvertisement[]> {
       position: row.position,
       priority: row.priority,
       status: row.status,
-      click_count: 0,
+      click_count: row.click_count ?? 0,
       impressions: 0,
       created_at: row.created_at || '',
     }));

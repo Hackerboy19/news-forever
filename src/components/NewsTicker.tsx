@@ -7,24 +7,34 @@ import { useI18n } from '../lib/i18n';
 interface NewsTickerProps {
   blogs: CIBlog[];
   onSelectArticle: (urlSlug: string) => void;
+  /** Custom headlines set in admin. When non-empty, shown instead of latest articles (non-clickable). */
+  customItems?: string[];
 }
 
 /**
  * Breaking-news ticker tape below the header — cycles the 5 most recent
  * ci_blog titles in an infinite marquee (pauses on hover).
  */
-export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle }) => {
+export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle, customItems }) => {
   const { t, tt, registerTitles } = useI18n();
+  const custom = (customItems || []).filter((s) => s.trim() !== '');
+  const useCustom = custom.length > 0;
   const latest = blogs.filter((b) => b.status === 1).slice(0, 5);
-  if (latest.length === 0) return null;
+  // Rendered rows: custom lines (no link) OR latest articles (clickable).
+  const items = useCustom
+    ? custom.map((text, i) => ({ id: `c${i}`, url: '', title: text }))
+    : latest.map((b) => ({ id: String(b.id), url: b.url, title: b.title }));
 
   React.useEffect(() => {
-    registerTitles(latest.map(b => b.title));
+    if (!useCustom) registerTitles(latest.map(b => b.title));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latest.map(b => b.id).join(',')]);
+  }, [latest.map(b => b.id).join(','), useCustom]);
+
+  // Early return AFTER hooks so hook order stays stable across renders.
+  if (items.length === 0) return null;
 
   // Duplicate the list so the -50% translate loops seamlessly
-  const loop = [...latest, ...latest];
+  const loop = [...items, ...items];
 
   return (
     <div className="bg-stone-950 text-white border-b border-stone-800 overflow-hidden">
@@ -48,7 +58,9 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle }
                    from the tab order so each headline is announced once. */
                 aria-hidden={i >= loop.length / 2 ? true : undefined}
                 tabIndex={i >= loop.length / 2 ? -1 : undefined}
-                className="inline-flex items-center gap-2 px-6 text-xs font-medium text-stone-200 hover:text-amber-300 transition-colors no-underline"
+                className={`inline-flex items-center gap-2 px-6 text-xs font-medium text-stone-200 transition-colors no-underline ${
+                  article.url ? 'hover:text-amber-300' : 'cursor-default'
+                }`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#991B1B] shrink-0" />
                 {tt(article.title)}

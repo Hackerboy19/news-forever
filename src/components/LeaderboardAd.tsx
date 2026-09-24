@@ -29,6 +29,7 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
         <a
           href={ad.url}
+          onClick={() => { try { navigator.sendBeacon(`/api/advertisements/${ad.id}/click`); } catch { /* ignore */ } }}
           target="_blank"
           rel="noopener noreferrer sponsored"
           title={ad.title}

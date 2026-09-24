@@ -31,6 +31,18 @@ export const ArticleLink: React.FC<ArticleLinkProps> = ({
 }) => {
   const slug = String(url || '').replace(/^\/+/, '');
 
+  // Some rows are plain text rather than articles — custom ticker headlines,
+  // for instance. Those have no slug, and an `<a href="/">` would quietly send
+  // the reader to the homepage. Render them as inert text instead.
+  if (!slug) {
+    const { className, ...spanRest } = rest as React.HTMLAttributes<HTMLSpanElement>;
+    return (
+      <span className={className} {...spanRest}>
+        {children}
+      </span>
+    );
+  }
+
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     // Let the browser handle "open in new tab/window" and non-primary buttons.
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {

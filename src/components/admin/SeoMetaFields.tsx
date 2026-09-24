@@ -7,6 +7,8 @@ export interface SeoValues {
   meta_keyword?: string;
   og_image?: string;
   og_url?: string;
+  og_title?: string;
+  og_description?: string;
   alt_tag?: string;
 }
 
@@ -110,6 +112,41 @@ export const SeoMetaFields: React.FC<SeoMetaFieldsProps> = ({
             className={field}
           />
         </div>
+      )}
+
+      {withOg && (
+      <div className="rounded-lg border border-pink-200 bg-white/60 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-pink-700">Share preview (WhatsApp / Facebook)</span>
+          <button
+            type="button"
+            onClick={() => onChange({ og_title: values.meta_title || '', og_description: values.meta_description || '' })}
+            className="text-[11px] font-bold text-pink-600 hover:underline"
+            title="Copy Meta Title & Description into the share fields"
+          >
+            Same as meta ↴
+          </button>
+        </div>
+        <div>
+          <label className={label}>Title when shared</label>
+          <input
+            value={values.og_title || ''}
+            onChange={(e) => onChange({ og_title: e.target.value })}
+            placeholder="Headline shown on WhatsApp / Facebook…"
+            className={field}
+          />
+        </div>
+        <div>
+          <label className={label}>Description when shared</label>
+          <textarea
+            rows={2}
+            value={values.og_description || ''}
+            onChange={(e) => onChange({ og_description: e.target.value })}
+            placeholder="Short text under the share title…"
+            className={field}
+          />
+        </div>
+      </div>
       )}
 
       {withOg && (

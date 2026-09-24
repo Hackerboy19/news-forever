@@ -263,13 +263,22 @@ export default async function handler(req: any, res: any) {
       } catch {
         if (bridgeConfigured()) {
           try {
-            await bridgeSaveConfig(reqCreds(req), {
+            const cfgOut = {
               headerColor: body.headerColor || '',
               footerColor: body.footerColor || '',
               navExtra: Array.isArray(body.navExtra) ? body.navExtra.map(Number).slice(0, 12) : [],
               logoUrl: (body.logoUrl || '').slice(0, 500),
-            });
-            return res.json({ headerColor: body.headerColor || '', footerColor: body.footerColor || '', navExtra: body.navExtra || [], logoUrl: body.logoUrl || '' });
+              siteTitle: (body.siteTitle || '').slice(0, 300),
+              siteDescription: (body.siteDescription || '').slice(0, 600),
+              siteKeywords: (body.siteKeywords || '').slice(0, 600),
+              ogImage: (body.ogImage || '').slice(0, 500),
+              showTicker: body.showTicker !== false,
+              tickerText: (body.tickerText || '').slice(0, 2000),
+              homeH1: (body.homeH1 || '').slice(0, 200),
+              homeIntro: (body.homeIntro || '').slice(0, 600),
+            };
+            await bridgeSaveConfig(reqCreds(req), cfgOut);
+            return res.json(cfgOut);
           } catch (e: any) {
             return res.status(503).json({ error: `Bridge config save failed: ${e?.message}` });
           }

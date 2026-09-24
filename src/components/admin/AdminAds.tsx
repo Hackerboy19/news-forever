@@ -91,8 +91,13 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
         </button>
       </div>
 
+      {ads.some((a) => isDemoAd(a)) && !ads.some((a) => !isDemoAd(a)) && (
+        <div className="bg-sky-500/5 border border-sky-500/20 text-sky-300 text-xs p-4 rounded">
+          Abhi sirf built-in <strong>sample ads</strong> chal rahe (public site pe placeholder). Apna ad banao — "Add New Ad" — phir uspe Edit + Delete milega, aur samples apne aap hat jayenge.
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {ads.map((ad) => (
+        {ads.filter((ad) => !isDemoAd(ad)).map((ad) => (
           <div key={ad.id} className="bg-[#111111] border border-[#222222] p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between border-b border-[#222222] pb-3">
               <div>
@@ -120,7 +125,9 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
 
             <div className="space-y-1 text-xs text-zinc-400 bg-[#0A0A0A] p-3 border border-[#222222]">
               <div className="truncate text-orange-400 flex items-center gap-1">
-                <span className="text-zinc-300">Goes to:</span> {ad.url} <ExternalLink className="w-3 h-3" />
+                <span className="text-zinc-300">Goes to:</span>
+                <a href={ad.url} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">{ad.url}</a>
+                <ExternalLink className="w-3 h-3 shrink-0" />
               </div>
               <div className="truncate">
                 <span className="text-zinc-300">Describes image:</span> "{ad.alt_tag}"
@@ -133,20 +140,20 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
               </div>
               <div className="flex items-center gap-2">
                 {isDemoAd(ad) && (
-                  <span className="text-[9px] text-sky-400 uppercase">Sample ad (not saved)</span>
+                  <span className="text-[9px] text-sky-400 uppercase" title="Built-in placeholder shown until you save a real ad">Sample</span>
                 )}
-                {!isDemoAd(ad) && (
                 <button
                   onClick={() => {
-                    setEditingAd(ad);
+                    // Editing a sample ad pre-fills the form as a NEW real ad
+                    // (drop the negative demo id) so it saves to the database.
+                    setEditingAd(isDemoAd(ad) ? { ...ad, id: undefined } : ad);
                     setImageFile(null);
                     setShowModal(true);
                   }}
                   className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-mono text-[10px] uppercase font-bold tracking-widest"
                 >
-                  Edit Ad
+                  {isDemoAd(ad) ? 'Edit → Save real' : 'Edit Ad'}
                 </button>
-                )}
                 {onDeleteAd && !isDemoAd(ad) && (
                   <button
                     onClick={() => onDeleteAd(ad.id)}

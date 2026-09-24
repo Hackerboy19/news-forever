@@ -8,6 +8,16 @@ export interface SiteConfigValues {
   footerColor?: string;
   navExtra?: number[];
   logoUrl?: string;
+  // Site-wide search / social defaults (used on the homepage and when the
+  // site URL itself is shared).
+  siteTitle?: string;
+  siteDescription?: string;
+  siteKeywords?: string;
+  ogImage?: string;
+  showTicker?: boolean;
+  tickerText?: string;
+  homeH1?: string;
+  homeIntro?: string;
 }
 
 interface AdminSiteSettingsProps {
@@ -32,6 +42,28 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
   const [logoUrl, setLogoUrl] = useState(config.logoUrl || '');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  // Site-wide SEO / social
+  const [siteTitle, setSiteTitle] = useState(config.siteTitle || '');
+  const [siteDescription, setSiteDescription] = useState(config.siteDescription || '');
+  const [siteKeywords, setSiteKeywords] = useState(config.siteKeywords || '');
+  const [ogImage, setOgImage] = useState(config.ogImage || '');
+  // Breaking-news ticker
+  const [showTicker, setShowTicker] = useState(config.showTicker !== false);
+  const [tickerText, setTickerText] = useState(config.tickerText || '');
+  const [homeH1, setHomeH1] = useState(config.homeH1 || '');
+  const [homeIntro, setHomeIntro] = useState(config.homeIntro || '');
+  const [uploadingOg, setUploadingOg] = useState(false);
+  const ogInputRef = useRef<HTMLInputElement>(null);
+  const handleOgFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!onUploadImage) { alert('Upload is only available on the live site.'); return; }
+    if (file.size > 4 * 1024 * 1024) { alert('Image too large (max 4 MB).'); return; }
+    setUploadingOg(true);
+    try { const path = await onUploadImage(file); if (path) setOgImage(resolveAssetUrl(path)); }
+    finally { setUploadingOg(false); }
+  };
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -60,7 +92,18 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
   const save = async () => {
     setSaving(true);
     setMsg('');
-    const ok = await onSave({ headerColor, footerColor, navExtra, logoUrl: logoUrl.trim() || undefined });
+    const ok = await onSave({
+      headerColor, footerColor, navExtra,
+      logoUrl: logoUrl.trim() || undefined,
+      siteTitle: siteTitle.trim() || undefined,
+      siteDescription: siteDescription.trim() || undefined,
+      siteKeywords: siteKeywords.trim() || undefined,
+      ogImage: ogImage.trim() || undefined,
+      showTicker,
+      tickerText: tickerText.trim() || undefined,
+      homeH1: homeH1.trim() || undefined,
+      homeIntro: homeIntro.trim() || undefined,
+    });
     setSaving(false);
     setMsg(ok ? 'Saved — live for every visitor after refresh.' : 'Save failed.');
   };
@@ -164,6 +207,85 @@ export const AdminSiteSettings: React.FC<AdminSiteSettingsProps> = ({ config, ca
           <div style={{ backgroundColor: footerColor }} className="px-4 py-2 text-xs text-stone-600 border-t border-zinc-200">
             Footer preview
           </div>
+        </div>
+      </div>
+
+      {/* Site-wide Search / Social defaults (homepage + when the site link is shared) */}
+      <div className="bg-[#111111] border border-[#222222] p-6 space-y-4">
+        <h2 className="text-sm font-bold text-white uppercase tracking-widest">Search &amp; Social (whole site)</h2>
+        <p className="text-xs text-zinc-400 -mt-2">Used on the homepage and when someone shares <strong className="text-zinc-200">newsforever.in</strong> itself on Google / WhatsApp / Facebook. (Individual articles have their own — set those in the article editor.)</p>
+
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Site title <span className="normal-case font-normal text-zinc-500">(shown in the browser tab &amp; Google)</span></label>
+          <input value={siteTitle} onChange={(e) => setSiteTitle(e.target.value)} placeholder="News Forever | National & International News Portal"
+            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-orange-500 rounded" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Site description <span className="normal-case font-normal text-zinc-500">(grey text under the title on Google)</span></label>
+          <textarea rows={2} value={siteDescription} onChange={(e) => setSiteDescription(e.target.value)} placeholder="Latest breaking news, beauty pageant updates…"
+            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-orange-500 rounded" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Keywords <span className="normal-case font-normal text-zinc-500">(comma separated)</span></label>
+          <input value={siteKeywords} onChange={(e) => setSiteKeywords(e.target.value)} placeholder="news forever, beauty pageant, miss india…"
+            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-orange-500 rounded" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Share image (OG) <span className="normal-case font-normal text-zinc-500">(shown on WhatsApp/FB when the site link is shared — 1200×630)</span></label>
+          <div className="flex items-center gap-3">
+            {ogImage ? (
+              <img src={resolveAssetUrl(ogImage)} alt="Share preview" className="w-20 h-14 rounded object-cover border border-zinc-700 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3'; }} />
+            ) : (
+              <div className="w-20 h-14 rounded bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[9px] text-zinc-500 shrink-0">None</div>
+            )}
+            <div className="flex-1 space-y-2">
+              <input ref={ogInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleOgFile} className="hidden" />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={uploadingOg} onClick={() => ogInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-xs font-bold text-white rounded">
+                  {uploadingOg ? 'Uploading…' : 'Upload from computer'}
+                </button>
+                {ogImage && <button type="button" onClick={() => setOgImage('')} className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 rounded">Remove</button>}
+              </div>
+              <input value={ogImage} onChange={(e) => setOgImage(e.target.value)} placeholder="…or paste an image link (URL)"
+                className="w-full bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-[11px] font-mono text-zinc-200 outline-none focus:border-orange-500 rounded" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Homepage heading (visible H1 + intro, for SEO) */}
+      <div className="bg-[#111111] border border-[#222222] p-6 space-y-4">
+        <h2 className="text-sm font-bold text-white uppercase tracking-widest">Homepage heading (SEO)</h2>
+        <p className="text-xs text-zinc-400 -mt-2">Shown at the top of the homepage as the main <strong className="text-zinc-200">H1</strong> + a short intro. Real, visible text that Google and AI read for ranking.</p>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Homepage H1 heading</label>
+          <input value={homeH1} onChange={(e) => setHomeH1(e.target.value)} placeholder="News Forever — Beauty Pageants, Awards & National News"
+            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-orange-500 rounded" />
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Intro paragraph <span className="normal-case font-normal text-zinc-500">(1–2 lines under the H1)</span></label>
+          <textarea rows={2} value={homeIntro} onChange={(e) => setHomeIntro(e.target.value)} placeholder="Latest coverage of Miss/Mrs India, Forever Star India Awards, national achievers, business, astrology and more."
+            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-orange-500 rounded" />
+        </div>
+        <p className="text-[11px] text-zinc-500">Leave blank to hide this block.</p>
+      </div>
+
+      {/* Breaking-news ticker */}
+      <div className="bg-[#111111] border border-[#222222] p-6 space-y-4">
+        <h2 className="text-sm font-bold text-white uppercase tracking-widest">Breaking-news ticker</h2>
+        <p className="text-xs text-zinc-400 -mt-2">The red “BREAKING” strip below the header. By default it scrolls your 5 latest articles.</p>
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <input type="checkbox" checked={showTicker} onChange={(e) => setShowTicker(e.target.checked)} className="w-4 h-4" />
+          <span className="text-sm text-zinc-200">Show the ticker on the site</span>
+        </label>
+        <div className={showTicker ? '' : 'opacity-40 pointer-events-none'}>
+          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
+            Custom ticker text <span className="normal-case font-normal text-zinc-500">(one line per item; leave blank to use latest articles)</span>
+          </label>
+          <textarea rows={4} value={tickerText} onChange={(e) => setTickerText(e.target.value)}
+            placeholder={"Registration open for Miss India 2026\nGrand finale on 24 September, Jaipur"}
+            className="w-full bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-orange-500 rounded" />
         </div>
       </div>
 

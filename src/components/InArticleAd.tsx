@@ -24,6 +24,7 @@ export const InArticleAd: React.FC<InArticleAdProps> = ({ ad }) => {
       </div>
       <a
         href={ad.url}
+        onClick={() => { try { navigator.sendBeacon(`/api/advertisements/${ad.id}/click`); } catch { /* ignore */ } }}
         target="_blank"
         rel="noopener noreferrer sponsored"
         title={ad.title}

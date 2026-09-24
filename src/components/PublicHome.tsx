@@ -98,6 +98,8 @@ interface PublicHomeProps {
   isLoading?: boolean;
   onSelectArticle: (urlSlug: string) => void;
   onCategorySelect: (cat: number | string | 'all') => void;
+  homeH1?: string;
+  homeIntro?: string;
 }
 
 /** Parse the legacy 'YYYY-MM-DD : HH:MM:SS' varchar into a Date (date part only). */
@@ -115,6 +117,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   isLoading = false,
   onSelectArticle,
   onCategorySelect,
+  homeH1,
+  homeIntro,
 }) => {
   const { t, tt, registerTitles } = useI18n();
 
@@ -170,6 +174,14 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
 
   return (
     <div className="space-y-12">
+      {/* Homepage H1 + intro (admin-editable, visible, for SEO) — real homepage only */}
+      {activeCategory === 'all' && (homeH1 || homeIntro) && (
+        <header className="border-b border-[#E7E5E4] pb-5">
+          {homeH1 && <h1 className="text-2xl sm:text-3xl font-serif font-bold text-stone-900 tracking-tight">{homeH1}</h1>}
+          {homeIntro && <p className="mt-2 text-sm text-stone-600 leading-relaxed max-w-3xl">{homeIntro}</p>}
+        </header>
+      )}
+
       {/* HERO SECTION: Trending News & Featured Cover Story */}
       {heroArticle && activeCategory === 'all' && (
         <section className="space-y-6">

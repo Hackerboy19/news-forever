@@ -18,7 +18,8 @@ import {
   Search,
   Menu,
   TrendingUp,
-  ShieldCheck
+  ShieldCheck,
+  BookOpen
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -57,6 +58,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
     { name: 'Blog', icon: FileText },
     { name: 'SEO', icon: TrendingUp },
     { name: 'Category', icon: FolderTree },
+    { name: 'Pages', icon: BookOpen },
     { name: 'Tag', icon: Tag },
     { name: 'Advertisement', icon: BarChart2 },
     { name: 'Image Library', icon: ImageIcon },
@@ -179,17 +181,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
           </nav>
         </div>
 
-        {/* Footer actions */}
-        <div className="p-4 border-t border-[#E7E5E4] bg-[#FAF8F5]">
-          <button
-            onClick={onSwitchToPublic}
-            className="w-full flex items-center gap-3 px-3 py-2 text-xs font-bold uppercase tracking-widest text-[#991B1B] hover:bg-[#991B1B] hover:text-white transition border border-[#991B1B]/30"
-            title="View Public Frontend"
-          >
-            <ExternalLink className="w-4 h-4 shrink-0" />
-            {(!collapsed || mobileSidebarOpen) && <span>Live Public Site</span>}
-          </button>
-        </div>
       </aside>
 
       {/* Main Content Area */}
@@ -213,7 +204,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
 
           <div className="flex items-center gap-4">
             <button
-              onClick={onSwitchToPublic}
+              onClick={() => window.open("/", "_blank", "noopener")}
               className="hidden sm:flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest bg-[#991B1B] text-white hover:bg-[#7F1D1D] transition shadow-xs"
             >
               <ExternalLink className="w-3.5 h-3.5" />

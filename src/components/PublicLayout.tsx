@@ -43,7 +43,7 @@ interface PublicLayoutProps {
   onSubscribe: (email: string) => void;
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
-  siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[]; logoUrl?: string };
+  siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[]; logoUrl?: string; showTicker?: boolean; tickerText?: string };
   children: React.ReactNode;
 }
 
@@ -247,36 +247,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             )}
           </div>
 
-          {/* Right Header Controls: Persistent Search Button, Subscribe, Socials */}
+          {/* Right Header Controls: Subscribe, Socials, Language (search moved to its own section below the header) */}
           <div className="flex items-center gap-2.5 sm:gap-4">
-            {/* Persistent Command Palette Search Button — comfortable tap target on mobile */}
-            {/* Prominent search field (opens the command palette) */}
-            <div
-              onClick={() => setCommandPaletteOpen(true)}
-              className="hidden sm:flex items-center gap-2 w-56 md:w-72 px-3 py-1.5 bg-stone-100 hover:bg-white border border-stone-300 hover:border-[#7A0C0C] rounded-full cursor-text transition group"
-              role="search"
-              title="Search news articles (Cmd+K)"
-            >
-              <Search className="w-4 h-4 text-stone-500 group-hover:text-[#7A0C0C] shrink-0 transition" />
-              <input
-                type="search"
-                readOnly
-                placeholder={t('searchPlaceholder')}
-                onFocus={() => setCommandPaletteOpen(true)}
-                className="w-full bg-transparent text-xs text-stone-700 placeholder-stone-400 outline-none cursor-text"
-                aria-label="Search news articles"
-              />
-              <kbd className="px-1.5 py-0.5 bg-white text-stone-400 border border-stone-300 rounded font-mono text-[9px] font-bold shrink-0">⌘K</kbd>
-            </div>
-            <button
-              onClick={() => setCommandPaletteOpen(true)}
-              className="sm:hidden flex items-center gap-2 px-3 py-1.5 bg-stone-100 border border-stone-300 text-stone-700 rounded-full text-xs"
-              aria-label="Search news articles"
-            >
-              <Search className="w-4 h-4 text-stone-600" />
-              <span className="hidden min-[420px]:inline">{t('search')}</span>
-            </button>
-
             {/* Language toggle EN | HI */}
             <div className="flex items-center border border-stone-300 rounded-full overflow-hidden text-[10px] font-mono font-bold">
               <button
@@ -342,60 +314,73 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
         </div>
       </div>
 
-      {/* Main Brand Logo Header & Navigation Header Bar (sticky, scroll-hide) */}
+      {/* Sticky wrapper: header + search bar stay pinned at the top on scroll */}
+      <div className="sticky top-0 z-40 shadow-md">
+      {/* Main Brand Logo Header & Navigation Header Bar */}
       <header
         style={siteConfig.headerColor ? { backgroundColor: siteConfig.headerColor } : undefined}
-        className={`bg-[#132639] border-b border-black/30 sticky top-0 z-40 shadow-md transition-transform duration-300 ${
-          headerHidden && !mobileMenuOpen ? '-translate-y-full' : 'translate-y-0'
-        }`}
+        className="bg-[#132639] border-b border-black/30"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Main Logo and Navigation Container matching NewsForever layout */}
           <div className="py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            {/* Logo: NEWS FOREVER — a real <a href="/">, not a button.
-                As a button it only worked when React was already driving the
-                page; on any URL the SPA does not own (a legacy page, or a
-                route it renders as "article not found") the click updated
-                state without navigating, so the address bar changed but the
-                homepage never loaded. An anchor always gets the reader home:
-                the SPA intercepts a plain left-click, and anything else is a
-                normal browser navigation. It is also the home link crawlers
-                expect to find on the masthead. */}
-            <a
-              href="/"
-              aria-label="News Forever — go to the homepage"
-              onClick={(e) => {
-                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                e.preventDefault();
-                onGoHome();
-              }}
-              className="flex items-center gap-3 text-left group shrink-0 py-0.5 no-underline"
-            >
-              {siteConfig.logoUrl ? (
-                <img
-                  src={resolveAssetUrl(siteConfig.logoUrl)}
-                  alt="Site logo"
-                  className="w-12 h-12 object-contain group-hover:scale-105 transition-transform duration-300 drop-shadow-md"
-                />
-              ) : (
-                <Logo className="w-12 h-12 group-hover:scale-105 transition-transform duration-300 drop-shadow-md" />
-              )}
+            {/* Part 1 (mobile row): logo + hamburger side-by-side. On desktop
+                this wrapper dissolves (md:contents) so the logo sits inline. */}
+            <div className="flex items-center justify-between w-full md:w-auto md:contents">
+              {/* Logo: NEWS FOREVER — a real <a href="/">, not a button.
+                  As a button it only worked when React was already driving the
+                  page; on any URL the SPA does not own (a legacy page, or a
+                  route it renders as "article not found") the click updated
+                  state without navigating, so the address bar changed but the
+                  homepage never loaded. An anchor always gets the reader home:
+                  the SPA intercepts a plain left-click, and anything else is a
+                  normal browser navigation. It is also the home link crawlers
+                  expect to find on the masthead. */}
+              <a
+                href="/"
+                aria-label="News Forever — go to the homepage"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onGoHome();
+                }}
+                className="flex items-center gap-3 text-left group shrink-0 py-0.5 no-underline"
+              >
+                {siteConfig.logoUrl ? (
+                  <img
+                    src={resolveAssetUrl(siteConfig.logoUrl)}
+                    alt="Site logo"
+                    className="w-12 h-12 object-contain group-hover:scale-105 transition-transform duration-300 drop-shadow-md"
+                  />
+                ) : (
+                  <Logo className="w-12 h-12 group-hover:scale-105 transition-transform duration-300 drop-shadow-md" />
+                )}
 
-              <div className="flex flex-col leading-none">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-serif font-black text-2xl sm:text-3xl tracking-tight text-white group-hover:text-red-300 transition-colors duration-200">
-                    News<span className="text-[#FF6B5E]">Forever</span>
-                  </span>
-                  <span className="hidden sm:inline-block px-1.5 py-0.5 bg-red-500/15 text-red-300 border border-red-400/30 font-mono text-[9px] font-bold uppercase rounded-sm tracking-wider">
-                    {t('live247')}
+                <div className="flex flex-col leading-none">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-serif font-black text-2xl sm:text-3xl tracking-tight text-white group-hover:text-red-300 transition-colors duration-200">
+                      News<span className="text-[#FF6B5E]">Forever</span>
+                    </span>
+                    <span className="hidden sm:inline-block px-1.5 py-0.5 bg-red-500/15 text-red-300 border border-red-400/30 font-mono text-[9px] font-bold uppercase rounded-sm tracking-wider">
+                      {t('live247')}
+                    </span>
+                  </div>
+                  <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-slate-300/80 mt-1 flex items-center gap-1">
+                    <Globe className="w-2.5 h-2.5 text-red-300" />
+                    {t('tagline')}
                   </span>
                 </div>
-                <span className="font-sans font-semibold text-[9px] sm:text-[10px] tracking-[0.2em] uppercase text-slate-300/80 mt-1 flex items-center gap-1">
-                  <Globe className="w-2.5 h-2.5 text-red-300" />
-                  {t('tagline')}
-                </span>
-              </div>
-            </a>
+              </a>
+
+              {/* Mobile hamburger (right of logo) */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 text-slate-100 hover:text-white shrink-0"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+            </div>
 
             {/* Desktop Main Navigation — full live ci_category tree */}
             <nav className="hidden md:flex items-center flex-wrap gap-x-1 gap-y-0.5 text-xs font-bold uppercase tracking-wider text-slate-100">
@@ -460,20 +445,35 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
               })}
             </nav>
 
-            {/* Mobile Hamburger Menu Button */}
-            <div className="md:hidden flex items-center justify-between w-full">
-              <span className="text-xs font-mono font-bold uppercase text-slate-300">{t('navMenu')}</span>
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="p-2 text-slate-100 hover:text-white"
-              >
-                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-              </button>
-            </div>
           </div>
         </div>
 
       </header>
+
+      {/* Dedicated Search Section — its own strip below the header (mobile + desktop) */}
+      <div className="bg-white border-b border-stone-200">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
+          <div
+            onClick={() => setCommandPaletteOpen(true)}
+            role="search"
+            title="Search news (Cmd+K)"
+            className="flex items-center gap-2 w-full px-4 py-2.5 bg-stone-100 hover:bg-white border border-stone-300 hover:border-[#7A0C0C] focus-within:border-[#7A0C0C] rounded-full cursor-text transition group"
+          >
+            <Search className="w-4 h-4 text-stone-500 group-hover:text-[#7A0C0C] shrink-0 transition" />
+            <input
+              type="search"
+              readOnly
+              placeholder={t('searchPlaceholder')}
+              onFocus={() => setCommandPaletteOpen(true)}
+              className="w-full bg-transparent text-sm text-stone-700 placeholder-stone-400 outline-none cursor-text"
+              aria-label="Search news articles"
+            />
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 bg-white text-stone-400 border border-stone-300 rounded font-mono text-[9px] font-bold shrink-0">⌘K</kbd>
+          </div>
+        </div>
+      </div>
+      </div>
+      {/* /sticky wrapper */}
 
       {/* Full-screen slide-out mobile drawer with accordion sub-menus */}
       {mobileMenuOpen && (
@@ -573,8 +573,14 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
         </div>
       )}
 
-      {/* Breaking News Ticker — 5 most recent ci_blog titles */}
-      <NewsTicker blogs={blogs} onSelectArticle={(slug) => { onSelectArticle(slug); }} />
+      {/* Breaking News Ticker — hidden if admin turned it off; custom lines override latest articles */}
+      {siteConfig.showTicker !== false && (
+        <NewsTicker
+          blogs={blogs}
+          onSelectArticle={(slug) => { onSelectArticle(slug); }}
+          customItems={(siteConfig.tickerText || '').split('\n')}
+        />
+      )}
 
       {/* Leaderboard Ad Strip — between header and hero, ci_advertisement-backed */}
       <LeaderboardAd ads={ads} />
@@ -627,14 +633,18 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
           {/* Bottom Footer Info */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pt-6 border-t border-stone-200 text-xs">
             <div className="space-y-3">
-              <div className="flex flex-col leading-none">
-                <span className="font-serif font-black text-2xl text-[#7A0C0C]">
-                  NEWS
-                </span>
-                <span className="font-sans font-bold text-[9px] tracking-[0.38em] uppercase text-[#7A0C0C]">
-                  FOREVER
-                </span>
-              </div>
+              {siteConfig.logoUrl ? (
+                <img src={resolveAssetUrl(siteConfig.logoUrl)} alt="Site logo" className="h-12 w-auto object-contain" />
+              ) : (
+                <div className="flex flex-col leading-none">
+                  <span className="font-serif font-black text-2xl text-[#7A0C0C]">
+                    NEWS
+                  </span>
+                  <span className="font-sans font-bold text-[9px] tracking-[0.38em] uppercase text-[#7A0C0C]">
+                    FOREVER
+                  </span>
+                </div>
+              )}
               <p className="text-stone-600 leading-relaxed text-xs">
                 {t('footerBlurb')}
               </p>

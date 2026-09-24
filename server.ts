@@ -11,9 +11,26 @@ import {
   changeAdminPassword,
   getSiteConfig,
   saveSiteConfig,
+  getStaticPage,
+  saveStaticPage,
+  getAllStaticPages,
+  deleteStaticPage,
+  createTag,
+  updateTag,
+  deleteTag,
+  deleteSubscriber,
+  deleteSubscribersBulk,
+  deleteImage,
+  createAdminUser,
+  updateAdminUser,
+  deleteAdminUser,
+  createSubAdmin,
+  updateSubAdmin,
+  deleteSubAdmin,
   getImageLibrary,
   getSubscribers,
   getAdminUsers,
+  getSubAdmins,
   getActivityLogs,
   createAd,
   updateAd,
@@ -23,6 +40,8 @@ import {
   deleteCategory,
   getPublishedBlogs,
   getBlogByUrlSlug,
+  incrementBlogViews,
+  incrementAdClick,
   getAllCategories,
   getActiveAds,
   getAllAdsAdmin,
@@ -40,7 +59,7 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
-  app.use(express.json());
+  app.use(express.json({ limit: "15mb" })); // large enough for base64 image uploads (logo/cover/OG)
 
   // In-memory stores for admin demo mutations only (real reads hit MySQL;
   // DB access is strictly read-only — admin writes never touch ci_* tables)
@@ -138,6 +157,54 @@ async function startServer() {
   });
 
   // Health check
+  // Static pages — public read, admin write. Admin can create ANY page.
+  const DEFAULT_PAGES = ["about-us", "contact-us"];
+  const RESERVED_SLUGS = new Set(["admin", "category", "tag", "api", "assets", "uploads", "news", "latest-news", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss", "report.html", "favicon.ico"]);
+  const normSlug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  let pageSlugCache = { set: new Set<string>(DEFAULT_PAGES), at: 0 };
+  const getPageSlugSet = async () => {
+    if (pageSlugCache.set.size && Date.now() - pageSlugCache.at < 60 * 1000) return pageSlugCache.set;
+    const list = await getAllStaticPages();
+    const set = new Set<string>(DEFAULT_PAGES);
+    list.forEach((p) => set.add(p.slug.toLowerCase()));
+    pageSlugCache = { set, at: Date.now() };
+    return set;
+  };
+
+  // List all pages (defaults + admin-created), for client routing & admin UI.
+  app.get("/api/pages", async (_req, res) => {
+    const list = await getAllStaticPages();
+    const bySlug = new Map(list.map((p) => [p.slug.toLowerCase(), p]));
+    for (const d of DEFAULT_PAGES) if (!bySlug.has(d)) bySlug.set(d, { slug: d, title: d === "about-us" ? "About Us" : "Contact Us" });
+    res.json([...bySlug.values()]);
+  });
+  app.get("/api/pages/:slug", async (req, res) => {
+    res.json(await getStaticPage(normSlug(String(req.params.slug))));
+  });
+  app.put("/api/pages/:slug", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const slug = normSlug(String(req.params.slug));
+    if (!slug || RESERVED_SLUGS.has(slug)) return res.status(400).json({ error: "Invalid or reserved page name" });
+    try {
+      const saved = await saveStaticPage(slug, req.body || {});
+      pageSlugCache.at = 0; // refresh routing set
+      logActivity(admin.name, admin.admin_id, `Updated page "${slug}"`, "Pages");
+      res.json(saved);
+    } catch (err: any) {
+      res.status(500).json({ error: "Page save failed: " + err?.message });
+    }
+  });
+  app.delete("/api/pages/:slug", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const slug = normSlug(String(req.params.slug));
+    const ok = await deleteStaticPage(slug);
+    pageSlugCache.at = 0;
+    logActivity(admin.name, admin.admin_id, `Deleted page "${slug}"`, "Pages");
+    res.json({ success: ok });
+  });
+
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", framework: "Express + React Headless CodeIgniter Bridge" });
   });
@@ -148,11 +215,23 @@ async function startServer() {
       const categorySlug = req.query.category_slug as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 200;
 
-      // Admin list (drafts included) — requires valid ci_admin credentials
+      // Admin list (drafts included) — requires valid ci_admin credentials.
+      // No 200 cap: admin must see EVERY article so category filter counts
+      // match the category tab's full-DB totals.
       if (req.query.status === "all") {
         const admin = await requireAdmin(req);
         if (!admin) return res.status(401).json({ error: "Unauthorized" });
-        return res.json(await getAllBlogsAdmin(limit));
+        return res.json(await getAllBlogsAdmin(req.query.limit ? limit : 100000));
+      }
+
+      // Tag page: every published article carrying this tag (resolves ALL
+      // duplicate-slug tag ids, and is not capped by the 200 list limit).
+      if (req.query.tag_slug) {
+        const tslug = String(req.query.tag_slug).toLowerCase();
+        const allTags = await getActiveTags();
+        const ids = new Set(allTags.filter((t) => (t.slug || "").toLowerCase() === tslug).map((t) => t.id));
+        const all = await getPublishedBlogs(100000);
+        return res.json(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))));
       }
 
       let result = await getPublishedBlogs(limit, categorySlug);
@@ -181,6 +260,14 @@ async function startServer() {
   });
 
   // GET /api/blogs/slug/:url (Dynamic Routing lookup matching exact url column)
+  // Count a real article view (self-hosted counter; dedup handled client-side).
+  app.post("/api/blogs/:id/view", async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (!id) return res.status(400).json({ error: "bad id" });
+    await incrementBlogViews(id);
+    res.json({ ok: true });
+  });
+
   app.get("/api/blogs/slug/:url", async (req, res) => {
     const article = await getBlogByUrlSlug(req.params.url);
     if (!article) {
@@ -336,6 +423,23 @@ async function startServer() {
   app.get("/api/tags", async (_req, res) => {
     res.json(await getActiveTags());
   });
+  app.post("/api/tags", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    if (!req.body?.tag_name) return res.status(400).json({ error: "tag_name required" });
+    try { res.json(await createTag(req.body)); } catch (e: any) { res.status(500).json({ error: "Tag create failed: " + e?.message }); }
+  });
+  app.put("/api/tags/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try { res.json(await updateTag(parseInt(req.params.id, 10), req.body || {})); } catch (e: any) { res.status(500).json({ error: "Tag update failed: " + e?.message }); }
+  });
+  app.delete("/api/tags/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ok = await deleteTag(parseInt(req.params.id, 10));
+    res.json({ success: ok });
+  });
 
   // GET /api/advertisements — real ci_advertisement rows
   app.get("/api/advertisements", async (req, res) => {
@@ -395,13 +499,15 @@ async function startServer() {
         const buf = Buffer.from(String(data), "base64");
         if (buf.length < 50) return res.status(400).json({ error: "Image data looks empty or corrupt" });
         if (buf.length > 8 * 1024 * 1024) return res.status(400).json({ error: "Image too large (max 8 MB)" });
-        const dir = path.join(process.cwd(), "dist", "assets", "img", sub);
+        // Write uploads OUTSIDE dist (to /uploads) so re-deploying the built
+        // dist folder never wipes user-uploaded images.
+        const dir = path.join(process.cwd(), "uploads", sub);
         await fs.mkdir(dir, { recursive: true });
         const fname = `${Date.now()}_${safe || "upload." + ext}`;
         await fs.writeFile(path.join(dir, fname), buf);
         const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
         const host = req.get("host");
-        const abs = `${proto}://${host}/assets/img/${sub}/${fname}`;
+        const abs = `${proto}://${host}/uploads/${sub}/${fname}`;
         return res.json({ success: true, path: abs });
       } catch (err: any) {
         return res.status(500).json({ error: "Local image save failed: " + (err?.message || "") });
@@ -445,14 +551,11 @@ async function startServer() {
     res.status(201).json(newAd);
   });
 
-  // POST /api/advertisements/:id/click
-  app.post("/api/advertisements/:id/click", (req, res) => {
+  // POST /api/advertisements/:id/click — real click counter in ci_advertisement.
+  app.post("/api/advertisements/:id/click", async (req, res) => {
     const id = parseInt(req.params.id, 10);
-    const ad = dbAds.find(a => a.id === id);
-    if (ad) {
-      ad.click_count += 1;
-    }
-    res.json({ success: true, clicks: ad?.click_count });
+    if (id) await incrementAdClick(id);
+    res.json({ success: true });
   });
 
   // GET /api/activity-logs — real ci_activity_log + session actions.
@@ -470,6 +573,51 @@ async function startServer() {
     if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
     res.setHeader("Cache-Control", "no-store");
     res.json(await getAdminUsers());
+  });
+  app.post("/api/users", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: "username and password required" });
+    try { res.json(await createAdminUser(req.body)); } catch (e: any) { res.status(500).json({ error: "User create failed: " + e?.message }); }
+  });
+  app.put("/api/users/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try { res.json(await updateAdminUser(parseInt(req.params.id, 10), req.body || {})); } catch (e: any) { res.status(500).json({ error: "User update failed: " + e?.message }); }
+  });
+  app.delete("/api/users/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const id = parseInt(req.params.id, 10);
+    if (id === admin.admin_id) return res.status(400).json({ error: "You cannot delete your own account." });
+    const ok = await deleteAdminUser(id);
+    res.json({ success: ok });
+  });
+
+  app.get("/api/sub-admins", async (req, res) => {
+    // A roster of login accounts — never public. See /api/users above.
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
+    res.json(await getSubAdmins());
+  });
+  app.post("/api/sub-admins", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: "username and password required" });
+    try { res.json(await createSubAdmin(req.body)); } catch (e: any) { res.status(500).json({ error: "Sub-admin create failed: " + e?.message }); }
+  });
+  app.put("/api/sub-admins/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    try { res.json(await updateSubAdmin(parseInt(req.params.id, 10), req.body || {})); } catch (e: any) { res.status(500).json({ error: "Sub-admin update failed: " + e?.message }); }
+  });
+  app.delete("/api/sub-admins/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ok = await deleteSubAdmin(parseInt(req.params.id, 10));
+    res.json({ success: ok });
   });
 
   // GET /api/subscribers — real ci_subscribe rows.
@@ -499,6 +647,19 @@ async function startServer() {
     dbSubscribers.unshift(newSub);
     res.status(201).json({ message: "Subscribed successfully", subscriber: newSub });
   });
+  app.post("/api/subscribers/bulk-delete", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+    const affected = await deleteSubscribersBulk(ids);
+    res.json({ success: true, affected });
+  });
+  app.delete("/api/subscribers/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ok = await deleteSubscriber(parseInt(req.params.id, 10));
+    res.json({ success: ok });
+  });
 
   // GET /api/image-library — real ci_imagelibrary rows.
   // Admin-only: the library lists unpublished/internal media paths.
@@ -506,6 +667,12 @@ async function startServer() {
     if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
     res.setHeader("Cache-Control", "no-store");
     res.json(await getImageLibrary());
+  });
+  app.delete("/api/image-library/:id", async (req, res) => {
+    const admin = await requireAdmin(req);
+    if (!admin) return res.status(401).json({ error: "Unauthorized" });
+    const ok = await deleteImage(parseInt(req.params.id, 10));
+    res.json({ success: ok });
   });
 
   // POST /api/image-library
@@ -540,6 +707,84 @@ async function startServer() {
     };
     logActivity("Elena Rostova", 1, "Updated Site Configuration & SEO Defaults", "Setting");
     res.json(dbSetting);
+  });
+
+  // Auto-generated sitemap.xml — reflects live pages, categories and blogs.
+  // Cached briefly so it isn't regenerated on every hit.
+  let sitemapCache = { xml: "", at: 0 };
+  const xmlEsc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const now = Date.now();
+      if (!sitemapCache.xml || now - sitemapCache.at > 10 * 60 * 1000) {
+        const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+        const origin = `${proto}://${req.get("host")}`;
+        const [blogs, cats, tags] = await Promise.all([getPublishedBlogs(100000), getAllCategories(), getActiveTags()]);
+        const rows: string[] = [];
+        const add = (loc: string, priority: string, lastmod?: string) =>
+          rows.push(`  <url><loc>${xmlEsc(loc)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<priority>${priority}</priority></url>`);
+        add(`${origin}/`, "1.0");
+        ["about-us", "contact-us", "latest-news"].forEach((p) => add(`${origin}/${p}`, "0.8"));
+        // Categories: dedupe by slug (legacy ci_category has duplicate-slug rows)
+        // and skip empty/placeholder slugs like "-" so Google gets clean unique URLs.
+        const seenCat = new Set<string>();
+        cats.forEach((c) => {
+          const slug = (c.slug || "").trim();
+          if (!slug || slug === "-" || seenCat.has(slug.toLowerCase())) return;
+          seenCat.add(slug.toLowerCase());
+          add(`${origin}/category/${encodeURIComponent(slug)}`, "0.8");
+        });
+        // Tags: only those with enough articles to be worth indexing (avoid thin pages), deduped by slug.
+        const tagCount = new Map<number, number>();
+        blogs.forEach((b) => (b.tag_ids || []).forEach((id) => tagCount.set(id, (tagCount.get(id) || 0) + 1)));
+        const seenTag = new Set<string>();
+        tags.forEach((tg) => {
+          const slug = (tg.slug || "").trim();
+          if (!slug || seenTag.has(slug.toLowerCase()) || (tagCount.get(tg.id) || 0) < 3) return;
+          seenTag.add(slug.toLowerCase());
+          add(`${origin}/tag/${encodeURIComponent(slug)}`, "0.5");
+        });
+        // Articles: dedupe by slug too, in case legacy rows share a url.
+        const seenBlog = new Set<string>();
+        blogs.forEach((b) => {
+          const slug = (b.url || "").trim();
+          if (!slug || seenBlog.has(slug.toLowerCase())) return;
+          seenBlog.add(slug.toLowerCase());
+          add(`${origin}/${encodeURIComponent(slug)}`, "0.64", (b.updated_at || b.created_at || "").split(" ")[0] || undefined);
+        });
+        sitemapCache = {
+          xml: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows.join("\n")}\n</urlset>`,
+          at: now,
+        };
+      }
+      res.set("Content-Type", "application/xml; charset=utf-8").send(sitemapCache.xml);
+    } catch (err: any) {
+      res.status(500).send("sitemap generation failed");
+    }
+  });
+
+  // robots.txt pointing crawlers at the live sitemap.
+  app.get("/robots.txt", (req, res) => {
+    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+    res.set("Content-Type", "text/plain; charset=utf-8").send(`User-agent: *\nAllow: /\nSitemap: ${proto}://${req.get("host")}/sitemap.xml\n`);
+  });
+
+  // Legacy /News/<slug> URLs (old CodeIgniter tag/category pages) → 301 to the
+  // new /tag/<slug> or /category/<slug> so Google's indexed links keep working
+  // and their ranking consolidates onto the current URL.
+  app.get(/^\/News\/(.+)$/i, async (req, res) => {
+    const slug = decodeURIComponent((req.params as any)[0] || "").replace(/\/+$/, "");
+    if (!slug) return res.redirect(301, "/");
+    try {
+      const tags = await getActiveTags();
+      const tag = tags.find((t) => (t.slug || "").toLowerCase() === slug.toLowerCase());
+      if (tag) return res.redirect(301, `/tag/${encodeURIComponent(tag.slug)}`);
+      const cats = await getAllCategories();
+      const cat = cats.find((c) => (c.slug || "").toLowerCase() === slug.toLowerCase());
+      if (cat) return res.redirect(301, `/category/${encodeURIComponent(cat.slug)}`);
+    } catch { /* fall through to 404 */ }
+    // Neither a tag nor a category → genuine 404.
+    res.status(404).set("Content-Type", "text/html; charset=utf-8").send("<!doctype html><title>404 Not Found</title><h1>404 — Not Found</h1>");
   });
 
   // Vite development middleware or production static serving
@@ -606,7 +851,13 @@ async function startServer() {
       return templateCache;
     };
     const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const RESERVED = new Set(["", "admin", "category", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
+    const RESERVED = new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
+    // Real static pages the SPA renders — must NOT be treated as 404s.
+    // The three legal routes ship with built-in copy (src/components/LegalPage
+    // .tsx) and are linked from the footer, so they exist even before an admin
+    // creates a page row for them. An admin-created page of the same slug
+    // takes over via getPageSlugSet() below.
+    const BUILTIN_PAGES = new Set(["privacy-policy", "terms-of-service", "disclaimer"]);
 
     /**
      * Real pixel size and MIME type of a share image, read from the file
@@ -692,13 +943,51 @@ async function startServer() {
       try {
         let html = await getTemplate();
         const seg = decodeURIComponent(req.path).replace(/^\/+|\/+$/g, "");
-        if (seg && !RESERVED.has(seg.split("/")[0])) {
+        // Strip the baked homepage SEO tags from the template so per-page
+        // injection below doesn't produce duplicate meta / JSON-LD. (The static
+        // homepage keeps them — it never reaches this Node handler.)
+        html = html
+          .replace(/\n?\s*<meta\s+(name="description"|name="keywords"|property="og:[^"]*"|name="twitter:[^"]*")[^>]*>/gi, "")
+          .replace(/\n?\s*<link\s+rel="canonical"[^>]*>/gi, "")
+          .replace(/\n?\s*<script\s+type="application\/ld\+json">[\s\S]*?<\/script>/gi, "");
+        let injected = false;
+        let status = 200;
+        // Admin-created static page? (single segment, in the page set)
+        const pageSet = seg && !seg.includes("/") && !RESERVED.has(seg.split("/")[0]) ? await getPageSlugSet() : null;
+        const isStaticPage = !!pageSet && pageSet.has(seg.toLowerCase());
+        if (isStaticPage) {
+          const pg = await getStaticPage(seg.toLowerCase());
+          const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+          const url = esc(`${proto}://${req.get("host")}/${seg.toLowerCase()}`);
+          const fb = seg.toLowerCase() === "about-us" ? "About Us — News Forever" : seg.toLowerCase() === "contact-us" ? "Contact Us — News Forever" : `${pg.title || seg} — News Forever`;
+          const title = esc(pg.meta_title || pg.title || fb);
+          const desc = esc(pg.meta_description || "");
+          const tagsP = [
+            `<title>${title}</title>`,
+            `<meta name="description" content="${desc}">`,
+            pg.meta_keyword ? `<meta name="keywords" content="${esc(pg.meta_keyword)}">` : "",
+            `<link rel="canonical" href="${url}">`,
+            `<meta property="og:type" content="website">`,
+            `<meta property="og:title" content="${title}">`,
+            `<meta property="og:description" content="${desc}">`,
+            `<meta property="og:url" content="${url}">`,
+          ].filter(Boolean).join("\n    ");
+          html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tagsP}\n  </head>`);
+          injected = true;
+        }
+        if (!injected && seg && !RESERVED.has(seg.split("/")[0])) {
           const article = await getBlogByUrlSlug(seg);
           if (article) {
+            injected = true;
             const title = esc(article.meta_title || article.title);
             const desc = esc(article.meta_description || article.short_content || "");
             const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
-            const url = esc(article.og_url || `${proto}://${req.get("host")}/${seg}`);
+            const origin = `${proto}://${req.get("host")}`;
+            // Always build a clean canonical from the trimmed slug — the legacy
+            // og_url column can contain a stray space ("…/ slug") which breaks it.
+            const cleanSlug = (article.url || seg || "").trim();
+            const urlRaw = `${origin}/${encodeURIComponent(cleanSlug)}`;
+            const url = esc(urlRaw);
             const img = /^https?:/i.test(article.og_image || "") ? article.og_image : article.image; // already absolute
             const imgEsc = esc(img);
             // Facebook, LinkedIn and WhatsApp render a share card from the tags
@@ -710,6 +999,43 @@ async function startServer() {
             const dim = imageDimensions(img, mediaRoot);
             const ogTitle = esc(article.og_title || article.meta_title || article.title);
             const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
+            // JSON-LD NewsArticle for rich results + name-based search relevance.
+            const ld = {
+              "@context": "https://schema.org",
+              "@type": "NewsArticle",
+              headline: article.meta_title || article.title,
+              description: article.meta_description || article.short_content || "",
+              image: img ? [img] : undefined,
+              datePublished: (article.created_at || "").slice(0, 10) || undefined,
+              dateModified: ((article.updated_at || article.created_at || "").slice(0, 10)) || undefined,
+              mainEntityOfPage: urlRaw,
+              url: urlRaw,
+              author: { "@type": "Organization", name: "News Forever", url: origin },
+              publisher: { "@type": "Organization", name: "News Forever" },
+              ...(article.category_name ? { articleSection: article.category_name } : {}),
+              ...(article.meta_keyword ? { keywords: article.meta_keyword } : {}),
+              ...(article.person_name ? { about: { "@type": "Person", name: article.person_name } } : {}),
+            };
+            const ldStr = JSON.stringify(ld).replace(/</g, "\\u003c");
+            // Standalone Person entity too — strongest signal for name-based search.
+            const personStr = article.person_name
+              ? JSON.stringify({
+                  "@context": "https://schema.org",
+                  "@type": "Person",
+                  name: article.person_name,
+                  mainEntityOfPage: urlRaw,
+                  ...(img ? { image: img } : {}),
+                }).replace(/</g, "\\u003c")
+              : "";
+            // BreadcrumbList: Home › Category › Article.
+            const crumbs: any[] = [{ "@type": "ListItem", position: 1, name: "Home", item: origin }];
+            if (article.category_name) crumbs.push({ "@type": "ListItem", position: 2, name: article.category_name });
+            crumbs.push({ "@type": "ListItem", position: crumbs.length + 1, name: article.title, item: urlRaw });
+            const breadcrumbStr = JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "BreadcrumbList",
+              itemListElement: crumbs,
+            }).replace(/</g, "\\u003c");
             const tags = [
               `<title>${title}</title>`,
               `<meta name="description" content="${desc}">`,
@@ -731,6 +1057,9 @@ async function startServer() {
               `<meta name="twitter:title" content="${ogTitle}">`,
               `<meta name="twitter:description" content="${ogDesc}">`,
               imgEsc ? `<meta name="twitter:image" content="${imgEsc}">` : "",
+              `<script type="application/ld+json">${ldStr}</script>`,
+              personStr ? `<script type="application/ld+json">${personStr}</script>` : "",
+              `<script type="application/ld+json">${breadcrumbStr}</script>`,
             ].filter(Boolean).join("\n    ");
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}\n  </head>`);
 
@@ -747,21 +1076,157 @@ async function startServer() {
             // React's createRoot() replaces the contents of #root when it
             // mounts, so this is markup for non-JS consumers only and cannot
             // desynchronise from what readers see.
+            //
+            // Each h#_tag may hold multiple headings, one per line → emit each.
+            const headLevel = (tag: string, raw?: string) =>
+              (raw || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => `<${tag}>${esc(t)}</${tag}>`).join("\n");
+            const heads = [
+              headLevel("h2", article.h2_tag),
+              headLevel("h3", article.h3_tag),
+              headLevel("h4", article.h4_tag),
+              headLevel("h5", article.h5_tag),
+              headLevel("h6", article.h6_tag),
+            ].filter(Boolean).join("\n");
             const heroImg = imgEsc
               ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">`
               : "";
-            const shell = [
+            const ssrBody = [
               `<article>`,
               `<h1>${esc(article.title)}</h1>`,
               article.short_content ? `<p>${esc(article.short_content)}</p>` : "",
               heroImg,
-              article.content || "",
+              heads,
+              `<div>${article.content || ""}</div>`,
               `</article>`,
             ].filter(Boolean).join("\n");
-            html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${shell}</div>`);
+            html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
+          } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news" && !BUILTIN_PAGES.has(seg.toLowerCase())) {
+            // Bare single-segment path that is neither a static page (handled
+            // above) nor an article, and not the latest-news landing → genuine
+            // 404. Category/tag pages use prefixes so are never mis-flagged.
+            status = 404;
           }
         }
-        res.set("Content-Type", "text/html; charset=utf-8").send(html);
+        // Tag pages: inject tag-specific meta so /tag/<slug> indexes with content.
+        if (!injected && seg.toLowerCase().startsWith("tag/")) {
+          const tslug = decodeURIComponent(seg.slice(4).split("/")[0] || "");
+          if (tslug) {
+            const tags = await getActiveTags();
+            const tg = tags.find((t) => (t.slug || "").toLowerCase() === tslug.toLowerCase());
+            const name = tg ? tg.tag_name : tslug.replace(/-/g, " ");
+            const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+            const url = esc(`${proto}://${req.get("host")}/tag/${encodeURIComponent(tslug)}`);
+            const title = esc(`${name} — News Forever`);
+            const desc = esc(`Latest ${name} news, updates and articles on News Forever.`);
+            const tags2 = [
+              `<title>${title}</title>`,
+              `<meta name="description" content="${desc}">`,
+              `<link rel="canonical" href="${url}">`,
+              `<meta property="og:type" content="website">`,
+              `<meta property="og:title" content="${title}">`,
+              `<meta property="og:description" content="${desc}">`,
+              `<meta property="og:url" content="${url}">`,
+            ].join("\n    ");
+            html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags2}\n  </head>`);
+            injected = true;
+          }
+        }
+        // Category pages: inject the category's own meta title/description (set in admin).
+        if (!injected && seg.toLowerCase().startsWith("category/")) {
+          const cslug = decodeURIComponent(seg.slice(9).split("/")[0] || "");
+          if (cslug) {
+            const cats = await getAllCategories();
+            const cat = cats.find((c) => (c.slug || "").toLowerCase() === cslug.toLowerCase());
+            const name = cat ? cat.category_name : cslug.replace(/-/g, " ");
+            const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+            const url = esc(`${proto}://${req.get("host")}/category/${encodeURIComponent(cslug)}`);
+            const title = esc(cat?.meta_title || `${name} — News Forever`);
+            const desc = esc(cat?.meta_description || `Latest ${name} news, updates and articles on News Forever.`);
+            const tagsC = [
+              `<title>${title}</title>`,
+              `<meta name="description" content="${desc}">`,
+              `<link rel="canonical" href="${url}">`,
+              `<meta property="og:type" content="website">`,
+              `<meta property="og:title" content="${title}">`,
+              `<meta property="og:description" content="${desc}">`,
+              `<meta property="og:url" content="${url}">`,
+            ].join("\n    ");
+            html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tagsC}\n  </head>`);
+            injected = true;
+          }
+        }
+        if (!injected) {
+          // Homepage / category / fallback: inject the site-wide meta set in admin.
+          const cfg = await getSiteConfig();
+          const assetBase = (process.env.LEGACY_ASSET_BASE || "https://newsforever.in/").replace(/\/$/, "") + "/";
+          const st = esc(cfg.siteTitle || "News Forever | National & International News Portal");
+          const sd = esc(cfg.siteDescription || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
+          const sk = cfg.siteKeywords ? esc(cfg.siteKeywords) : "";
+          const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+          const url = esc(`${proto}://${req.get("host")}${req.path}`);
+          const oiRaw = cfg.ogImage ? (/^https?:/i.test(cfg.ogImage) ? cfg.ogImage : assetBase + cfg.ogImage.replace(/^\/+/, "")) : "";
+          const oi = esc(oiRaw);
+          const tags = [
+            `<title>${st}</title>`,
+            `<meta name="description" content="${sd}">`,
+            sk ? `<meta name="keywords" content="${sk}">` : "",
+            `<link rel="canonical" href="${url}">`,
+            `<meta property="og:type" content="website">`,
+            `<meta property="og:title" content="${st}">`,
+            `<meta property="og:description" content="${sd}">`,
+            oi ? `<meta property="og:image" content="${oi}">` : "",
+            `<meta property="og:url" content="${url}">`,
+            `<meta name="twitter:card" content="summary_large_image">`,
+            `<meta name="twitter:title" content="${st}">`,
+            `<meta name="twitter:description" content="${sd}">`,
+            oi ? `<meta name="twitter:image" content="${oi}">` : "",
+          ];
+          // Homepage only: Organization + WebSite JSON-LD for crawlers / AI.
+          if (req.path === "/" || seg === "") {
+            const origin = `${proto}://${req.get("host")}`;
+            const logo = cfg.logoUrl
+              ? (/^https?:/i.test(cfg.logoUrl) ? cfg.logoUrl : assetBase + cfg.logoUrl.replace(/^\/+/, ""))
+              : (siteSetting.site_logo || "");
+            const sameAs = [siteSetting.facebook_url, siteSetting.instagram_url, siteSetting.twitter_url, siteSetting.youtube_url].filter(Boolean);
+            const org = {
+              "@context": "https://schema.org",
+              "@type": "NewsMediaOrganization",
+              name: "News Forever",
+              url: origin,
+              description: cfg.siteDescription || "Beauty pageants, Forever Star India Awards, national achievers, business, astrology and national news.",
+              ...(logo ? { logo: { "@type": "ImageObject", url: logo } } : {}),
+              ...(sameAs.length ? { sameAs } : {}),
+            };
+            const website = {
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "News Forever",
+              url: origin,
+              publisher: { "@type": "Organization", name: "News Forever", ...(logo ? { logo: { "@type": "ImageObject", url: logo } } : {}) },
+            };
+            tags.push(`<script type="application/ld+json">${JSON.stringify(org).replace(/</g, "\\u003c")}</script>`);
+            tags.push(`<script type="application/ld+json">${JSON.stringify(website).replace(/</g, "\\u003c")}</script>`);
+            // ItemList of the latest headlines — helps Google/AI understand the feed.
+            try {
+              const latest = await getPublishedBlogs(10);
+              if (latest.length) {
+                const itemList = {
+                  "@context": "https://schema.org",
+                  "@type": "ItemList",
+                  itemListElement: latest.map((b, i) => ({
+                    "@type": "ListItem",
+                    position: i + 1,
+                    url: `${origin}/${encodeURIComponent((b.url || "").trim())}`,
+                    name: b.meta_title || b.title,
+                  })),
+                };
+                tags.push(`<script type="application/ld+json">${JSON.stringify(itemList).replace(/</g, "\\u003c")}</script>`);
+              }
+            } catch { /* skip list on error */ }
+          }
+          html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags.filter(Boolean).join("\n    ")}\n  </head>`);
+        }
+        res.status(status).set("Content-Type", "text/html; charset=utf-8").send(html);
       } catch {
         res.sendFile(path.join(distPath, "index.html"));
       }
