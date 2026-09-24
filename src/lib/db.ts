@@ -128,7 +128,11 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     meta_title: row.meta_title || row.title,
     meta_description: row.meta_description || summary,
     meta_keyword: row.meta_keyword || '',
-    og_title: row.og_title || row.title,
+    // Fall through to meta_title, not straight to title. An editor who
+    // rewrites the Meta Title and leaves OG Title blank expects the share
+    // card to follow; with `|| row.title` it silently kept the old headline,
+    // because every consumer downstream sees og_title as already set.
+    og_title: row.og_title?.trim() || row.meta_title?.trim() || row.title,
     // Use the stored og_url only if it is clean (no whitespace); otherwise
     // rebuild it from the trimmed slug so legacy "…/ slug" values can't break
     // the canonical / share URL.

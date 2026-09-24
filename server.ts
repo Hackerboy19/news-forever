@@ -1226,7 +1226,16 @@ async function startServer() {
           }
           html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags.filter(Boolean).join("\n    ")}\n  </head>`);
         }
-        res.status(status).set("Content-Type", "text/html; charset=utf-8").send(html);
+        // The <head> here is built from ci_blog/ci_category on every request,
+        // so it changes the moment an editor saves. Say so: without any
+        // Cache-Control a shared proxy is free to apply its own heuristics and
+        // hand back yesterday's title and description. must-revalidate keeps
+        // the ETag round-trip (still cheap) but never serves stale meta.
+        res
+          .status(status)
+          .set("Content-Type", "text/html; charset=utf-8")
+          .set("Cache-Control", "public, max-age=0, must-revalidate")
+          .send(html);
       } catch {
         res.sendFile(path.join(distPath, "index.html"));
       }
