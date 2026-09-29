@@ -183,7 +183,11 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
         </button>
       </div>
 
-      <div className="flex gap-2 border-b border-slate-800">
+      {/* The admin shell is light (#FAF8F5 with #1C1917 text), so these follow
+          the sidebar's own active style — dark red on cream. They were
+          previously coloured for a dark panel, which left the selected tab as
+          white text on a near-white background and effectively invisible. */}
+      <div className="flex gap-1 border-b border-[#E7E5E4]">
         {([
           ['main', 'Main categories', mainCats.length],
           ['sub', 'Sub-categories', subCats.length],
@@ -192,13 +196,17 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
             key={key}
             type="button"
             onClick={() => { setScope(key); setQuery(''); setOnlyWeak(false); }}
-            className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${
+            aria-pressed={scope === key}
+            className={`px-5 py-3 text-sm border-b-2 -mb-px transition ${
               scope === key
-                ? 'border-rose-500 text-white'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-[#991B1B] text-[#991B1B] font-bold'
+                : 'border-transparent text-stone-500 hover:text-stone-900 font-semibold'
             }`}
           >
-            {label} <span className="font-mono text-xs text-slate-500">({count})</span>
+            {label}{' '}
+            <span className={`font-mono text-xs ${scope === key ? 'text-[#991B1B]/70' : 'text-stone-400'}`}>
+              ({count})
+            </span>
           </button>
         ))}
       </div>
@@ -233,7 +241,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
         </button>
       </div>
 
-      <p className="text-xs text-slate-500 -mt-3">
+      <p className="text-xs text-stone-600 -mt-3">
         Showing {visible.length} of {scoped.length}{' '}
         {scope === 'main' ? 'main categories' : 'sub-categories'}.
       </p>
