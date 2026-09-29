@@ -1131,6 +1131,29 @@ async function startServer() {
             injected = true;
           }
         }
+        // /latest-news: its own title, not the site-wide default.
+        //
+        // It was falling through to the homepage meta, so a site: search
+        // listed the homepage, every category and every tag under one
+        // identical title — a duplicate-title finding in Search Console and
+        // nothing for a searcher to tell the results apart by.
+        if (!injected && seg.toLowerCase() === "latest-news") {
+          const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+          const url = esc(`${proto}://${req.get("host")}/latest-news`);
+          const title = "Latest News — News Forever";
+          const desc = "The newest national and international reporting on News Forever — breaking news, beauty pageants, Forever Star India Awards, business, lifestyle and astrology.";
+          const tagsL = [
+            `<title>${title}</title>`,
+            `<meta name="description" content="${desc}">`,
+            `<link rel="canonical" href="${url}">`,
+            `<meta property="og:type" content="website">`,
+            `<meta property="og:title" content="${title}">`,
+            `<meta property="og:description" content="${desc}">`,
+            `<meta property="og:url" content="${url}">`,
+          ].join("\n    ");
+          html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tagsL}\n  </head>`);
+          injected = true;
+        }
         // Category pages: inject the category's own meta title/description (set in admin).
         if (!injected && seg.toLowerCase().startsWith("category/")) {
           const cslug = decodeURIComponent(seg.slice(9).split("/")[0] || "");

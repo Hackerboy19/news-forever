@@ -2011,6 +2011,24 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             injected = true;
           }
         }
+        if (!injected && seg.toLowerCase() === "latest-news") {
+          const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+          const url = esc(`${proto}://${req.get("host")}/latest-news`);
+          const title = "Latest News \u2014 News Forever";
+          const desc = "The newest national and international reporting on News Forever \u2014 breaking news, beauty pageants, Forever Star India Awards, business, lifestyle and astrology.";
+          const tagsL = [
+            `<title>${title}</title>`,
+            `<meta name="description" content="${desc}">`,
+            `<link rel="canonical" href="${url}">`,
+            `<meta property="og:type" content="website">`,
+            `<meta property="og:title" content="${title}">`,
+            `<meta property="og:description" content="${desc}">`,
+            `<meta property="og:url" content="${url}">`
+          ].join("\n    ");
+          html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tagsL}
+  </head>`);
+          injected = true;
+        }
         if (!injected && seg.toLowerCase().startsWith("category/")) {
           const cslug = decodeURIComponent(seg.slice(9).split("/")[0] || "");
           if (cslug) {

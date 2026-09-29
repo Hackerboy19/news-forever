@@ -88,6 +88,12 @@ function categorySlugFromPath(): string | null {
   return p.slice('category/'.length).split('/')[0] || null;
 }
 /** If the path is /tag/<slug>, return the slug; else null. */
+/** True on the /latest-news landing page. */
+function isLatestNewsPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  return decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').toLowerCase() === 'latest-news';
+}
+
 function tagSlugFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const p = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
@@ -235,20 +241,38 @@ export function App() {
   }, []);
 
   /**
-   * Meta title/description for the category currently being viewed.
+   * Meta title/description for whatever listing route is being viewed.
    *
-   * The server already injects these from ci_category for /category/<slug>,
-   * but SEOManager knew nothing about categories: with no article in scope it
-   * fell through to the site-wide defaults and overwrote the correct tags the
-   * moment React mounted. An editor who set a category's meta in admin saw
-   * the generic site description on the page and reasonably concluded the
-   * save had not worked — the value was in the database the whole time, the
-   * browser was throwing it away a few hundred milliseconds after paint.
+   * The server already injects these — from ci_category for
+   * /category/<slug>, from ci_tags for /tag/<slug> — but SEOManager knew
+   * nothing about either: with no article in scope it fell through to the
+   * site-wide defaults and overwrote the correct tags the moment React
+   * mounted. Google renders JavaScript, so what it indexed was the
+   * overwritten version: a site: search showed /category/..., /tag/... and
+   * /latest-news all sharing one generic title, which is also a duplicate
+   * title problem in Search Console. The database had the right values the
+   * whole time; the browser was throwing them away a few hundred
+   * milliseconds after paint.
    *
-   * The fallback strings below are worded exactly as the server words them,
+   * Every fallback string below is worded exactly as the server words it,
    * so the pre- and post-hydration documents agree character for character.
    */
-  const activeCategoryMeta = useMemo(() => {
+  const routeMeta = useMemo(() => {
+    if (activeTag) {
+      const tg = tags.find((t) => (t.slug || '').toLowerCase() === activeTag.toLowerCase());
+      const name = tg ? tg.tag_name : activeTag.replace(/-/g, ' ');
+      return {
+        title: `${name} — News Forever`,
+        description: `Latest ${name} news, updates and articles on News Forever.`,
+      };
+    }
+    if (isLatestNewsPath()) {
+      return {
+        title: 'Latest News — News Forever',
+        description:
+          'The newest national and international reporting on News Forever — breaking news, beauty pageants, Forever Star India Awards, business, lifestyle and astrology.',
+      };
+    }
     if (!activeCategory || activeCategory === 'all') return null;
     const key = String(activeCategory).toLowerCase();
     const cat = categories.find(
@@ -262,7 +286,7 @@ export function App() {
         cat.meta_description?.trim() ||
         `Latest ${name} news, updates and articles on News Forever.`,
     };
-  }, [activeCategory, categories]);
+  }, [activeTag, tags, activeCategory, categories, currentSlug]);
 
   // Admin collections follow the session: loaded on login, cleared on logout.
   useEffect(() => {
@@ -925,9 +949,9 @@ export function App() {
       {!selectedArticleUrl && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
-          meta_title={activeCategoryMeta?.title}
+          meta_title={routeMeta?.title}
           defaultTitle={siteConfig.siteTitle || setting?.meta_default_title || "News Forever | National & International News Portal"}
-          meta_description={activeCategoryMeta?.description || siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          meta_description={routeMeta?.description || siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
           meta_keyword={siteConfig.siteKeywords || setting?.meta_default_keywords}
           og_image={siteConfig.ogImage ? resolveAssetUrl(siteConfig.ogImage) : undefined}
         />
