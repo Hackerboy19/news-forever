@@ -1828,7 +1828,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
       return result;
     };
     const distPath = import_path.default.join(process.cwd(), "dist");
-    app.use(import_express.default.static(distPath));
+    app.use(import_express.default.static(distPath, { index: false }));
     const mediaRoot = process.env.LEGACY_MEDIA_ROOT || process.cwd();
     const assetsDir = import_path.default.join(mediaRoot, "assets");
     const uploadsDir = import_path.default.join(mediaRoot, "uploads");

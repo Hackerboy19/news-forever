@@ -798,7 +798,15 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    // `index: false` matters. express.static otherwise answers "/" with
+    // dist/index.html straight off disk, so the homepage never reached the
+    // meta-injection handler below: it shipped the build's baked-in <title>,
+    // which React then replaced with the admin's meta_default_title on mount.
+    // Server and browser disagreed on the homepage title, and whichever
+    // Googlebot recorded was a coin toss. Hashed assets still serve from here;
+    // only the implicit directory index is turned off, and the SPA catch-all
+    // renders "/" properly.
+    app.use(express.static(distPath, { index: false }));
 
     // Legacy CodeIgniter media served straight from the domain root so old
     // image URLs (newsforever.in/assets/img/…, /uploads/…) keep working when
@@ -944,8 +952,9 @@ async function startServer() {
         let html = await getTemplate();
         const seg = decodeURIComponent(req.path).replace(/^\/+|\/+$/g, "");
         // Strip the baked homepage SEO tags from the template so per-page
-        // injection below doesn't produce duplicate meta / JSON-LD. (The static
-        // homepage keeps them — it never reaches this Node handler.)
+        // injection below doesn't produce duplicate meta / JSON-LD. This now
+        // covers "/" as well, which reaches this handler since express.static
+        // stopped answering it from disk.
         html = html
           .replace(/\n?\s*<meta\s+(name="description"|name="keywords"|property="og:[^"]*"|name="twitter:[^"]*")[^>]*>/gi, "")
           .replace(/\n?\s*<link\s+rel="canonical"[^>]*>/gi, "")
