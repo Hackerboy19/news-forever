@@ -1128,6 +1128,39 @@ async function answerQuestion(question, articleHtml, fallbackSummary) {
 }
 
 // server.ts
+var shellCache = "";
+async function syncHomepageShell(distPath) {
+  const file = import_path.default.join(distPath, "index.html");
+  try {
+    const cfg = await getSiteConfig();
+    const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const title = esc(cfg.siteTitle || siteSetting.meta_default_title || "");
+    const desc = esc(cfg.siteDescription || siteSetting.meta_default_description || "");
+    const keys = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
+    if (!title && !desc) return;
+    let html = import_fs.default.readFileSync(file, "utf8");
+    const before = html;
+    const setContent = (attr, name, value) => {
+      if (!value) return;
+      const re = new RegExp(`(<meta\\s+${attr}="${name}"\\s+content=")[^"]*(")`, "i");
+      html = html.replace(re, `$1${value}$2`);
+    };
+    if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+    setContent("name", "description", desc);
+    setContent("name", "keywords", keys);
+    setContent("property", "og:title", title);
+    setContent("property", "og:description", desc);
+    setContent("name", "twitter:title", title);
+    setContent("name", "twitter:description", desc);
+    if (html !== before) {
+      import_fs.default.writeFileSync(file, html, "utf8");
+      console.log("[shell] homepage meta synced into dist/index.html");
+    }
+    shellCache = "";
+  } catch (err) {
+    console.warn("[shell] could not sync homepage meta:", err?.message || err);
+  }
+}
 async function startServer() {
   const app = (0, import_express.default)();
   const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -1200,7 +1233,9 @@ async function startServer() {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
-      res.json(await saveSiteConfig(req.body || {}));
+      const saved = await saveSiteConfig(req.body || {});
+      await syncHomepageShell(import_path.default.join(process.cwd(), "dist"));
+      res.json(saved);
     } catch (err) {
       res.status(500).json({ error: "Config save failed: " + err?.message });
     }
@@ -1850,10 +1885,9 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
       res.status(404).type("text/plain").send("Not found");
     });
     const fs = await import("fs/promises");
-    let templateCache = "";
     const getTemplate = async () => {
-      if (!templateCache) templateCache = await fs.readFile(import_path.default.join(distPath, "index.html"), "utf8");
-      return templateCache;
+      if (!shellCache) shellCache = await fs.readFile(import_path.default.join(distPath, "index.html"), "utf8");
+      return shellCache;
     };
     const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const RESERVED = /* @__PURE__ */ new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
@@ -2129,6 +2163,9 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
   }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Express Backend + Headless CodeIgniter Bridge Server running at http://0.0.0.0:${PORT}`);
+    if (process.env.NODE_ENV === "production") {
+      void syncHomepageShell(import_path.default.join(process.cwd(), "dist"));
+    }
   });
 }
 startServer();

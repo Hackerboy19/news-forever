@@ -55,6 +55,61 @@ import {
   getBlogByIdAdmin,
 } from "./src/lib/db";
 
+
+/**
+ * Keep dist/index.html's homepage meta in step with the admin's Site Settings.
+ *
+ * On this host nginx answers "/" from disk and never forwards it to Node, so
+ * the SSR handler below cannot reach the homepage at all — proved by the live
+ * response carrying a Last-Modified and no `x-powered-by: Express`, while
+ * /latest-news and /category/* carry both. Turning that off is a Plesk panel
+ * setting the site owner may not have access to, so instead of depending on
+ * it, the file nginx serves is kept correct: whatever is saved in admin is
+ * written into the shell, once at boot and again whenever Site Settings are
+ * saved.
+ *
+ * Only the content of tags that already exist is replaced — nothing is added,
+ * removed or reordered — so running it repeatedly leaves the file byte-identical
+ * and a failure cannot corrupt the shell. A write failure is logged and
+ * ignored: a stale title is worth far less than a homepage that still serves.
+ */
+let shellCache = "";
+async function syncHomepageShell(distPath: string): Promise<void> {
+  const file = path.join(distPath, "index.html");
+  try {
+    const cfg = await getSiteConfig();
+    const esc = (v: string) =>
+      String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const title = esc(cfg.siteTitle || siteSetting.meta_default_title || "");
+    const desc = esc(cfg.siteDescription || siteSetting.meta_default_description || "");
+    const keys = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
+    if (!title && !desc) return;
+
+    let html = nodeFs.readFileSync(file, "utf8");
+    const before = html;
+    const setContent = (attr: string, name: string, value: string) => {
+      if (!value) return;
+      const re = new RegExp(`(<meta\\s+${attr}="${name}"\\s+content=")[^"]*(")`, "i");
+      html = html.replace(re, `$1${value}$2`);
+    };
+    if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+    setContent("name", "description", desc);
+    setContent("name", "keywords", keys);
+    setContent("property", "og:title", title);
+    setContent("property", "og:description", desc);
+    setContent("name", "twitter:title", title);
+    setContent("name", "twitter:description", desc);
+
+    if (html !== before) {
+      nodeFs.writeFileSync(file, html, "utf8");
+      console.log("[shell] homepage meta synced into dist/index.html");
+    }
+    shellCache = "";
+  } catch (err: any) {
+    console.warn("[shell] could not sync homepage meta:", err?.message || err);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -150,7 +205,11 @@ async function startServer() {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
-      res.json(await saveSiteConfig(req.body || {}));
+      const saved = await saveSiteConfig(req.body || {});
+      // nginx serves "/" from disk here, so the shell has to be rewritten for
+      // a Site Settings change to show up on the homepage at all.
+      await syncHomepageShell(path.join(process.cwd(), "dist"));
+      res.json(saved);
     } catch (err: any) {
       res.status(500).json({ error: "Config save failed: " + err?.message });
     }
@@ -853,10 +912,11 @@ async function startServer() {
     // OG tags into the initial HTML so Google, WhatsApp, Facebook, etc. show
     // the correct preview (the SPA still refreshes them client-side).
     const fs = await import("fs/promises");
-    let templateCache = "";
     const getTemplate = async () => {
-      if (!templateCache) templateCache = await fs.readFile(path.join(distPath, "index.html"), "utf8");
-      return templateCache;
+      // shellCache is module-level so syncHomepageShell can clear it after
+      // rewriting the file; otherwise SSR would keep serving the pre-sync copy.
+      if (!shellCache) shellCache = await fs.readFile(path.join(distPath, "index.html"), "utf8");
+      return shellCache;
     };
     const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const RESERVED = new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
@@ -1281,6 +1341,13 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Express Backend + Headless CodeIgniter Bridge Server running at http://0.0.0.0:${PORT}`);
+    // A deploy overwrites dist/index.html with the build's baked-in meta, so
+    // re-apply the admin's Site Settings once the server is up. Deliberately
+    // after listen(): the homepage must not wait on it, and it must not be
+    // able to stop the server starting.
+    if (process.env.NODE_ENV === "production") {
+      void syncHomepageShell(path.join(process.cwd(), "dist"));
+    }
   });
 }
 
