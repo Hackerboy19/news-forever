@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIBlog } from '../types';
 import { TrendingUp, Eye, Flame, ChevronRight } from 'lucide-react';
+import ArticleLink from './ui/ArticleLink';
 import { useI18n } from '../lib/i18n';
 
 interface TrendingSidebarProps {
@@ -47,13 +48,14 @@ export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
         {topTrendingArticles.map((article, index) => {
           const rank = index + 1;
           return (
-            <div
+            <ArticleLink
               key={article.id}
-              onClick={() => {
-                onSelectArticle(article.url);
+              url={article.url}
+              onSelectArticle={(slug) => {
+                onSelectArticle(slug);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className="group cursor-pointer py-3.5 first:pt-1 last:pb-1 transition flex items-start gap-3.5"
+              className="group cursor-pointer py-3.5 first:pt-1 last:pb-1 transition flex items-start gap-3.5 no-underline text-inherit"
             >
               {/* Rank Badge */}
               <div
@@ -93,7 +95,7 @@ export const TrendingSidebar: React.FC<TrendingSidebarProps> = ({
                   </span>
                 </div>
               </div>
-            </div>
+            </ArticleLink>
           );
         })}
       </div>

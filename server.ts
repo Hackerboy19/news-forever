@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
 import { translateArticle, translateTitles } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
@@ -43,6 +44,7 @@ import {
   incrementAdClick,
   getAllCategories,
   getActiveAds,
+  getAllAdsAdmin,
   getActiveTags,
   verifyAdmin,
   createBlog,
@@ -52,6 +54,61 @@ import {
   getAllBlogsAdmin,
   getBlogByIdAdmin,
 } from "./src/lib/db";
+
+
+/**
+ * Keep dist/index.html's homepage meta in step with the admin's Site Settings.
+ *
+ * On this host nginx answers "/" from disk and never forwards it to Node, so
+ * the SSR handler below cannot reach the homepage at all — proved by the live
+ * response carrying a Last-Modified and no `x-powered-by: Express`, while
+ * /latest-news and /category/* carry both. Turning that off is a Plesk panel
+ * setting the site owner may not have access to, so instead of depending on
+ * it, the file nginx serves is kept correct: whatever is saved in admin is
+ * written into the shell, once at boot and again whenever Site Settings are
+ * saved.
+ *
+ * Only the content of tags that already exist is replaced — nothing is added,
+ * removed or reordered — so running it repeatedly leaves the file byte-identical
+ * and a failure cannot corrupt the shell. A write failure is logged and
+ * ignored: a stale title is worth far less than a homepage that still serves.
+ */
+let shellCache = "";
+async function syncHomepageShell(distPath: string): Promise<void> {
+  const file = path.join(distPath, "index.html");
+  try {
+    const cfg = await getSiteConfig();
+    const esc = (v: string) =>
+      String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const title = esc(cfg.siteTitle || siteSetting.meta_default_title || "");
+    const desc = esc(cfg.siteDescription || siteSetting.meta_default_description || "");
+    const keys = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
+    if (!title && !desc) return;
+
+    let html = nodeFs.readFileSync(file, "utf8");
+    const before = html;
+    const setContent = (attr: string, name: string, value: string) => {
+      if (!value) return;
+      const re = new RegExp(`(<meta\\s+${attr}="${name}"\\s+content=")[^"]*(")`, "i");
+      html = html.replace(re, `$1${value}$2`);
+    };
+    if (title) html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+    setContent("name", "description", desc);
+    setContent("name", "keywords", keys);
+    setContent("property", "og:title", title);
+    setContent("property", "og:description", desc);
+    setContent("name", "twitter:title", title);
+    setContent("name", "twitter:description", desc);
+
+    if (html !== before) {
+      nodeFs.writeFileSync(file, html, "utf8");
+      console.log("[shell] homepage meta synced into dist/index.html");
+    }
+    shellCache = "";
+  } catch (err: any) {
+    console.warn("[shell] could not sync homepage meta:", err?.message || err);
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -148,7 +205,11 @@ async function startServer() {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
-      res.json(await saveSiteConfig(req.body || {}));
+      const saved = await saveSiteConfig(req.body || {});
+      // nginx serves "/" from disk here, so the shell has to be rewritten for
+      // a Site Settings change to show up on the homepage at all.
+      await syncHomepageShell(path.join(process.cwd(), "dist"));
+      res.json(saved);
     } catch (err: any) {
       res.status(500).json({ error: "Config save failed: " + err?.message });
     }
@@ -440,7 +501,14 @@ async function startServer() {
   });
 
   // GET /api/advertisements — real ci_advertisement rows
-  app.get("/api/advertisements", async (_req, res) => {
+  app.get("/api/advertisements", async (req, res) => {
+    // Admin manager list: every ad regardless of status, so a deactivated one
+    // stays editable. Requires ci_admin credentials and is never cached.
+    if (req.query.status === "all") {
+      if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(await getAllAdsAdmin());
+    }
     const realAds = await getActiveAds();
     res.json(realAds.length > 0 ? realAds : dbAds);
   });
@@ -549,14 +617,20 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // GET /api/activity-logs — real ci_activity_log + session actions
-  app.get("/api/activity-logs", async (_req, res) => {
+  // GET /api/activity-logs — real ci_activity_log + session actions.
+  // Admin-only: logs expose admin names, modules and IP addresses.
+  app.get("/api/activity-logs", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     const real = await getActivityLogs();
     res.json([...dbActivityLogs, ...real]);
   });
 
-  // GET /api/users — real ci_admin accounts (no passwords)
-  app.get("/api/users", async (_req, res) => {
+  // GET /api/users — real ci_admin accounts (no passwords).
+  // Admin-only: enumerating staff accounts aids credential-stuffing.
+  app.get("/api/users", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getAdminUsers());
   });
   app.post("/api/users", async (req, res) => {
@@ -580,7 +654,10 @@ async function startServer() {
     res.json({ success: ok });
   });
 
-  app.get("/api/sub-admins", async (_req, res) => {
+  app.get("/api/sub-admins", async (req, res) => {
+    // A roster of login accounts — never public. See /api/users above.
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getSubAdmins());
   });
   app.post("/api/sub-admins", async (req, res) => {
@@ -602,8 +679,11 @@ async function startServer() {
     res.json({ success: ok });
   });
 
-  // GET /api/subscribers — real ci_subscribe rows
-  app.get("/api/subscribers", async (_req, res) => {
+  // GET /api/subscribers — real ci_subscribe rows.
+  // Admin-only: this is the newsletter mailing list (personal data).
+  app.get("/api/subscribers", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getSubscribers());
   });
 
@@ -640,8 +720,11 @@ async function startServer() {
     res.json({ success: ok });
   });
 
-  // GET /api/image-library — real ci_imagelibrary rows
-  app.get("/api/image-library", async (_req, res) => {
+  // GET /api/image-library — real ci_imagelibrary rows.
+  // Admin-only: the library lists unpublished/internal media paths.
+  app.get("/api/image-library", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
+    res.setHeader("Cache-Control", "no-store");
     res.json(await getImageLibrary());
   });
   app.delete("/api/image-library/:id", async (req, res) => {
@@ -652,7 +735,8 @@ async function startServer() {
   });
 
   // POST /api/image-library
-  app.post("/api/image-library", (req, res) => {
+  app.post("/api/image-library", async (req, res) => {
+    if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
     const { file_name, file_path, alt_tag } = req.body;
     const newImg: CIImageLibrary = {
       id: dbImages.length ? Math.max(...dbImages.map(i => i.id)) + 1 : 1,
@@ -773,37 +857,164 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    // `index: false` matters. express.static otherwise answers "/" with
+    // dist/index.html straight off disk, so the homepage never reached the
+    // meta-injection handler below: it shipped the build's baked-in <title>,
+    // which React then replaced with the admin's meta_default_title on mount.
+    // Server and browser disagreed on the homepage title, and whichever
+    // Googlebot recorded was a coin toss. Hashed assets still serve from here;
+    // only the implicit directory index is turned off, and the SPA catch-all
+    // renders "/" properly.
+    app.use(express.static(distPath, { index: false }));
 
     // Legacy CodeIgniter media served straight from the domain root so old
     // image URLs (newsforever.in/assets/img/…, /uploads/…) keep working when
-    // this app fronts the main domain. No-ops when the folders are absent.
-    app.use("/assets", express.static(path.join(process.cwd(), "assets")));
-    app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-    // A missing asset/upload must 404 as a file — never fall through to the
-    // SPA catch-all (which would return a full HTML page for an image URL).
-    app.use(["/assets", "/uploads"], (_req, res) => res.status(404).type("txt").send("Not found"));
+    // this app fronts the main domain.
+    //
+    // These folders usually do NOT live inside the app directory. The legacy
+    // uploads sit wherever CodeIgniter kept them (typically public_html), while
+    // this app is deployed beside them — so resolving them against the app's
+    // own working directory finds nothing and every image 404s even though the
+    // files are present on the server. Point LEGACY_MEDIA_ROOT at the directory
+    // that CONTAINS `assets/` and `uploads/` (e.g. /home/<user>/public_html).
+    // It is read at runtime, so changing it needs only a restart, no rebuild.
+    const mediaRoot = process.env.LEGACY_MEDIA_ROOT || process.cwd();
+    const assetsDir = path.join(mediaRoot, "assets");
+    const uploadsDir = path.join(mediaRoot, "uploads");
+    app.use("/assets", express.static(assetsDir));
+    app.use("/uploads", express.static(uploadsDir));
+
+    // Say plainly at boot whether the media is actually reachable. Without this
+    // a misconfigured root is invisible until someone notices broken images.
+    {
+      const { existsSync } = await import("fs");
+      const found = existsSync(assetsDir);
+      console.log(
+        `[media] LEGACY_MEDIA_ROOT=${mediaRoot} -> ${assetsDir} ${found ? "(found)" : "(MISSING)"}`
+      );
+      if (!found) {
+        console.warn(
+          "[media] No assets/ directory there, so /assets/* will 404. Set LEGACY_MEDIA_ROOT to the folder containing the legacy assets/ and uploads/ directories."
+        );
+      }
+    }
+
+    // A media path that matches no file must 404 — it must never reach the SPA
+    // catch-all below. Without this, a missing image answered 200 with the
+    // whole index.html shell: opening an og:image URL showed a news page
+    // instead of the picture, and Facebook/X/Google were handed HTML where
+    // they expected image bytes. A 404 is honest and debuggable.
+    app.use(["/assets", "/uploads"], (_req, res) => {
+      res.status(404).type("text/plain").send("Not found");
+    });
 
     // Server-side meta injection: for article URLs, put the real title/desc/
     // OG tags into the initial HTML so Google, WhatsApp, Facebook, etc. show
     // the correct preview (the SPA still refreshes them client-side).
     const fs = await import("fs/promises");
-    let templateCache = "";
     const getTemplate = async () => {
-      if (!templateCache) templateCache = await fs.readFile(path.join(distPath, "index.html"), "utf8");
-      return templateCache;
+      // shellCache is module-level so syncHomepageShell can clear it after
+      // rewriting the file; otherwise SSR would keep serving the pre-sync copy.
+      if (!shellCache) shellCache = await fs.readFile(path.join(distPath, "index.html"), "utf8");
+      return shellCache;
     };
     const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const RESERVED = new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
     // Real static pages the SPA renders — must NOT be treated as 404s.
+    // The three legal routes ship with built-in copy (src/components/LegalPage
+    // .tsx) and are linked from the footer, so they exist even before an admin
+    // creates a page row for them. An admin-created page of the same slug
+    // takes over via getPageSlugSet() below.
+    const BUILTIN_PAGES = new Set(["privacy-policy", "terms-of-service", "disclaimer"]);
+
+    /**
+     * Real pixel size and MIME type of a share image, read from the file
+     * header on disk.
+     *
+     * Only images this server hosts can be measured — the URL's path is mapped
+     * back under LEGACY_MEDIA_ROOT. Anything remote, missing, or in a format
+     * not parsed here returns null and the width/height tags are simply
+     * omitted, which is exactly the previous behaviour.
+     *
+     * Just the first 32 bytes are read, and results are cached, so this costs
+     * effectively nothing per request.
+     */
+    const dimCache = new Map<string, { width: number; height: number; mime: string } | null>();
+    function imageDimensions(
+      absUrl: string,
+      root: string
+    ): { width: number; height: number; mime: string } | null {
+      if (!absUrl) return null;
+      if (dimCache.has(absUrl)) return dimCache.get(absUrl) ?? null;
+
+      let result: { width: number; height: number; mime: string } | null = null;
+      try {
+        let pathname: string;
+        try {
+          pathname = new URL(absUrl).pathname;
+        } catch {
+          pathname = absUrl;
+        }
+        // Keep the lookup inside the media root: reject traversal outright.
+        const rel = decodeURIComponent(pathname).replace(/^\/+/, "");
+        const file = path.resolve(root, rel);
+        if (file.startsWith(path.resolve(root)) && nodeFs.existsSync(file)) {
+          const fd = nodeFs.openSync(file, "r");
+          const buf = Buffer.alloc(32);
+          const read = nodeFs.readSync(fd, buf, 0, 32, 0);
+          nodeFs.closeSync(fd);
+
+          if (read >= 24 && buf.slice(0, 8).toString("hex") === "89504e470d0a1a0a") {
+            // PNG: IHDR width/height are big-endian at offsets 16 and 20.
+            result = { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), mime: "image/png" };
+          } else if (read >= 3 && buf[0] === 0xff && buf[1] === 0xd8) {
+            // JPEG: walk the segment markers for the SOFn frame header.
+            const whole = nodeFs.readFileSync(file);
+            let off = 2;
+            while (off + 9 < whole.length) {
+              if (whole[off] !== 0xff) { off++; continue; }
+              const marker = whole[off + 1];
+              const len = whole.readUInt16BE(off + 2);
+              // SOFn frames carry the dimensions; skip DHT/DAC/RST variants.
+              if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+                result = {
+                  height: whole.readUInt16BE(off + 5),
+                  width: whole.readUInt16BE(off + 7),
+                  mime: "image/jpeg",
+                };
+                break;
+              }
+              off += 2 + len;
+            }
+          } else if (read >= 10 && buf.slice(0, 3).toString("ascii") === "GIF") {
+            result = { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8), mime: "image/gif" };
+          } else if (read >= 30 && buf.slice(8, 12).toString("ascii") === "WEBP") {
+            const whole = nodeFs.readFileSync(file);
+            if (whole.slice(12, 16).toString("ascii") === "VP8X") {
+              result = {
+                width: 1 + (whole[24] | (whole[25] << 8) | (whole[26] << 16)),
+                height: 1 + (whole[27] | (whole[28] << 8) | (whole[29] << 16)),
+                mime: "image/webp",
+              };
+            }
+          }
+        }
+      } catch {
+        result = null; // never let a share-image probe break the page render
+      }
+
+      dimCache.set(absUrl, result);
+      return result;
+    }
 
     app.get("*", async (req, res) => {
       try {
         let html = await getTemplate();
         const seg = decodeURIComponent(req.path).replace(/^\/+|\/+$/g, "");
         // Strip the baked homepage SEO tags from the template so per-page
-        // injection below doesn't produce duplicate meta / JSON-LD. (The static
-        // homepage keeps them — it never reaches this Node handler.)
+        // injection below doesn't produce duplicate meta / JSON-LD. This now
+        // covers "/" as well, which reaches this handler since express.static
+        // stopped answering it from disk.
         html = html
           .replace(/\n?\s*<meta\s+(name="description"|name="keywords"|property="og:[^"]*"|name="twitter:[^"]*")[^>]*>/gi, "")
           .replace(/\n?\s*<link\s+rel="canonical"[^>]*>/gi, "")
@@ -848,6 +1059,13 @@ async function startServer() {
             const url = esc(urlRaw);
             const img = /^https?:/i.test(article.og_image || "") ? article.og_image : article.image; // already absolute
             const imgEsc = esc(img);
+            // Facebook, LinkedIn and WhatsApp render a share card from the tags
+            // alone on first encounter, before they have downloaded the image.
+            // Without og:image:width/height they must fetch and measure it
+            // first, which is why a freshly shared link so often previews with
+            // no picture. The file is on our own disk, so read the real numbers
+            // out of its header rather than guessing or omitting them.
+            const dim = imageDimensions(img, mediaRoot);
             const ogTitle = esc(article.og_title || article.meta_title || article.title);
             const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
             // JSON-LD NewsArticle for rich results + name-based search relevance.
@@ -896,7 +1114,14 @@ async function startServer() {
               `<meta property="og:title" content="${ogTitle}">`,
               `<meta property="og:description" content="${ogDesc}">`,
               imgEsc ? `<meta property="og:image" content="${imgEsc}">` : "",
+              imgEsc ? `<meta property="og:image:secure_url" content="${imgEsc}">` : "",
+              imgEsc ? `<meta property="og:image:alt" content="${esc(article.alt_tag || article.title)}">` : "",
+              dim ? `<meta property="og:image:type" content="${dim.mime}">` : "",
+              dim ? `<meta property="og:image:width" content="${dim.width}">` : "",
+              dim ? `<meta property="og:image:height" content="${dim.height}">` : "",
               `<meta property="og:url" content="${url}">`,
+              `<meta property="og:site_name" content="News Forever">`,
+              `<meta property="og:locale" content="en_IN">`,
               `<meta name="twitter:card" content="summary_large_image">`,
               `<meta name="twitter:title" content="${ogTitle}">`,
               `<meta name="twitter:description" content="${ogDesc}">`,
@@ -906,8 +1131,21 @@ async function startServer() {
               `<script type="application/ld+json">${breadcrumbStr}</script>`,
             ].filter(Boolean).join("\n    ");
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}\n  </head>`);
-            // SSR the article body into #root so crawlers see real <h1>/<h2>/<p>/
-            // lists in view-source. React (createRoot) replaces it on mount.
+
+            // Server-rendered article body.
+            //
+            // Only <head> was being injected, so `view source` on an article
+            // showed correct OG tags above a completely empty <div id="root">
+            // — no <h1>, and none of the H2–H6 hierarchy the editors write.
+            // Anything that does not execute JavaScript (many crawlers, link
+            // previewers, reader modes, accessibility tooling) saw a blank
+            // page, which is a poor position for a news site that depends on
+            // that heading structure for ranking.
+            //
+            // React's createRoot() replaces the contents of #root when it
+            // mounts, so this is markup for non-JS consumers only and cannot
+            // desynchronise from what readers see.
+            //
             // Each h#_tag may hold multiple headings, one per line → emit each.
             const headLevel = (tag: string, raw?: string) =>
               (raw || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => `<${tag}>${esc(t)}</${tag}>`).join("\n");
@@ -918,9 +1156,20 @@ async function startServer() {
               headLevel("h5", article.h5_tag),
               headLevel("h6", article.h6_tag),
             ].filter(Boolean).join("\n");
-            const ssrBody = `<article><h1>${esc(article.title)}</h1>${heads}<div>${article.content || ""}</div></article>`;
+            const heroImg = imgEsc
+              ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">`
+              : "";
+            const ssrBody = [
+              `<article>`,
+              `<h1>${esc(article.title)}</h1>`,
+              article.short_content ? `<p>${esc(article.short_content)}</p>` : "",
+              heroImg,
+              heads,
+              `<div>${article.content || ""}</div>`,
+              `</article>`,
+            ].filter(Boolean).join("\n");
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
-          } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news") {
+          } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news" && !BUILTIN_PAGES.has(seg.toLowerCase())) {
             // Bare single-segment path that is neither a static page (handled
             // above) nor an article, and not the latest-news landing → genuine
             // 404. Category/tag pages use prefixes so are never mis-flagged.
@@ -951,6 +1200,29 @@ async function startServer() {
             injected = true;
           }
         }
+        // /latest-news: its own title, not the site-wide default.
+        //
+        // It was falling through to the homepage meta, so a site: search
+        // listed the homepage, every category and every tag under one
+        // identical title — a duplicate-title finding in Search Console and
+        // nothing for a searcher to tell the results apart by.
+        if (!injected && seg.toLowerCase() === "latest-news") {
+          const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+          const url = esc(`${proto}://${req.get("host")}/latest-news`);
+          const title = "Latest News — News Forever";
+          const desc = "The newest national and international reporting on News Forever — breaking news, beauty pageants, Forever Star India Awards, business, lifestyle and astrology.";
+          const tagsL = [
+            `<title>${title}</title>`,
+            `<meta name="description" content="${desc}">`,
+            `<link rel="canonical" href="${url}">`,
+            `<meta property="og:type" content="website">`,
+            `<meta property="og:title" content="${title}">`,
+            `<meta property="og:description" content="${desc}">`,
+            `<meta property="og:url" content="${url}">`,
+          ].join("\n    ");
+          html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tagsL}\n  </head>`);
+          injected = true;
+        }
         // Category pages: inject the category's own meta title/description (set in admin).
         if (!injected && seg.toLowerCase().startsWith("category/")) {
           const cslug = decodeURIComponent(seg.slice(9).split("/")[0] || "");
@@ -979,9 +1251,14 @@ async function startServer() {
           // Homepage / category / fallback: inject the site-wide meta set in admin.
           const cfg = await getSiteConfig();
           const assetBase = (process.env.LEGACY_ASSET_BASE || "https://newsforever.in/").replace(/\/$/, "") + "/";
-          const st = esc(cfg.siteTitle || "News Forever | National & International News Portal");
-          const sd = esc(cfg.siteDescription || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
-          const sk = cfg.siteKeywords ? esc(cfg.siteKeywords) : "";
+          // Same precedence the client uses, in the same order. It previously
+          // jumped straight from site-config to a hard-coded string, skipping
+          // the ci_setting defaults the admin panel actually writes — so with
+          // site-config blank (which it is), the server served one title and
+          // the browser replaced it with another the instant React mounted.
+          const st = esc(cfg.siteTitle || siteSetting.meta_default_title || "News Forever | National & International News Portal");
+          const sd = esc(cfg.siteDescription || siteSetting.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage.");
+          const sk = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
           const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
           const url = esc(`${proto}://${req.get("host")}${req.path}`);
           const oiRaw = cfg.ogImage ? (/^https?:/i.test(cfg.ogImage) ? cfg.ogImage : assetBase + cfg.ogImage.replace(/^\/+/, "")) : "";
@@ -1046,7 +1323,16 @@ async function startServer() {
           }
           html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags.filter(Boolean).join("\n    ")}\n  </head>`);
         }
-        res.status(status).set("Content-Type", "text/html; charset=utf-8").send(html);
+        // The <head> here is built from ci_blog/ci_category on every request,
+        // so it changes the moment an editor saves. Say so: without any
+        // Cache-Control a shared proxy is free to apply its own heuristics and
+        // hand back yesterday's title and description. must-revalidate keeps
+        // the ETag round-trip (still cheap) but never serves stale meta.
+        res
+          .status(status)
+          .set("Content-Type", "text/html; charset=utf-8")
+          .set("Cache-Control", "public, max-age=0, must-revalidate")
+          .send(html);
       } catch {
         res.sendFile(path.join(distPath, "index.html"));
       }
@@ -1055,6 +1341,13 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Express Backend + Headless CodeIgniter Bridge Server running at http://0.0.0.0:${PORT}`);
+    // A deploy overwrites dist/index.html with the build's baked-in meta, so
+    // re-apply the admin's Site Settings once the server is up. Deliberately
+    // after listen(): the homepage must not wait on it, and it must not be
+    // able to stop the server starting.
+    if (process.env.NODE_ENV === "production") {
+      void syncHomepageShell(path.join(process.cwd(), "dist"));
+    }
   });
 }
 

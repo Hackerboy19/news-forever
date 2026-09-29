@@ -21,6 +21,13 @@ import {
   Globe
 } from 'lucide-react';
 
+/** Static legal routes surfaced in the footer (see src/components/LegalPage.tsx). */
+const LEGAL_LINKS: { slug: 'privacy-policy' | 'terms-of-service' | 'disclaimer'; label: string }[] = [
+  { slug: 'privacy-policy', label: 'Privacy Policy' },
+  { slug: 'terms-of-service', label: 'Terms of Service' },
+  { slug: 'disclaimer', label: 'Disclaimer' },
+];
+
 interface PublicLayoutProps {
   categories: CICategory[];
   ads: CIAdvertisement[];
@@ -31,6 +38,8 @@ interface PublicLayoutProps {
   onSelectArticle: (urlSlug: string) => void;
   onGoHome: () => void;
   onSwitchToAdmin: () => void;
+  /** Opens a static legal page (privacy-policy | terms-of-service | disclaimer). */
+  onOpenLegal?: (slug: 'privacy-policy' | 'terms-of-service' | 'disclaimer') => void;
   onSubscribe: (email: string) => void;
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
@@ -58,6 +67,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   onSelectArticle,
   onGoHome,
   onSwitchToAdmin,
+  onOpenLegal,
   onSubscribe,
   dateFilter = 'all',
   onDateFilterChange,
@@ -317,8 +327,25 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             {/* Part 1 (mobile row): logo + hamburger side-by-side. On desktop
                 this wrapper dissolves (md:contents) so the logo sits inline. */}
             <div className="flex items-center justify-between w-full md:w-auto md:contents">
-              {/* Logo: NEWS FOREVER */}
-              <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
+              {/* Logo: NEWS FOREVER — a real <a href="/">, not a button.
+                  As a button it only worked when React was already driving the
+                  page; on any URL the SPA does not own (a legacy page, or a
+                  route it renders as "article not found") the click updated
+                  state without navigating, so the address bar changed but the
+                  homepage never loaded. An anchor always gets the reader home:
+                  the SPA intercepts a plain left-click, and anything else is a
+                  normal browser navigation. It is also the home link crawlers
+                  expect to find on the masthead. */}
+              <a
+                href="/"
+                aria-label="News Forever — go to the homepage"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onGoHome();
+                }}
+                className="flex items-center gap-3 text-left group shrink-0 py-0.5 no-underline"
+              >
                 {siteConfig.logoUrl ? (
                   <img
                     src={resolveAssetUrl(siteConfig.logoUrl)}
@@ -343,7 +370,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     {t('tagline')}
                   </span>
                 </div>
-              </button>
+              </a>
 
               {/* Mobile hamburger (right of logo) */}
               <button
@@ -645,12 +672,35 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             <div className="space-y-2">
               <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">{t('topSubcategories')}</h4>
-              <ul className="space-y-1 text-stone-600 text-[11px]">
-                <li>• Fashion &amp; Glamour</li>
-                <li>• Entertainment</li>
-                <li>• Business News</li>
-                <li>• Lifestyle &amp; Products</li>
-                <li>• Astrology</li>
+              {/* These were five hardcoded strings with typed-in "•" bullets and
+                  no links — dead text that named the sections but went nowhere
+                  and taught crawlers nothing. They now come from the same
+                  NAV_UMBRELLAS the header uses, as real /category/<slug>
+                  anchors, so the list cannot drift out of step with the nav. */}
+              <ul className="space-y-1.5 text-[11px]">
+                {navItems
+                  // Same source and same filtering as the header, so the two
+                  // can never disagree — an umbrella with no published
+                  // articles is hidden in both rather than linking to an
+                  // empty section. Umbrellas are the entries carrying a public
+                  // slug (a string id); "Home", the numeric ci_category
+                  // extras and the external About/Contact links are not.
+                  .filter((item) => typeof item.id === 'string' && item.id !== 'all')
+                  .map((item) => (
+                    <li key={String(item.id)}>
+                      <a
+                        href={`/category/${item.id}`}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                          e.preventDefault();
+                          handleCatSelect(item.id as string, null);
+                        }}
+                        className="text-stone-600 hover:text-[#7A0C0C] transition"
+                      >
+                        {item.name}
+                      </a>
+                    </li>
+                  ))}
               </ul>
             </div>
 
@@ -667,7 +717,30 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
           </div>
 
-          <div className="border-t border-stone-200 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
+          {/* Legal — real anchors so they are crawlable and can be opened in a
+              new tab, with SPA navigation on a plain left-click. */}
+          <nav
+            aria-label="Legal"
+            className="border-t border-stone-200 pt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[10px] uppercase tracking-widest font-mono"
+          >
+            {LEGAL_LINKS.map(({ slug, label }) => (
+              <a
+                key={slug}
+                href={`/${slug}`}
+                onClick={(e) => {
+                  if (!onOpenLegal) return;
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onOpenLegal(slug);
+                }}
+                className="text-stone-600 hover:text-[#7A0C0C] transition underline underline-offset-2"
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="border-t border-stone-200 mt-4 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
             <span>© 2026 News Forever. All rights reserved.</span>
             <button
               onClick={onSwitchToAdmin}

@@ -5,6 +5,10 @@ import SidebarAd from './SidebarAd';
 import InArticleAd from './InArticleAd';
 import PeopleAlsoAsk from './PeopleAlsoAsk';
 import Skeleton from './ui/Skeleton';
+import ArticleLink from './ui/ArticleLink';
+import AuthorByline from './ui/AuthorByline';
+import SponsoredBadge from './ui/SponsoredBadge';
+import { isSponsoredArticle } from '../lib/editorial';
 import { splitHtmlAtParagraphs } from '../lib/injectAds';
 import { shuffleAds } from '../lib/adRotation';
 import { useI18n } from '../lib/i18n';
@@ -311,18 +315,22 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               {article.title}
             </h1>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[10px] text-stone-600 font-mono py-3 border-y border-[#E7E5E4]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-[#991B1B] flex items-center justify-center font-bold text-white text-xs">
-                  {article.author_name ? article.author_name[0] : 'E'}
-                </div>
-                <span className="text-stone-800 font-bold uppercase tracking-wider">{article.author_name || 'Elena Rostova'}</span>
+            {/* Advertising disclosure, shown above the byline so the reader
+                sees it before the copy. */}
+            {isSponsoredArticle(article) && (
+              <div className="pt-1">
+                <SponsoredBadge size="md" />
               </div>
+            )}
+
+            {/* Real ci_admin author (joined on user_created_by) — never an
+                invented name. See src/components/ui/AuthorByline.tsx. */}
+            <AuthorByline authorName={article.author_name}>
               <div className="flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 text-[#991B1B]" />
                 <span>{t('published')} {article.created_at}</span>
               </div>
-            </div>
+            </AuthorByline>
           </div>
 
           {/* ASSET MAPPING: Main Featured Image (src={article.image}, alt={article.alt_tag}) */}
@@ -453,7 +461,13 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             <React.Fragment key={i}>
               {i > 0 && <InArticleAd ad={inContentAds[i - 1]} />}
               <div
-                className="nf-article prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
+                /* `article-body` (src/index.css) styles this HTML by element
+                   selector — Tailwind utilities cannot reach content injected
+                   via dangerouslySetInnerHTML. It replaces `prose`, which
+                   matched nothing because @tailwindcss/typography is not
+                   installed, leaving lists unmarked and links unstyled.
+                   `nf-article` is kept: other rules still target it. */
+                className="nf-article article-body max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg"
                 dangerouslySetInnerHTML={{ __html: segment }}
               />
             </React.Fragment>
@@ -477,10 +491,11 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               </h3>
               <div className="space-y-3">
                 {relatedArticles.map((rel) => (
-                  <div
+                  <ArticleLink
                     key={rel.id}
-                    onClick={() => onSelectArticle(rel.url)}
-                    className="cursor-pointer group flex items-center gap-3 p-2 hover:bg-stone-100/60 transition"
+                    url={rel.url}
+                    onSelectArticle={onSelectArticle}
+                    className="cursor-pointer group flex items-center gap-3 p-2 hover:bg-stone-100/60 transition no-underline text-inherit"
                   >
                     <img
                       src={rel.image}
@@ -498,7 +513,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
                         {rel.created_at.split(' ')[0]}
                       </p>
                     </div>
-                  </div>
+                  </ArticleLink>
                 ))}
               </div>
             </div>
@@ -529,13 +544,14 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(relatedArticles.length > 0 ? relatedArticles : blogs.filter((b) => b.id !== article.id).slice(0, 3)).map((rel) => (
-              <div
+              <ArticleLink
                 key={rel.id}
-                onClick={() => {
+                url={rel.url}
+                onSelectArticle={(slug) => {
                   window.scrollTo({ top: 0, behavior: 'smooth' });
-                  onSelectArticle(rel.url);
+                  onSelectArticle(slug);
                 }}
-                className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between"
+                className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between no-underline text-inherit"
               >
                 <div className="relative h-44 w-full overflow-hidden bg-stone-100">
                   <img
@@ -568,7 +584,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
                     </span>
                   </div>
                 </div>
-              </div>
+              </ArticleLink>
             ))}
           </div>
         </section>
