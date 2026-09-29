@@ -42,6 +42,13 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
   const [modalTab, setModalTab] = useState<'general' | 'seo'>('general');
   const [query, setQuery] = useState('');
   const [onlyWeak, setOnlyWeak] = useState(false);
+  /**
+   * Which half of the tree is on screen. The two are genuinely different jobs
+   * — a main category is a section of the site, a sub-category files articles
+   * inside one — and mixing all 78 into a single list made neither easy to
+   * work with.
+   */
+  const [scope, setScope] = useState<'main' | 'sub'>('main');
 
   /** id -> name, so a child row can show which section it sits under. */
   const nameById = useMemo(() => {
@@ -53,6 +60,9 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return categories.filter((c) => {
+      const isSub = !!c.parent_id;
+      if (scope === 'main' && isSub) return false;
+      if (scope === 'sub' && !isSub) return false;
       if (onlyWeak && metaIssues(c).length === 0) return false;
       if (!q) return true;
       const parent = c.parent_id ? (nameById.get(c.parent_id) || '') : '';
@@ -63,11 +73,14 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
         String(c.id) === q
       );
     });
-  }, [categories, query, onlyWeak, nameById]);
+  }, [categories, query, onlyWeak, nameById, scope]);
 
+  const mainCats = useMemo(() => categories.filter((c) => !c.parent_id), [categories]);
+  const subCats = useMemo(() => categories.filter((c) => !!c.parent_id), [categories]);
+  const scoped = scope === 'main' ? mainCats : subCats;
   const weakCount = useMemo(
-    () => categories.filter((c) => metaIssues(c).length > 0).length,
-    [categories]
+    () => scoped.filter((c) => metaIssues(c).length > 0).length,
+    [scoped]
   );
 
   const [editingCat, setEditingCat] = useState<Partial<CICategory>>({
@@ -103,7 +116,10 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
     setEditingCat({
       category_name: '',
       slug: '',
-      parent_id: 0,
+      // Adding from the Sub-categories section means a parent is intended, so
+      // the form opens needing one rather than silently creating another
+      // top-level section.
+      parent_id: scope === 'sub' ? undefined : 0,
       status: 1,
       meta_title: '',
       meta_description: '',
@@ -135,6 +151,11 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
       alert('Category Name is required');
       return;
     }
+    if (editingCat.parent_id === undefined) {
+      alert('Choose which section this sub-category sits under.');
+      setModalTab('general');
+      return;
+    }
     onSaveCategory(editingCat);
     setShowModal(false);
   };
@@ -144,10 +165,12 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            Categories
+            {scope === 'main' ? 'Categories' : 'Sub-categories'}
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            The sections of the site (like Pageants, City News). Add or edit them here.
+            {scope === 'main'
+              ? 'The main sections of the site, like Beauty Pageant or Business News. Each one gets its own page.'
+              : 'Groups inside a main section, like City Winner inside Beauty Pageant. Their articles also count towards the parent.'}
           </p>
         </div>
 
@@ -156,8 +179,28 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
           className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-rose-600/25 transition"
         >
           <Plus className="w-4 h-4" />
-          Add Category
+          {scope === 'main' ? 'Add Category' : 'Add Sub-category'}
         </button>
+      </div>
+
+      <div className="flex gap-2 border-b border-slate-800">
+        {([
+          ['main', 'Main categories', mainCats.length],
+          ['sub', 'Sub-categories', subCats.length],
+        ] as const).map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => { setScope(key); setQuery(''); setOnlyWeak(false); }}
+            className={`px-5 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${
+              scope === key
+                ? 'border-rose-500 text-white'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            {label} <span className="font-mono text-xs text-slate-500">({count})</span>
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -166,7 +209,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, web address, parent section or #id…"
+            placeholder={scope === 'main' ? 'Search by name, web address or #id…' : 'Search by name, parent section, web address or #id…'}
             className="w-full bg-transparent text-sm text-slate-200 placeholder-slate-600 outline-none"
           />
           {query && (
@@ -191,7 +234,8 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
       </div>
 
       <p className="text-xs text-slate-500 -mt-3">
-        Showing {visible.length} of {categories.length} categories.
+        Showing {visible.length} of {scoped.length}{' '}
+        {scope === 'main' ? 'main categories' : 'sub-categories'}.
       </p>
 
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
@@ -200,7 +244,7 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
             <tr>
               <th className="p-4">#</th>
               <th className="p-4">Name</th>
-              <th className="p-4">Sits under</th>
+              {scope === 'sub' && <th className="p-4">Sits under</th>}
               <th className="p-4">Web address</th>
               <th className="p-4">Articles</th>
               <th className="p-4">Search text</th>
@@ -211,8 +255,12 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
           <tbody className="divide-y divide-slate-800/60">
             {visible.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-sm text-slate-500">
-                  No categories match that search.
+                <td colSpan={scope === 'sub' ? 7 : 6} className="p-8 text-center text-sm text-slate-500">
+                  {query || onlyWeak
+                    ? 'Nothing here matches those filters.'
+                    : scope === 'sub'
+                    ? 'No sub-categories yet. Add one to group articles inside a main section.'
+                    : 'No main categories yet.'}
                 </td>
               </tr>
             )}
@@ -228,9 +276,11 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                     {cat.category_name}
                   </span>
                 </td>
-                <td className="p-4 text-xs text-slate-400">
-                  {parentName || <span className="text-slate-600">Top level</span>}
-                </td>
+                {scope === 'sub' && (
+                  <td className="p-4 text-xs text-slate-400">
+                    {parentName || <span className="text-slate-600">(parent hidden)</span>}
+                  </td>
+                )}
                 <td className="p-4 font-mono text-xs text-slate-400">/category/{cat.slug}</td>
                 <td className="p-4 font-mono text-xs text-slate-300">{cat.article_count || 0} articles</td>
                 <td className="p-4">
@@ -350,14 +400,29 @@ export const AdminCategories: React.FC<AdminCategoriesProps> = ({
                       Sits under <span className="text-slate-500 normal-case font-normal">(leave as Top level for a main section)</span>
                     </label>
                     <select
-                      value={editingCat.parent_id || 0}
-                      onChange={(e) => setEditingCat(prev => ({ ...prev, parent_id: parseInt(e.target.value, 10) }))}
+                      value={editingCat.parent_id === undefined ? '' : editingCat.parent_id}
+                      onChange={(e) => setEditingCat(prev => ({
+                        ...prev,
+                        parent_id: e.target.value === '' ? undefined : parseInt(e.target.value, 10),
+                      }))}
                       className="w-full px-4 py-2 bg-slate-950 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-rose-500"
                     >
+                      {editingCat.parent_id === undefined && (
+                        <option value="">— choose a section —</option>
+                      )}
                       <option value={0}>Top level — its own section</option>
-                      {parentOptions.map((c) => (
-                        <option key={c.id} value={c.id}>{c.category_name}</option>
-                      ))}
+                      <optgroup label="Main sections">
+                        {parentOptions.filter((c) => !c.parent_id).map((c) => (
+                          <option key={c.id} value={c.id}>{c.category_name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Sub-categories">
+                        {parentOptions.filter((c) => !!c.parent_id).map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {(nameById.get(c.parent_id as number) || '?') + ' › ' + c.category_name}
+                          </option>
+                        ))}
+                      </optgroup>
                     </select>
                     <p className="text-[10px] text-slate-500 mt-1">
                       A sub-category's articles also count towards its parent. The web address does not change.
