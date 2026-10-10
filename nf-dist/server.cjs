@@ -1310,6 +1310,18 @@ async function answerQuestion(question, articleHtml, fallbackSummary) {
 
 // server.ts
 var shellCache = "";
+function configBootstrap(cfg) {
+  const json = JSON.stringify(cfg ?? {}).replace(/</g, "\\u003c");
+  return `<script id="nf-config">window.__NF_CONFIG__=${json}</script>`;
+}
+function withConfigBootstrap(html, cfg) {
+  const tag = configBootstrap(cfg);
+  if (/<script id="nf-config">[\s\S]*?<\/script>/.test(html)) {
+    return html.replace(/<script id="nf-config">[\s\S]*?<\/script>/, tag);
+  }
+  return html.replace("</head>", `    ${tag}
+  </head>`);
+}
 async function syncHomepageShell(distPath) {
   const file = import_path.default.join(distPath, "index.html");
   try {
@@ -1318,9 +1330,9 @@ async function syncHomepageShell(distPath) {
     const title = esc(cfg.siteTitle || siteSetting.meta_default_title || "");
     const desc = esc(cfg.siteDescription || siteSetting.meta_default_description || "");
     const keys = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
-    if (!title && !desc) return;
     let html = import_fs.default.readFileSync(file, "utf8");
     const before = html;
+    html = withConfigBootstrap(html, cfg);
     const setContent = (attr, name, value) => {
       if (!value) return;
       const re = new RegExp(`(<meta\\s+${attr}="${name}"\\s+content=")[^"]*(")`, "i");
@@ -1335,7 +1347,7 @@ async function syncHomepageShell(distPath) {
     setContent("name", "twitter:description", desc);
     if (html !== before) {
       import_fs.default.writeFileSync(file, html, "utf8");
-      console.log("[shell] homepage meta synced into dist/index.html");
+      console.log("[shell] homepage meta + settings synced into dist/index.html");
     }
     shellCache = "";
   } catch (err) {
@@ -1468,6 +1480,7 @@ async function startServer() {
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", framework: "Express + React Headless CodeIgniter Bridge" });
   });
+  const stripBodies = (rows, req) => req.query.with_content ? rows : rows.map(({ content: _content, ...rest }) => ({ ...rest, content: "" }));
   app.get("/api/blogs", async (req, res) => {
     try {
       const categorySlug = req.query.category_slug;
@@ -1482,7 +1495,7 @@ async function startServer() {
         const allTags = await getActiveTags();
         const ids = new Set(allTags.filter((t) => (t.slug || "").toLowerCase() === tslug).map((t) => t.id));
         const all = await getPublishedBlogs(1e5);
-        return res.json(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))));
+        return res.json(stripBodies(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))), req));
       }
       let result = await getPublishedBlogs(
         req.query.search && !req.query.limit ? 1e5 : limit,
@@ -1502,7 +1515,8 @@ async function startServer() {
           (b) => b.title.toLowerCase().includes(query) || b.short_content.toLowerCase().includes(query) || b.url.toLowerCase().includes(query)
         );
       }
-      res.json(result);
+      res.set("Cache-Control", "public, max-age=60");
+      res.json(stripBodies(result, req));
     } catch (err) {
       console.error("GET /api/blogs failed:", err);
       res.status(500).json({ error: "Failed to load articles" });
@@ -2129,7 +2143,7 @@ Sitemap: ${host}/news-sitemap.xml
     const tidyPath = (p) => p.replace(/\s+/g, " ").trim();
     app.get("*", async (req, res) => {
       try {
-        let html = await getTemplate();
+        let html = withConfigBootstrap(await getTemplate(), await getSiteConfig());
         const seg = decodeURIComponent(req.path).replace(/^\/+|\/+$/g, "");
         html = html.replace(/\n?\s*<meta\s+(name="description"|name="keywords"|property="og:[^"]*"|name="twitter:[^"]*")[^>]*>/gi, "").replace(/\n?\s*<link\s+rel="canonical"[^>]*>/gi, "").replace(/\n?\s*<script\s+type="application\/ld\+json">[\s\S]*?<\/script>/gi, "");
         let injected = false;
@@ -2227,6 +2241,12 @@ Sitemap: ${host}/news-sitemap.xml
               `<meta name="description" content="${desc}">`,
               article.meta_keyword ? `<meta name="keywords" content="${esc(article.meta_keyword)}">` : "",
               `<link rel="canonical" href="${url}">`,
+              // The hero image is the article's LCP element. Without this it
+              // is only discovered once React has mounted and rendered the
+              // page — about three seconds in on a throttled mobile
+              // connection. Preloading starts the download while the HTML is
+              // still being parsed.
+              imgEsc ? `<link rel="preload" as="image" href="${imgEsc}" fetchpriority="high">` : "",
               `<meta property="og:type" content="article">`,
               `<meta property="og:title" content="${ogTitle}">`,
               `<meta property="og:description" content="${ogDesc}">`,
@@ -2257,7 +2277,7 @@ Sitemap: ${host}/news-sitemap.xml
               headLevel("h5", article.h5_tag),
               headLevel("h6", article.h6_tag)
             ].filter(Boolean).join("\n");
-            const heroImg = imgEsc ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">` : "";
+            const heroImg = imgEsc ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}" fetchpriority="high" decoding="async" style="width:100%;max-width:1200px;aspect-ratio:16/9;object-fit:cover">` : "";
             const ssrBody = [
               `<article>`,
               `<h1>${esc(article.title)}</h1>`,

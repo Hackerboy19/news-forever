@@ -234,3 +234,15 @@
 .snap-rail > * {
   scroll-snap-align: start;
 }
+
+/* Off-screen article cards.
+   A category listing can hold 200 cards; laying out and painting all of them
+   kept a throttled mobile CPU busy long after the first screen was ready.
+   content-visibility lets the browser skip the work for cards that are not
+   near the viewport, and contain-intrinsic-size keeps the scrollbar honest by
+   reserving each card's usual height until it is rendered for real. Cards
+   below the fold never affect CLS, and the first screen is excluded anyway. */
+.card-defer {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 420px;
+}

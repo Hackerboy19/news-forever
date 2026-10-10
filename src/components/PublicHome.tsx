@@ -17,10 +17,19 @@ import { isSponsoredArticle, resolveAuthorName, NEWSROOM_BYLINE } from '../lib/e
 import { useI18n } from '../lib/i18n';
 import { shuffleAds } from '../lib/adRotation';
 
-export const PublicHomeSkeleton: React.FC = () => {
+/**
+ * Loading placeholder.
+ *
+ * `hero` must match the route being loaded. A category or tag listing has no
+ * hero section, so showing the hero placeholder there and then replacing it
+ * with a plain grid moved the whole page — 0.62 of layout shift on
+ * /category/beauty-pageant, six times Google's budget, from this alone.
+ */
+export const PublicHomeSkeleton: React.FC<{ hero?: boolean }> = ({ hero = true }) => {
   return (
     <div className="space-y-12 animate-fadeIn">
       {/* HERO SECTION SKELETON */}
+      {hero && (
       <section className="space-y-6">
         <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
           <Skeleton className="h-4 w-48" />
@@ -60,19 +69,27 @@ export const PublicHomeSkeleton: React.FC = () => {
           </div>
         </div>
       </section>
+      )}
 
-      {/* MAIN CONTENT + SIDEBAR GRID SKELETON */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        <div className="lg:col-span-2 space-y-6">
-          <Skeleton className="h-4 w-36" />
+      {/* MAIN CONTENT + SIDEBAR GRID SKELETON — same 4/1 split and the same
+          card heights as the real feed, so the swap does not move the page. */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="lg:col-span-3 space-y-6">
+          <div className="flex items-center justify-between border-b border-[#E7E5E4] pb-3">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-3 w-24" />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="bg-white border border-[#E7E5E4] overflow-hidden space-y-3 p-4">
+              <div key={i} className="bg-white border border-[#E7E5E4] overflow-hidden">
                 <Skeleton className="h-48 w-full rounded-none" />
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-5 w-full" />
-                <Skeleton className="h-3 w-4/5" />
-                <Skeleton className="h-3 w-1/2" />
+                <div className="p-5 space-y-3">
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-3 w-4/5" />
+                  <Skeleton className="h-3 w-3/5" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
               </div>
             ))}
           </div>
@@ -156,6 +173,40 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   const trendingArticles = categoryFilteredBlogs.filter(b => b.is_trending && b.id !== heroArticle?.id).slice(0, 3);
   const remainingArticles = categoryFilteredBlogs.filter(b => b.id !== heroArticle?.id && !trendingArticles.some(t => t.id === b.id));
 
+  /**
+   * Cards rendered so far.
+   *
+   * A category like Beauty Pageant holds 411 articles, and building every
+   * card before the first screen could be shown cost seconds of a throttled
+   * mobile CPU — the measured Largest Contentful Paint on
+   * /category/beauty-pageant was past ten seconds. A screenful is rendered
+   * first and the rest follow as the reader scrolls; the count above the
+   * feed still reports the full total.
+   */
+  const FEED_PAGE = 24;
+  const [visibleCount, setVisibleCount] = React.useState(FEED_PAGE);
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Pull in the next page when the end of the rendered feed comes into view.
+  React.useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setVisibleCount((n) => n + FEED_PAGE);
+      },
+      { rootMargin: '600px 0px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visibleCount, categoryFilteredBlogs.length]);
+
+  // Back to the first page whenever the feed itself changes.
+  React.useEffect(() => {
+    setVisibleCount(FEED_PAGE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, dateFilter, blogs.length]);
+
   // Batch-translate visible titles when Hindi is active (server-side, cached)
   React.useEffect(() => {
     registerTitles(categoryFilteredBlogs.slice(0, 60).map(b => b.title));
@@ -169,7 +220,8 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
   );
 
   if (isLoading) {
-    return <PublicHomeSkeleton />;
+    // Only the real homepage renders a hero, so only it gets a hero skeleton.
+    return <PublicHomeSkeleton hero={activeCategory === 'all'} />;
   }
 
   return (
@@ -206,6 +258,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 <BlurImage
                   src={heroArticle.image}
                   alt={heroArticle.alt_tag}
+                  priority
                   className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80"
                 />
@@ -359,7 +412,7 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {categoryFilteredBlogs.map((article, idx) => (
+            {categoryFilteredBlogs.slice(0, visibleCount).map((article, idx) => (
               <React.Fragment key={article.id}>
                 {/* Insert Native In-Content Ad after 2nd article */}
                 {idx === 2 && nativeAd && (
@@ -376,7 +429,10 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                       <img
                         src={nativeAd.advertisement_image}
                         alt={nativeAd.alt_tag}
-                        className="max-h-48 mx-auto object-contain border border-stone-200"
+                        loading="lazy"
+                        /* h-48, not max-h-48: the slot keeps its height
+                           whether or not the file loads. */
+                        className="h-48 w-auto mx-auto object-contain border border-stone-200"
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&auto=format&fit=crop&q=80';
                         }}
@@ -388,12 +444,18 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
                 <ArticleLink
                   url={article.url}
                   onSelectArticle={onSelectArticle}
-                  className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between no-underline text-inherit"
+                  className={`group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between no-underline text-inherit${
+                    idx > 5 ? ' card-defer' : ''
+                  }`}
                 >
                   <div className="relative h-48 w-full overflow-hidden bg-stone-100">
                     <BlurImage
                       src={article.image}
                       alt={article.alt_tag}
+                      /* On a category or tag listing there is no hero, so the
+                         first cards are the largest thing above the fold and
+                         decide LCP. */
+                      priority={activeCategory !== 'all' && idx < 2}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                       fallbackSrc="https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80"
                     />
@@ -426,6 +488,21 @@ export const PublicHome: React.FC<PublicHomeProps> = ({
               </React.Fragment>
             ))}
           </div>
+
+          {/* Rest of the feed, brought in as the reader reaches the end of
+              what is rendered. The button is the fallback for browsers
+              without IntersectionObserver, and for anyone who would rather
+              tap than scroll. */}
+          {visibleCount < categoryFilteredBlogs.length && (
+            <div ref={sentinelRef} className="pt-2 flex justify-center">
+              <button
+                onClick={() => setVisibleCount((n) => n + FEED_PAGE)}
+                className="px-5 py-2.5 bg-white border border-[#E7E5E4] hover:border-[#991B1B]/50 text-xs font-bold uppercase tracking-widest text-[#991B1B] transition shadow-xs"
+              >
+                {t('loadMore')} ({categoryFilteredBlogs.length - visibleCount})
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right Sidebar (1 Column) */}

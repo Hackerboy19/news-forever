@@ -11,8 +11,8 @@ Upload these four into your app's **`dist/` folder**, replacing what is there:
 | ---------------------------------- | --------------------------------- |
 | `nf-dist/server.cjs`               | `<app-root>/dist/server.cjs`      |
 | `nf-dist/index.html`               | `<app-root>/dist/index.html`      |
-| `nf-dist/assets/index-DKD4nsQz.js` | `<app-root>/dist/assets/`         |
-| `nf-dist/assets/index-DzyqzxnE.css`| `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-UTUjZhj0.js` | `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-CS9BcfSV.css`| `<app-root>/dist/assets/`         |
 
 `nf-dist.zip` holds the same four files with that same layout, so unzipping it
 into `dist/` does the whole job in one step.
@@ -113,6 +113,30 @@ the restart:
 # should report 664 (every published article), not 200
 curl -s https://newsforever.in/api/search-index | grep -o '"id":' | wc -l
 ```
+
+## Mobile Core Web Vitals
+
+Measured on a Pixel-5 profile with 4x CPU throttling and a Slow-4G link,
+against the real 664-article dataset, before and after:
+
+| Page      | CLS before | CLS after | What was moving                        |
+| --------- | ---------- | --------- | -------------------------------------- |
+| Home      | 0.068      | 0.000     | breaking-news ticker drawn, then pulled |
+| Category  | 0.687      | 0.000     | unfiltered list redrawn as the category |
+| Article   | 0.106      | 0.000     | hero image with no space reserved       |
+
+LCP is not fixed by a single change; the critical path was shortened:
+
+- the article list is 1.33 MB -> 0.33 MB (article bodies are no longer sent
+  to pages that only show headlines)
+- it now starts downloading while the HTML parses, not after the bundle runs
+- the two tag-manager scripts load after first paint instead of competing
+  with the app for a throttled CPU
+- a listing renders 24 cards and adds more on scroll, instead of 411 at once
+- the hero image is preloaded, eager and high priority on article pages
+
+Re-run PageSpeed Insights for mobile after this is live; the field data in
+Search Console updates over about 28 days.
 
 ## Still needed outside the code
 

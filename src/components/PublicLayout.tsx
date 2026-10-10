@@ -44,6 +44,8 @@ interface PublicLayoutProps {
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
   siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[]; logoUrl?: string; showTicker?: boolean; tickerText?: string };
+  /** /api/site-config has answered. Chrome it controls stays out until then. */
+  configLoaded?: boolean;
   children: React.ReactNode;
 }
 
@@ -62,6 +64,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   ads,
   setting,
   blogs = [],
+  configLoaded = false,
   activeCategory,
   onCategorySelect,
   onSelectArticle,
@@ -620,8 +623,14 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
         </div>
       )}
 
-      {/* Breaking News Ticker — hidden if admin turned it off; custom lines override latest articles */}
-      {siteConfig.showTicker !== false && (
+      {/* Breaking News Ticker — hidden if admin turned it off; custom lines
+          override latest articles. Held back until the config has answered:
+          this site has the ticker switched off, so rendering it on the
+          assumption that it is on and pulling it out ~300ms later pushed the
+          whole page down and back by 33px — 0.068 of layout shift on every
+          route, two thirds of Google's entire budget, for a strip the site
+          does not even use. */}
+      {configLoaded && siteConfig.showTicker !== false && (
         <NewsTicker
           blogs={blogs}
           onSelectArticle={(slug) => { onSelectArticle(slug); }}
@@ -630,7 +639,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
       )}
 
       {/* Leaderboard Ad Strip — between header and hero, ci_advertisement-backed */}
-      <LeaderboardAd ads={ads} />
+      {configLoaded && <LeaderboardAd ads={ads} />}
 
       {/* Main Page Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">

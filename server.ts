@@ -76,6 +76,30 @@ import {
  * ignored: a stale title is worth far less than a homepage that still serves.
  */
 let shellCache = "";
+/**
+ * Inline the site settings into the HTML shell.
+ *
+ * Settings such as "is the breaking-news ticker on?" used to arrive in a
+ * fetch after the page had already drawn, so the ticker rendered and was then
+ * taken away again — 33px of the page jumping on every route. Shipping the
+ * answer inside the document means the first paint is already correct. The
+ * client still refreshes from /api/site-config afterwards, so a cached shell
+ * cannot pin an old setting.
+ */
+function configBootstrap(cfg: any): string {
+  const json = JSON.stringify(cfg ?? {}).replace(/</g, "\\u003c");
+  return `<script id="nf-config">window.__NF_CONFIG__=${json}</script>`;
+}
+
+/** Put (or replace) the bootstrap script just before </head>. */
+function withConfigBootstrap(html: string, cfg: any): string {
+  const tag = configBootstrap(cfg);
+  if (/<script id="nf-config">[\s\S]*?<\/script>/.test(html)) {
+    return html.replace(/<script id="nf-config">[\s\S]*?<\/script>/, tag);
+  }
+  return html.replace("</head>", `    ${tag}\n  </head>`);
+}
+
 async function syncHomepageShell(distPath: string): Promise<void> {
   const file = path.join(distPath, "index.html");
   try {
@@ -85,10 +109,12 @@ async function syncHomepageShell(distPath: string): Promise<void> {
     const title = esc(cfg.siteTitle || siteSetting.meta_default_title || "");
     const desc = esc(cfg.siteDescription || siteSetting.meta_default_description || "");
     const keys = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
-    if (!title && !desc) return;
 
     let html = nodeFs.readFileSync(file, "utf8");
     const before = html;
+    // nginx serves "/" straight off the disk on this host, so the homepage's
+    // copy of the settings has to live in the file itself.
+    html = withConfigBootstrap(html, cfg);
     const setContent = (attr: string, name: string, value: string) => {
       if (!value) return;
       const re = new RegExp(`(<meta\\s+${attr}="${name}"\\s+content=")[^"]*(")`, "i");
@@ -104,7 +130,7 @@ async function syncHomepageShell(distPath: string): Promise<void> {
 
     if (html !== before) {
       nodeFs.writeFileSync(file, html, "utf8");
-      console.log("[shell] homepage meta synced into dist/index.html");
+      console.log("[shell] homepage meta + settings synced into dist/index.html");
     }
     shellCache = "";
   } catch (err: any) {
@@ -270,6 +296,23 @@ async function startServer() {
     res.json({ status: "ok", framework: "Express + React Headless CodeIgniter Bridge" });
   });
 
+  /**
+   * Drop the article body from a listing.
+   *
+   * Every row of the public list carried its full `description` HTML, which
+   * was about 70% of a 1.35 MB response — downloaded, decompressed and parsed
+   * on a phone before a single headline could paint. No listing renders the
+   * body: cards use `short_content`, and the article page fetches its own row
+   * from /api/blogs/slug/:url, which still carries it.
+   *
+   * ?with_content=1 brings it back, so a caller that genuinely needs bodies
+   * (or an old cached bundle) is not broken by this.
+   */
+  const stripBodies = (rows: any[], req: express.Request) =>
+    req.query.with_content
+      ? rows
+      : rows.map(({ content: _content, ...rest }) => ({ ...rest, content: "" }));
+
   // GET /api/blogs — real ci_blog rows, optional ?category_slug= & filters
   app.get("/api/blogs", async (req, res) => {
     try {
@@ -292,7 +335,7 @@ async function startServer() {
         const allTags = await getActiveTags();
         const ids = new Set(allTags.filter((t) => (t.slug || "").toLowerCase() === tslug).map((t) => t.id));
         const all = await getPublishedBlogs(100000);
-        return res.json(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))));
+        return res.json(stripBodies(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))), req));
       }
 
       // ?search= is a whole-catalogue question, so it must not be answered
@@ -318,7 +361,10 @@ async function startServer() {
           b.url.toLowerCase().includes(query)
         );
       }
-      res.json(result);
+      // The same list for every visitor, so let the browser (and the preload
+      // in the shell) reuse it for a minute instead of fetching it twice.
+      res.set("Cache-Control", "public, max-age=60");
+      res.json(stripBodies(result, req));
     } catch (err) {
       console.error("GET /api/blogs failed:", err);
       res.status(500).json({ error: "Failed to load articles" });
@@ -1101,7 +1147,7 @@ async function startServer() {
 
     app.get("*", async (req, res) => {
       try {
-        let html = await getTemplate();
+        let html = withConfigBootstrap(await getTemplate(), await getSiteConfig());
         const seg = decodeURIComponent(req.path).replace(/^\/+|\/+$/g, "");
         // Strip the baked homepage SEO tags from the template so per-page
         // injection below doesn't produce duplicate meta / JSON-LD. This now
@@ -1231,6 +1277,12 @@ async function startServer() {
               `<meta name="description" content="${desc}">`,
               article.meta_keyword ? `<meta name="keywords" content="${esc(article.meta_keyword)}">` : "",
               `<link rel="canonical" href="${url}">`,
+              // The hero image is the article's LCP element. Without this it
+              // is only discovered once React has mounted and rendered the
+              // page — about three seconds in on a throttled mobile
+              // connection. Preloading starts the download while the HTML is
+              // still being parsed.
+              imgEsc ? `<link rel="preload" as="image" href="${imgEsc}" fetchpriority="high">` : "",
               `<meta property="og:type" content="article">`,
               `<meta property="og:title" content="${ogTitle}">`,
               `<meta property="og:description" content="${ogDesc}">`,
@@ -1277,8 +1329,17 @@ async function startServer() {
               headLevel("h5", article.h5_tag),
               headLevel("h6", article.h6_tag),
             ].filter(Boolean).join("\n");
+            // Reserve the hero's space before it loads. With a bare <img> the
+            // browser laid the fallback out at zero height and then pushed
+            // every heading and paragraph below it down by ~200px once the
+            // image arrived — measured as 0.23 of the article page's layout
+            // shift, on its own more than twice Google's 0.1 budget. A fixed
+            // aspect ratio needs no intrinsic size, which the server does not
+            // reliably have, and fetchpriority pairs with the preload above.
             const heroImg = imgEsc
-              ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}">`
+              ? `<img src="${imgEsc}" alt="${esc(article.alt_tag || article.title)}" ` +
+                `fetchpriority="high" decoding="async" ` +
+                `style="width:100%;max-width:1200px;aspect-ratio:16/9;object-fit:cover">`
               : "";
             const ssrBody = [
               `<article>`,

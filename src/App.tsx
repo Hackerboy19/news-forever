@@ -120,6 +120,10 @@ export function App() {
   const [currentSlug, setCurrentSlug] = useState<string | null>(() => pathSlug());
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
   const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
+  /** /category/<slug> in the URL has been matched against the real categories. */
+  const [categoryResolved, setCategoryResolved] = useState(categorySlugFromPath() === null);
+  /** Every article in the open category, fetched server-side (not the 200-row page). */
+  const [catBlogs, setCatBlogs] = useState<CIBlog[]>([]);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
   const [adminAuth, setAdminAuth] = useState<AdminCredentials | null>(() => loadAdminSession());
@@ -142,7 +146,19 @@ export function App() {
   // Start with the built-in default so the site renders instantly (no blank
   // screen); the real ci_setting row replaces it once the API responds.
   const [setting, setSetting] = useState<CISetting>(siteSetting);
-  const [siteConfig, setSiteConfig] = useState<SiteConfigValues>({});
+  /**
+   * Site settings, seeded from the copy the server inlines into the HTML.
+   *
+   * With them in the document there is nothing to wait for: the ticker, the
+   * header colour and the logo are right in the first paint instead of
+   * appearing, or changing, a few hundred milliseconds later. The fetch below
+   * still runs and overwrites this, so a cached shell cannot pin old values.
+   */
+  const bootConfig: SiteConfigValues =
+    (typeof window !== 'undefined' && (window as any).__NF_CONFIG__) || {};
+  const [siteConfig, setSiteConfig] = useState<SiteConfigValues>(bootConfig);
+  /** Settings are known — inlined in the shell, or fetched. */
+  const [configLoaded, setConfigLoaded] = useState(Object.keys(bootConfig).length > 0);
 
   // Loading state
   const [loading, setLoading] = useState(true);
@@ -156,6 +172,16 @@ export function App() {
   // tab. Those four now live in fetchAdminData below, behind the session.
   const fetchData = async () => {
     try {
+      // Site config decides whether chrome like the breaking-news ticker is
+      // shown at all. Started with the others rather than after them, and
+      // waited for, because rendering that chrome and then removing it when
+      // the answer arrives is a layout shift on every page.
+      const configPromise = fetch('/api/site-config')
+        .then(r => (r.ok ? r.json() : {}))
+        .then((c) => { setSiteConfig(c || {}); return c; })
+        .catch(() => ({}))
+        .finally(() => setConfigLoaded(true));
+
       const [
         resBlogs,
         resCats,
@@ -175,7 +201,7 @@ export function App() {
       setTags(resTags);
       setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
       setSetting(resSetting && typeof resSetting === 'object' ? { ...siteSetting, ...resSetting } : siteSetting);
-      fetch('/api/site-config').then(r => r.ok ? r.json() : {}).then(setSiteConfig).catch(() => {});
+      await configPromise;
       fetch('/api/pages').then(r => r.ok ? r.json() : []).then((d) => { if (Array.isArray(d) && d.length) setStaticPages(d); }).catch(() => {}).finally(() => setPagesLoaded(true));
     } catch (err) {
       console.error('Failed to fetch REST API data', err);
@@ -289,8 +315,14 @@ export function App() {
   }, [activeTag, tags, activeCategory, categories, currentSlug]);
 
   // Admin collections follow the session: loaded on login, cleared on logout.
+  //
+  // The article list belongs to the session too. Logging in refreshed it, but
+  // a reload with a saved session did not: the public fetch had already put
+  // its 200-row page into the same state, so the dashboard counted 200 of 664
+  // until the next save. Re-fetch it whenever a session is present.
   useEffect(() => {
     fetchAdminData(adminAuth);
+    if (adminAuth) refreshAdminBlogs(adminAuth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminAuth]);
 
@@ -307,6 +339,30 @@ export function App() {
       .finally(() => { if (!cancelled) setTagLoading(false); });
     return () => { cancelled = true; };
   }, [activeTag]);
+
+  /**
+   * Every article in the open category, straight from the server.
+   *
+   * The category page used to filter the site-wide list, which is the newest
+   * 200 articles — so /category/beauty-pageant offered 85 of its 411 stories
+   * and the rest were unreachable by browsing. The slug lookup resolves year
+   * variants and child categories the same way the server's own filter does.
+   */
+  useEffect(() => {
+    const slug =
+      activeTag || activeCategory === 'all'
+        ? null
+        : typeof activeCategory === 'number'
+        ? categories.find((c) => c.id === activeCategory)?.slug || null
+        : String(activeCategory);
+    if (!slug) { setCatBlogs([]); return; }
+    let cancelled = false;
+    fetch(`/api/blogs?category_slug=${encodeURIComponent(slug)}&limit=100000`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { if (!cancelled) setCatBlogs(Array.isArray(d) ? d : []); })
+      .catch(() => { if (!cancelled) setCatBlogs([]); });
+    return () => { cancelled = true; };
+  }, [activeCategory, activeTag, categories]);
 
   // Google Tag Manager: fire a virtual page_view on every SPA navigation so
   // GTM/GA4 records route changes (a plain SPA only fires once on load).
@@ -387,7 +443,17 @@ export function App() {
     const match = categoriesRef.current.find((c) => (c.slug || '').toLowerCase() === slug.toLowerCase());
     setSelectedArticleUrl(null);
     setActiveCategory(match ? match.id : slug); // fall back to treating it as a public nav slug
+    setCategoryResolved(true);
   };
+  /**
+   * On a /category/<slug> URL the filter is applied from an effect, one
+   * commit after the articles land. That commit rendered the whole
+   * unfiltered list and the next one cut it down to the category — a listing
+   * replaced wholesale, and 0.62 of layout shift on the way. Hold the
+   * skeleton until the slug has been resolved so the first thing drawn is
+   * already the right list.
+   */
+  const awaitingCategory = categorySlugFromPath() !== null && !categoryResolved;
   useEffect(() => {
     if (categories.length) applyCategoryFromUrl();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -939,11 +1005,17 @@ export function App() {
       onCategorySelect={openCategory}
       onSelectArticle={openArticle}
       onGoHome={goHomeNav}
-      onSwitchToAdmin={() => setViewMode('admin')}
+      onSwitchToAdmin={() => {
+        setViewMode('admin');
+        // Returning from the public site, where the list was replaced by the
+        // published-only page, so load the admin list (drafts included) again.
+        if (adminAuth) refreshAdminBlogs(adminAuth);
+      }}
       onSubscribe={handleSubscribe}
       dateFilter={dateFilter}
       onDateFilterChange={setDateFilter}
       siteConfig={siteConfig}
+      configLoaded={configLoaded}
       ads={publicAds}
     >
       {!selectedArticleUrl && (
@@ -979,13 +1051,16 @@ export function App() {
           />
         ) : (
         <PublicHome
-          blogs={activeTag ? tagBlogs : blogs}
+          blogs={activeTag ? tagBlogs : activeCategory !== 'all' && catBlogs.length ? catBlogs : blogs}
           ads={publicAds}
           categories={categories}
           tags={tags}
           activeCategory={activeTag ? 'all' : activeCategory}
           dateFilter={dateFilter}
-          isLoading={activeTag ? tagLoading : loading}
+          /* The complete category list is not waited for: the first screen
+             comes from the articles already loaded, in the same newest-first
+             order, and the rest are appended when the request lands. */
+          isLoading={activeTag ? tagLoading : loading || awaitingCategory}
           onSelectArticle={openArticle}
           onCategorySelect={openCategory}
           homeH1={activeTag ? undefined : (siteConfig as any).homeH1}

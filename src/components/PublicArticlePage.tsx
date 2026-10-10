@@ -92,6 +92,7 @@ interface PublicArticlePageProps {
   urlSlug: string;
   blogs: CIBlog[];
   ads: CIAdvertisement[];
+  /** Kept for callers; this page waits on its own article request instead. */
   isLoading?: boolean;
   onGoBack: () => void;
   onSelectArticle: (urlSlug: string) => void;
@@ -106,7 +107,6 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   urlSlug,
   blogs,
   ads,
-  isLoading = false,
   onGoBack,
   onSelectArticle,
 }) => {
@@ -120,11 +120,17 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   const [fetched, setFetched] = useState<(typeof blogs)[number] | null>(null);
   const [fetchTried, setFetchTried] = useState(false);
   const inList = blogs.find((b) => b.url === urlSlug);
-  const baseArticle = inList || fetched;
+  // The listing no longer ships article bodies, so a row found there is only
+  // good enough to render from while its own request is in flight.
+  const baseArticle = (fetched && fetched.url === urlSlug ? fetched : null) || inList || fetched;
 
+  // Fetch this one article straight away, without waiting for the site-wide
+  // list. The page used to sit on a skeleton until a 1.3 MB listing of every
+  // published article had been downloaded and parsed — on a phone that was
+  // seconds of nothing, for a request that returns a single row.
   useEffect(() => {
-    if (inList) { setFetched(null); setFetchTried(true); return; }
     let cancelled = false;
+    setFetched(null);
     setFetchTried(false);
     fetch(`/api/blogs/slug/${encodeURIComponent(urlSlug)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -132,8 +138,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
       .catch(() => { if (!cancelled) setFetched(null); })
       .finally(() => { if (!cancelled) setFetchTried(true); });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlSlug, inList?.id]);
+  }, [urlSlug]);
 
   // Count a view once per browser session per article (self-hosted counter).
   useEffect(() => {
@@ -191,9 +196,9 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
     [ads]
   );
 
-  // Still loading if the initial list hasn't arrived, or we're fetching this
-  // (older) article by slug and the request hasn't finished yet.
-  if (isLoading || (!article && (blogs.length === 0 || !fetchTried))) {
+  // Wait only on this article's own request — not on the site-wide listing,
+  // which this page no longer needs in order to render.
+  if (!article && !fetchTried) {
     return <PublicArticleSkeleton onGoBack={onGoBack} />;
   }
 
@@ -335,10 +340,17 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
 
           {/* ASSET MAPPING: Main Featured Image (src={article.image}, alt={article.alt_tag}) */}
           <div className="space-y-2">
-            <div className="relative overflow-hidden bg-stone-100 border border-[#E7E5E4] max-h-[480px]">
+            {/* A fixed ratio reserves the hero's space before the file
+                arrives; without it the box was zero-height and everything
+                below jumped down on load. eager + high priority pairs with
+                the <link rel="preload"> the server injects for this image. */}
+            <div className="relative overflow-hidden bg-stone-100 border border-[#E7E5E4] aspect-[16/9] max-h-[480px]">
               <img
                 src={article.image}
                 alt={article.alt_tag}
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80';

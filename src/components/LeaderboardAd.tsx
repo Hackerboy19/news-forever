@@ -35,10 +35,13 @@ export const LeaderboardAd: React.FC<LeaderboardAdProps> = ({ ads }) => {
           title={ad.title}
           className="relative block mx-auto max-w-4xl rounded-md overflow-hidden border border-stone-200 hover:border-stone-300 transition shadow-xs"
         >
+          {/* Fixed slot: an auto-height banner grew the strip when the file
+              arrived and pushed the page down. The box is the same size
+              before and after. */}
           <img
             src={ad.advertisement_image}
             alt={ad.alt_tag}
-            className="w-full h-auto max-h-28 object-cover"
+            className="w-full h-20 sm:h-28 object-cover bg-stone-50"
             loading="lazy"
             onError={(e) => {
               const strip = (e.target as HTMLImageElement).closest('div.border-b') as HTMLElement | null;
