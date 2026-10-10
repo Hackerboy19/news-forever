@@ -3,6 +3,7 @@ import express from "express";
 import path from "path";
 import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
+import { buildNewsSitemap, buildRssFeed } from "./src/lib/feeds";
 import { translateArticle, translateTitles } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
 import { answerQuestion } from "./src/lib/qa";
@@ -822,10 +823,71 @@ async function startServer() {
     }
   });
 
+  // Google News sitemap and RSS feed.
+  //
+  // Registered here on purpose: ahead of express.static and far ahead of the
+  // app.get("*") SPA catch-all, so neither path can fall through to the
+  // "article not found" page. The builders live in src/lib/feeds.ts and are
+  // unit-tested; this layer only does caching, headers and error handling.
+  let newsCache = { xml: "", at: 0 };
+  let feedCache = { xml: "", at: 0 };
+  const originOf = (req: express.Request) => {
+    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+    return `${proto}://${req.get("host")}`;
+  };
+
+  app.get("/news-sitemap.xml", async (req, res) => {
+    try {
+      const now = Date.now();
+      // Short TTL: this window is only 48 hours wide, so a stale copy drops
+      // real articles. Still long enough that a crawl burst is one query.
+      if (!newsCache.xml || now - newsCache.at > 5 * 60 * 1000) {
+        const blogs = await getPublishedBlogs(100000);
+        newsCache = { xml: buildNewsSitemap(blogs, originOf(req)), at: now };
+      }
+      res
+        .status(200)
+        .set("Content-Type", "application/xml; charset=utf-8")
+        .set("Cache-Control", "public, max-age=300")
+        .send(newsCache.xml);
+    } catch (err: any) {
+      console.error("news-sitemap failed:", err?.message);
+      res.status(500).type("text/plain").send("news sitemap generation failed");
+    }
+  });
+
+  app.get("/feed", async (req, res) => {
+    try {
+      const now = Date.now();
+      if (!feedCache.xml || now - feedCache.at > 10 * 60 * 1000) {
+        const blogs = await getPublishedBlogs(100000);
+        feedCache = {
+          xml: buildRssFeed(blogs, originOf(req), new Date(), {
+            title: siteSetting.meta_default_title || undefined,
+          }),
+          at: now,
+        };
+      }
+      res
+        .status(200)
+        // application/rss+xml is the registered type; the charset keeps
+        // non-ASCII headlines (Hindi, curly quotes) from being guessed at.
+        .set("Content-Type", "application/rss+xml; charset=utf-8")
+        .set("Cache-Control", "public, max-age=600")
+        .send(feedCache.xml);
+    } catch (err: any) {
+      console.error("rss feed failed:", err?.message);
+      res.status(500).type("text/plain").send("feed generation failed");
+    }
+  });
+
   // robots.txt pointing crawlers at the live sitemap.
   app.get("/robots.txt", (req, res) => {
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
-    res.set("Content-Type", "text/plain; charset=utf-8").send(`User-agent: *\nAllow: /\nSitemap: ${proto}://${req.get("host")}/sitemap.xml\n`);
+    const host = `${proto}://${req.get("host")}`;
+    res
+      .set("Content-Type", "text/plain; charset=utf-8")
+      .send(`User-agent: *\nAllow: /\nSitemap: ${host}/sitemap.xml\nSitemap: ${host}/news-sitemap.xml\n`);
   });
 
   // Legacy /News/<slug> URLs (old CodeIgniter tag/category pages) → 301 to the
@@ -919,7 +981,7 @@ async function startServer() {
       return shellCache;
     };
     const esc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const RESERVED = new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
+    const RESERVED = new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "news-sitemap.xml", "robots.txt", "rss.xml", "feed.rss", "feed"]);
     // Real static pages the SPA renders — must NOT be treated as 404s.
     // The three legal routes ship with built-in copy (src/components/LegalPage
     // .tsx) and are linked from the footer, so they exist even before an admin

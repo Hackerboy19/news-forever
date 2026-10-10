@@ -26,6 +26,12 @@
     <meta name="description" content="Latest breaking news, beauty pageant updates, Forever Star India Awards, national achievers, business, astrology and international editorial coverage." />
     <meta name="keywords" content="news forever, beauty pageant, miss india, mrs india, forever star india awards, national achiever award, business news, astrology" />
     <link rel="canonical" href="https://newsforever.in/" />
+    <!-- RSS autodiscovery. Lives in the shell rather than SEOManager so it is
+         present before React mounts, for readers and crawlers that never run
+         JavaScript. The server-side head rewrite strips description, og:*,
+         twitter:*, canonical and ld+json — rel="alternate" is left alone, so
+         this survives on every route. -->
+    <link rel="alternate" type="application/rss+xml" title="News Forever" href="https://newsforever.in/feed" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="News Forever" />
