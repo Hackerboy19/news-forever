@@ -62,6 +62,8 @@ export interface CITag {
   tag_name: string;
   slug: string;
   created_at: string;
+  /** Published articles carrying this tag, counted in SQL over the whole table. */
+  article_count?: number;
 }
 
 export interface CIAdvertisement {

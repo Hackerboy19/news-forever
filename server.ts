@@ -1179,8 +1179,26 @@ async function startServer() {
                 }).replace(/</g, "\\u003c")
               : "";
             // BreadcrumbList: Home › Category › Article.
+            // Every ListItem needs an `item` URL. Google flagged 342 articles
+            // with `Missing field "item" (in "itemListElement")` because this
+            // middle crumb carried a name and nothing to point at — the
+            // category name was known but its URL was never looked up. Resolve
+            // the real category so the crumb can link to /category/<slug>, and
+            // if it cannot be resolved, leave the crumb out entirely: a
+            // two-step Home › Article trail is valid, a nameless link is not.
             const crumbs: any[] = [{ "@type": "ListItem", position: 1, name: "Home", item: origin }];
-            if (article.category_name) crumbs.push({ "@type": "ListItem", position: 2, name: article.category_name });
+            const crumbCat = (await getAllCategories()).find(
+              (c) => c.id === (article.sub_category_id || article.category_id)
+            );
+            const crumbSlug = (crumbCat?.slug || "").trim();
+            if (crumbCat && crumbSlug && crumbSlug !== "-") {
+              crumbs.push({
+                "@type": "ListItem",
+                position: 2,
+                name: crumbCat.category_name,
+                item: `${origin}/category/${encodeURI(crumbSlug)}`,
+              });
+            }
             crumbs.push({ "@type": "ListItem", position: crumbs.length + 1, name: article.title, item: urlRaw });
             const breadcrumbStr = JSON.stringify({
               "@context": "https://schema.org",

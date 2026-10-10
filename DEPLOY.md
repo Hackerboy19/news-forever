@@ -11,7 +11,7 @@ Upload these four into your app's **`dist/` folder**, replacing what is there:
 | ---------------------------------- | --------------------------------- |
 | `nf-dist/server.cjs`               | `<app-root>/dist/server.cjs`      |
 | `nf-dist/index.html`               | `<app-root>/dist/index.html`      |
-| `nf-dist/assets/index-D1_lj4TC.js` | `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-CqnvnT4V.js` | `<app-root>/dist/assets/`         |
 | `nf-dist/assets/index-DzyqzxnE.css`| `<app-root>/dist/assets/`         |
 
 `nf-dist.zip` holds the same four files with that same layout, so unzipping it

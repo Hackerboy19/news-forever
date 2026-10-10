@@ -636,14 +636,28 @@ export async function deleteCategory(id: number): Promise<boolean> {
 /** Fetch active tags from ci_tag (url column is the slug). */
 export async function getActiveTags(): Promise<CITag[]> {
   try {
+    // article_count is counted here rather than in the browser because the
+    // admin only ever loads a page of articles (200 by default, against 664
+    // published), so a client-side tally showed 0 for every tag whose
+    // articles fell outside that page. ci_blog.tag_id is a CSV, sometimes
+    // with spaces after the commas, which is why FIND_IN_SET is given a
+    // de-spaced copy to look in.
     const [rows] = await dbPool.query(
-      `SELECT id, tag_name, url, created_at FROM ci_tag WHERE status = 1 ORDER BY id ASC`
+      `SELECT t.id, t.tag_name, t.url, t.created_at,
+              (SELECT COUNT(*) FROM ci_blog b
+                WHERE b.status = 1
+                  AND FIND_IN_SET(t.id, REPLACE(IFNULL(b.tag_id, ''), ' ', '')) > 0
+              ) AS article_count
+         FROM ci_tag t
+        WHERE t.status = 1
+        ORDER BY t.id ASC`
     );
     return (rows as any[]).map((row) => ({
       id: row.id,
       tag_name: row.tag_name,
       slug: (row.url || '').trim(),
       created_at: row.created_at || '',
+      article_count: Number(row.article_count) || 0,
     }));
   } catch (err) {
     handleDbError('getActiveTags', err);
@@ -651,7 +665,24 @@ export async function getActiveTags(): Promise<CITag[]> {
   }
 }
 
-const slugifyTag = (s: string) => (s || '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+/**
+ * Slug for a tag whose name is not written in ASCII.
+ *
+ * The old pattern was [^a-z0-9-], which deletes every Devanagari character,
+ * so `सुपर हीरो अवॉर्ड` and three siblings all collapsed to the slug "-" and
+ * their tag pages resolve to /tag/- . Matching Unicode letters and numbers
+ * instead keeps the name intact. \p{M} has to be in the set as well: the
+ * matras in `सुपर` are combining marks, not letters, so matching only \p{L}
+ * strips the vowels and leaves `स-पर`. A non-ASCII slug is percent-encoded on
+ * the wire and decoded back before lookup, which the tag route already does.
+ */
+const slugifyTag = (s: string) =>
+  (s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}\p{M}-]+/gu, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 // --- Tag CRUD (ci_tag) ---
 export async function createTag(data: { tag_name: string; slug?: string; status?: number }) {

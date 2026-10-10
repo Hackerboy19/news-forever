@@ -43,6 +43,128 @@ var siteSetting = {
   updated_at: ""
 };
 
+// src/lib/feeds.ts
+var PUBLICATION_NAME = "News Forever";
+var PUBLICATION_LANGUAGE = "en";
+var NEWS_WINDOW_HOURS = 48;
+var NEWS_MAX_ITEMS = 1e3;
+var RSS_MAX_ITEMS = 50;
+function xmlEscape(value) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
+function parseLegacyDate(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s*[:T]?\s*(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!m) {
+    const loose = new Date(s);
+    return Number.isNaN(loose.getTime()) ? null : loose;
+  }
+  const [, y, mo, d, hh, mi, ss] = m;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const dt = new Date(year, month - 1, day, Number(hh ?? 0), Number(mi ?? 0), Number(ss ?? 0));
+  if (Number.isNaN(dt.getTime())) return null;
+  if (dt.getFullYear() !== year || dt.getMonth() !== month - 1 || dt.getDate() !== day) return null;
+  return dt;
+}
+function rfc822(d) {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const p = (n) => String(n).padStart(2, "0");
+  return `${days[d.getUTCDay()]}, ${p(d.getUTCDate())} ${months[d.getUTCMonth()]} ${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} GMT`;
+}
+function selectFeedArticles(blogs, opts = {}) {
+  const now = opts.now ?? /* @__PURE__ */ new Date();
+  const cutoff = opts.withinHours ? now.getTime() - opts.withinHours * 36e5 : null;
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const b of blogs) {
+    if (b.status !== 1) continue;
+    const slug = (b.url || "").trim();
+    if (!slug || slug === "-") continue;
+    if (/\s/.test(slug)) continue;
+    const key = slug.toLowerCase();
+    if (seen.has(key)) continue;
+    const published = parseLegacyDate(b.created_at);
+    if (!published) continue;
+    if (published.getTime() > now.getTime() + 36e5) continue;
+    if (cutoff !== null && published.getTime() < cutoff) continue;
+    const title = (b.title || "").trim();
+    if (!title) continue;
+    seen.add(key);
+    out.push({
+      slug,
+      title,
+      summary: (b.short_content || b.meta_description || "").trim(),
+      published
+    });
+  }
+  out.sort((a, z) => z.published.getTime() - a.published.getTime());
+  return typeof opts.limit === "number" ? out.slice(0, opts.limit) : out;
+}
+function articleUrl(origin, slug) {
+  return `${origin.replace(/\/+$/, "")}/${encodeURI(slug)}`;
+}
+function buildNewsSitemap(blogs, origin, now = /* @__PURE__ */ new Date()) {
+  const items = selectFeedArticles(blogs, {
+    now,
+    withinHours: NEWS_WINDOW_HOURS,
+    limit: NEWS_MAX_ITEMS
+  });
+  const urls = items.map(
+    (a) => `  <url>
+    <loc>${xmlEscape(articleUrl(origin, a.slug))}</loc>
+    <news:news>
+      <news:publication>
+        <news:name>${xmlEscape(PUBLICATION_NAME)}</news:name>
+        <news:language>${PUBLICATION_LANGUAGE}</news:language>
+      </news:publication>
+      <news:publication_date>${a.published.toISOString()}</news:publication_date>
+      <news:title>${xmlEscape(a.title)}</news:title>
+    </news:news>
+  </url>`
+  ).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+` + (urls ? `${urls}
+` : "") + `</urlset>
+`;
+}
+function buildRssFeed(blogs, origin, now = /* @__PURE__ */ new Date(), opts = {}) {
+  const base = origin.replace(/\/+$/, "");
+  const items = selectFeedArticles(blogs, { now, limit: RSS_MAX_ITEMS });
+  const channelTitle = opts.title || PUBLICATION_NAME;
+  const channelDesc = opts.description || "National and international reporting from News Forever \u2014 breaking news, beauty pageants, Forever Star India Awards, business, lifestyle and astrology.";
+  const lastBuild = items.length ? items[0].published : now;
+  const body = items.map((a) => {
+    const link = articleUrl(base, a.slug);
+    return `    <item>
+      <title>${xmlEscape(a.title)}</title>
+      <link>${xmlEscape(link)}</link>
+      <guid isPermaLink="true">${xmlEscape(link)}</guid>
+      <pubDate>${rfc822(a.published)}</pubDate>
+` + (a.summary ? `      <description>${xmlEscape(a.summary)}</description>
+` : "") + `    </item>`;
+  }).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>${xmlEscape(channelTitle)}</title>
+    <link>${xmlEscape(base + "/")}</link>
+    <description>${xmlEscape(channelDesc)}</description>
+    <language>${PUBLICATION_LANGUAGE}</language>
+    <lastBuildDate>${rfc822(lastBuild)}</lastBuildDate>
+    <atom:link href="${xmlEscape(base + "/feed")}" rel="self" type="application/rss+xml" />
+` + (body ? `${body}
+` : "") + `  </channel>
+</rss>
+`;
+}
+
 // src/lib/translate.ts
 var cache = /* @__PURE__ */ new Map();
 async function gtxTranslate(text, target = "hi") {
@@ -716,20 +838,28 @@ async function deleteCategory(id) {
 async function getActiveTags() {
   try {
     const [rows] = await dbPool.query(
-      `SELECT id, tag_name, url, created_at FROM ci_tag WHERE status = 1 ORDER BY id ASC`
+      `SELECT t.id, t.tag_name, t.url, t.created_at,
+              (SELECT COUNT(*) FROM ci_blog b
+                WHERE b.status = 1
+                  AND FIND_IN_SET(t.id, REPLACE(IFNULL(b.tag_id, ''), ' ', '')) > 0
+              ) AS article_count
+         FROM ci_tag t
+        WHERE t.status = 1
+        ORDER BY t.id ASC`
     );
     return rows.map((row) => ({
       id: row.id,
       tag_name: row.tag_name,
       slug: (row.url || "").trim(),
-      created_at: row.created_at || ""
+      created_at: row.created_at || "",
+      article_count: Number(row.article_count) || 0
     }));
   } catch (err) {
     handleDbError("getActiveTags", err);
     return [];
   }
 }
-var slugifyTag = (s) => (s || "").toLowerCase().trim().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+var slugifyTag = (s) => (s || "").toLowerCase().trim().replace(/[^\p{L}\p{N}\p{M}-]+/gu, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "");
 async function createTag(data) {
   const url = data.slug && data.slug.trim() || slugifyTag(data.tag_name);
   await dbPool.query(
@@ -1777,11 +1907,50 @@ ${rows.join("\n")}
       res.status(500).send("sitemap generation failed");
     }
   });
+  let newsCache = { xml: "", at: 0 };
+  let feedCache = { xml: "", at: 0 };
+  const originOf = (req) => {
+    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+    return `${proto}://${req.get("host")}`;
+  };
+  app.get("/news-sitemap.xml", async (req, res) => {
+    try {
+      const now = Date.now();
+      if (!newsCache.xml || now - newsCache.at > 5 * 60 * 1e3) {
+        const blogs = await getPublishedBlogs(1e5);
+        newsCache = { xml: buildNewsSitemap(blogs, originOf(req)), at: now };
+      }
+      res.status(200).set("Content-Type", "application/xml; charset=utf-8").set("Cache-Control", "public, max-age=300").send(newsCache.xml);
+    } catch (err) {
+      console.error("news-sitemap failed:", err?.message);
+      res.status(500).type("text/plain").send("news sitemap generation failed");
+    }
+  });
+  app.get("/feed", async (req, res) => {
+    try {
+      const now = Date.now();
+      if (!feedCache.xml || now - feedCache.at > 10 * 60 * 1e3) {
+        const blogs = await getPublishedBlogs(1e5);
+        feedCache = {
+          xml: buildRssFeed(blogs, originOf(req), /* @__PURE__ */ new Date(), {
+            title: siteSetting.meta_default_title || void 0
+          }),
+          at: now
+        };
+      }
+      res.status(200).set("Content-Type", "application/rss+xml; charset=utf-8").set("Cache-Control", "public, max-age=600").send(feedCache.xml);
+    } catch (err) {
+      console.error("rss feed failed:", err?.message);
+      res.status(500).type("text/plain").send("feed generation failed");
+    }
+  });
   app.get("/robots.txt", (req, res) => {
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
+    const host = `${proto}://${req.get("host")}`;
     res.set("Content-Type", "text/plain; charset=utf-8").send(`User-agent: *
 Allow: /
-Sitemap: ${proto}://${req.get("host")}/sitemap.xml
+Sitemap: ${host}/sitemap.xml
+Sitemap: ${host}/news-sitemap.xml
 `);
   });
   app.get(/^\/News\/(.+)$/i, async (req, res) => {
@@ -1893,7 +2062,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
       return shellCache;
     };
     const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-    const RESERVED = /* @__PURE__ */ new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
+    const RESERVED = /* @__PURE__ */ new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "news-sitemap.xml", "robots.txt", "rss.xml", "feed.rss", "feed"]);
     const BUILTIN_PAGES = /* @__PURE__ */ new Set(["privacy-policy", "terms-of-service", "disclaimer"]);
     const dimCache = /* @__PURE__ */ new Map();
     const tidyPath = (p) => p.replace(/\s+/g, " ").trim();
@@ -1974,7 +2143,18 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
               ...img ? { image: img } : {}
             }).replace(/</g, "\\u003c") : "";
             const crumbs = [{ "@type": "ListItem", position: 1, name: "Home", item: origin }];
-            if (article.category_name) crumbs.push({ "@type": "ListItem", position: 2, name: article.category_name });
+            const crumbCat = (await getAllCategories()).find(
+              (c) => c.id === (article.sub_category_id || article.category_id)
+            );
+            const crumbSlug = (crumbCat?.slug || "").trim();
+            if (crumbCat && crumbSlug && crumbSlug !== "-") {
+              crumbs.push({
+                "@type": "ListItem",
+                position: 2,
+                name: crumbCat.category_name,
+                item: `${origin}/category/${encodeURI(crumbSlug)}`
+              });
+            }
             crumbs.push({ "@type": "ListItem", position: crumbs.length + 1, name: article.title, item: urlRaw });
             const breadcrumbStr = JSON.stringify({
               "@context": "https://schema.org",
