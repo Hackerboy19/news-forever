@@ -687,6 +687,14 @@ async function startServer() {
   // Auto-generated sitemap.xml — reflects live pages, categories and blogs.
   // Cached briefly so it isn't regenerated on every hit.
   let sitemapCache = { xml: "", at: 0 };
+  // All published blogs, cached briefly — tag pages filter it by tag id.
+  let allBlogsCache: { data: CIBlog[]; at: number } = { data: [], at: 0 };
+  const getAllBlogsCached = async () => {
+    if (!allBlogsCache.data.length || Date.now() - allBlogsCache.at > 5 * 60 * 1000) {
+      allBlogsCache = { data: await getPublishedBlogs(100000), at: Date.now() };
+    }
+    return allBlogsCache.data;
+  };
   const xmlEsc = (s: any) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   app.get("/sitemap.xml", async (req, res) => {
     try {
@@ -694,7 +702,7 @@ async function startServer() {
       if (!sitemapCache.xml || now - sitemapCache.at > 10 * 60 * 1000) {
         const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
         const origin = `${proto}://${req.get("host")}`;
-        const [blogs, cats, tags] = await Promise.all([getPublishedBlogs(100000), getAllCategories(), getActiveTags()]);
+        const [blogs, cats, tags] = await Promise.all([getAllBlogsCached(), getAllCategories(), getActiveTags()]);
         const rows: string[] = [];
         const add = (loc: string, priority: string, lastmod?: string) =>
           rows.push(`  <url><loc>${xmlEsc(loc)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<priority>${priority}</priority></url>`);
@@ -742,6 +750,15 @@ async function startServer() {
   app.get("/robots.txt", (req, res) => {
     const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
     res.set("Content-Type", "text/plain; charset=utf-8").send(`User-agent: *\nAllow: /\nSitemap: ${proto}://${req.get("host")}/sitemap.xml\n`);
+  });
+
+  // Legacy CodeIgniter pagination (/pagination/312, /category/X/pagination/12,
+  // /tag/X/pagination) — the SPA has no paged listings, so these rendered the
+  // same content as their parent and Search Console flagged them as
+  // "Duplicate, Google chose different canonical". 301 them to the parent.
+  app.get(/^\/(?:((?:category|tag)\/[^/]+)\/)?pagination(?:\/\d*)?\/?$/i, (req, res) => {
+    const parent = (req.params as any)[0];
+    res.redirect(301, parent ? `/${parent}` : "/");
   });
 
   // Legacy /News/<slug> URLs (old CodeIgniter tag/category pages) → 301 to the
@@ -927,15 +944,36 @@ async function startServer() {
             status = 404;
           }
         }
+        // Listing pages (tag/category): SSR an <h1> + the article links into
+        // #root so each listing has unique crawlable content instead of an
+        // empty shell that Google folds into a duplicate of another page.
+        const ssrListing = (name: string, intro: string, items: CIBlog[]) => {
+          const li = items.map((b) => {
+            const slug = (b.url || "").trim();
+            return `<li><a href="/${esc(encodeURIComponent(slug))}">${esc(b.title)}</a>${b.short_content ? `<p>${esc(b.short_content)}</p>` : ""}</li>`;
+          }).join("");
+          const body = `<section><h1>${esc(name)}</h1><p>${esc(intro)}</p>${li ? `<ul>${li}</ul>` : ""}</section>`;
+          html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${body}</div>`);
+        };
+        const noindex = () => {
+          html = html.replace(/<meta\s+name="robots"[^>]*>/i, `<meta name="robots" content="noindex, follow" />`);
+        };
         // Tag pages: inject tag-specific meta so /tag/<slug> indexes with content.
         if (!injected && seg.toLowerCase().startsWith("tag/")) {
           const tslug = decodeURIComponent(seg.slice(4).split("/")[0] || "");
           if (tslug) {
             const tags = await getActiveTags();
             const tg = tags.find((t) => (t.slug || "").toLowerCase() === tslug.toLowerCase());
+            // Empty tag list = DB unreachable; never 404/noindex on a transient outage.
+            const dbUp = tags.length > 0;
+            if (!tg && dbUp) status = 404;
             const name = tg ? tg.tag_name : tslug.replace(/-/g, " ");
             const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
-            const url = esc(`${proto}://${req.get("host")}/tag/${encodeURIComponent(tslug)}`);
+            // Canonical uses the stored slug so /tag/miss-india and /tag/Miss-India collapse to one URL.
+            const url = esc(`${proto}://${req.get("host")}/tag/${encodeURIComponent((tg?.slug || tslug).trim())}`);
+            const items = tg ? (await getAllBlogsCached()).filter((b) => (b.tag_ids || []).includes(tg.id)).slice(0, 30) : [];
+            ssrListing(name, `Latest ${name} news, updates and articles on News Forever.`, items);
+            if (dbUp && !items.length) noindex();
             const title = esc(`${name} — News Forever`);
             const desc = esc(`Latest ${name} news, updates and articles on News Forever.`);
             const tags2 = [
@@ -959,9 +997,17 @@ async function startServer() {
             const cat = cats.find((c) => (c.slug || "").toLowerCase() === cslug.toLowerCase());
             const name = cat ? cat.category_name : cslug.replace(/-/g, " ");
             const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
-            const url = esc(`${proto}://${req.get("host")}/category/${encodeURIComponent(cslug)}`);
+            const url = esc(`${proto}://${req.get("host")}/category/${encodeURIComponent((cat?.slug || cslug).trim())}`);
             const title = esc(cat?.meta_title || `${name} — News Forever`);
-            const desc = esc(cat?.meta_description || `Latest ${name} news, updates and articles on News Forever.`);
+            const descRaw = cat?.meta_description || `Latest ${name} news, updates and articles on News Forever.`;
+            const desc = esc(descRaw);
+            // Nav umbrellas (e.g. /category/entertainment) aren't ci_category
+            // rows but resolve via taxonomy aliases, so only 404 when nothing matches.
+            const items = await getPublishedBlogs(30, cat?.slug || cslug);
+            const dbUp = cats.length > 0;
+            if (dbUp && !cat && !items.length) status = 404;
+            ssrListing(name, descRaw, items);
+            if (dbUp && !items.length) noindex();
             const tagsC = [
               `<title>${title}</title>`,
               `<meta name="description" content="${desc}">`,
