@@ -33,6 +33,8 @@ import {
   getAdminUsers,
   getSubAdmins,
   getActivityLogs,
+  getPanelActivity,
+  appendPanelActivity,
   createAd,
   updateAd,
   deleteAd,
@@ -155,18 +157,42 @@ async function startServer() {
   let dbImages: CIImageLibrary[] = [];
   let dbSetting: CISetting = { ...siteSetting };
 
-  // Helper log activity
-  const logActivity = (userName: string, userId: number, activity: string, moduleName: string) => {
+  /** The address the request actually came from, through nginx. */
+  const clientIp = (req?: express.Request): string => {
+    const fwd = String(req?.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    return fwd || req?.socket?.remoteAddress || "";
+  };
+
+  /** Who is signed in, from the credentials requireAdmin already checked. */
+  const actorName = (req?: express.Request): string =>
+    String(req?.headers["x-admin-user"] || "").trim() || "Unknown";
+
+  /**
+   * Record an admin action.
+   *
+   * Kept in memory for this process and written to ci_setting so the trail
+   * survives a restart — the panel used to lose its whole history every time
+   * Passenger recycled the app, which is why the Activity Log looked empty
+   * or stale. The legacy ci_activity_log table is never written to.
+   */
+  const logActivity = (
+    userName: string,
+    userId: number,
+    activity: string,
+    moduleName: string,
+    req?: express.Request
+  ) => {
     const newLog: CIActivityLog = {
       id: Date.now(),
       user_id: userId,
       user_name: userName,
       activity,
       module: moduleName,
-      ip_address: "127.0.0.1",
+      ip_address: clientIp(req),
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
     };
     dbActivityLogs.unshift(newLog);
+    void appendPanelActivity(newLog);
   };
 
   // --- API ROUTES ---
@@ -180,6 +206,7 @@ async function startServer() {
     const { username, password } = req.body || {};
     const admin = await verifyAdmin(String(username || ""), String(password || ""));
     if (!admin) return res.status(401).json({ error: "Invalid credentials or database unreachable" });
+    logActivity(admin.name, admin.admin_id, "Signed in to the admin panel", "Session", req);
     res.json(admin);
   });
 
@@ -234,6 +261,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const saved = await saveSiteConfig(req.body || {});
+      logActivity(admin.name, admin.admin_id, "Updated Site Settings", "Site Settings", req);
       // nginx serves "/" from disk here, so the shell has to be rewritten for
       // a Site Settings change to show up on the homepage at all.
       await syncHomepageShell(path.join(process.cwd(), "dist"));
@@ -276,7 +304,7 @@ async function startServer() {
     try {
       const saved = await saveStaticPage(slug, req.body || {});
       pageSlugCache.at = 0; // refresh routing set
-      logActivity(admin.name, admin.admin_id, `Updated page "${slug}"`, "Pages");
+      logActivity(admin.name, admin.admin_id, `Updated page "${slug}"`, "Pages", req);
       res.json(saved);
     } catch (err: any) {
       res.status(500).json({ error: "Page save failed: " + err?.message });
@@ -288,7 +316,7 @@ async function startServer() {
     const slug = normSlug(String(req.params.slug));
     const ok = await deleteStaticPage(slug);
     pageSlugCache.at = 0;
-    logActivity(admin.name, admin.admin_id, `Deleted page "${slug}"`, "Pages");
+    logActivity(admin.name, admin.admin_id, `Deleted page "${slug}"`, "Pages", req);
     res.json({ success: ok });
   });
 
@@ -416,7 +444,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const created = await createBlog(req.body as Partial<CIBlog>, admin.admin_id);
-      logActivity(admin.name, admin.admin_id, `Created Blog Article #${created.id}: "${created.title}"`, "Blog");
+      logActivity(admin.name, admin.admin_id, `Created Blog Article #${created.id}: "${created.title}"`, "Blog", req);
       res.status(201).json(created);
     } catch (err: any) {
       console.error("createBlog failed:", err?.message);
@@ -432,7 +460,7 @@ async function startServer() {
       const id = parseInt(req.params.id, 10);
       const updated = await updateBlog(id, req.body as Partial<CIBlog>);
       if (!updated) return res.status(404).json({ error: "Blog not found" });
-      logActivity(admin.name, admin.admin_id, `Updated Blog Article #${id}: "${updated.title}"`, "Blog");
+      logActivity(admin.name, admin.admin_id, `Updated Blog Article #${id}: "${updated.title}"`, "Blog", req);
       res.json(updated);
     } catch (err: any) {
       console.error("updateBlog failed:", err?.message);
@@ -447,7 +475,7 @@ async function startServer() {
     const id = parseInt(req.params.id, 10);
     const ok = await deleteBlog(id);
     if (!ok) return res.status(404).json({ error: "Blog not found" });
-    logActivity(admin.name, admin.admin_id, `Deleted Blog Article #${id}`, "Blog");
+    logActivity(admin.name, admin.admin_id, `Deleted Blog Article #${id}`, "Blog", req);
     res.json({ success: true, id });
   });
 
@@ -460,7 +488,7 @@ async function startServer() {
       return res.status(400).json({ error: "Invalid bulk action payload" });
     }
     const affected = await bulkBlogAction(ids.map(Number), action);
-    logActivity(admin.name, admin.admin_id, `Bulk ${action} on ${affected} blogs`, "Blog");
+    logActivity(admin.name, admin.admin_id, `Bulk ${action} on ${affected} blogs`, "Blog", req);
     res.json({ success: true, affected, ids, action });
   });
 
@@ -480,7 +508,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const cats = await createCategory(req.body || {});
-      logActivity(admin.name, admin.admin_id, `Created Category "${req.body?.category_name}"`, "Category");
+      logActivity(admin.name, admin.admin_id, `Created Category "${req.body?.category_name}"`, "Category", req);
       return res.json(cats);
     } catch (err: any) {
       return res.status(500).json({ error: "Category save failed: " + err?.message });
@@ -504,7 +532,7 @@ async function startServer() {
     };
 
     dbCategories.unshift(newCategory);
-    logActivity("Elena Rostova", 1, `Created Category #${newId}: "${newCategory.category_name}"`, "Category");
+    logActivity(actorName(req), 0, `Created Category #${newId}: "${newCategory.category_name}"`, "Category", req);
     res.status(201).json(newCategory);
   });
 
@@ -514,6 +542,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const cats = await updateCategory(parseInt(req.params.id, 10), req.body || {});
+      logActivity(admin.name, admin.admin_id, `Updated Category #${req.params.id}${req.body?.category_name ? `: "${req.body.category_name}"` : ""}`, "Category", req);
       return res.json(cats);
     } catch (err: any) {
       return res.status(500).json({ error: "Category update failed: " + err?.message });
@@ -526,7 +555,7 @@ async function startServer() {
     if (idx === -1) return res.status(404).json({ error: "Category not found" });
 
     dbCategories[idx] = { ...dbCategories[idx], ...req.body, id };
-    logActivity("Elena Rostova", 1, `Updated Category #${id}: "${dbCategories[idx].category_name}"`, "Category");
+    logActivity(actorName(req), 0, `Updated Category #${id}: "${dbCategories[idx].category_name}"`, "Category", req);
     res.json(dbCategories[idx]);
   });
 
@@ -536,13 +565,14 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     const ok = await deleteCategory(parseInt(req.params.id, 10));
     if (!ok) return res.status(404).json({ error: "Category not found" });
+    logActivity(admin.name, admin.admin_id, `Deleted Category #${req.params.id}`, "Category", req);
     return res.json({ success: true, id: parseInt(req.params.id, 10) });
   });
 
   app.delete("/api/_legacy_categories_unused/:id", (req, res) => {
     const id = parseInt(req.params.id, 10);
     dbCategories = dbCategories.filter(c => c.id !== id);
-    logActivity("Elena Rostova", 1, `Deleted Category #${id}`, "Category");
+    logActivity(actorName(req), 0, `Deleted Category #${id}`, "Category", req);
     res.json({ success: true, id });
   });
 
@@ -554,17 +584,26 @@ async function startServer() {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     if (!req.body?.tag_name) return res.status(400).json({ error: "tag_name required" });
-    try { res.json(await createTag(req.body)); } catch (e: any) { res.status(500).json({ error: "Tag create failed: " + e?.message }); }
+    try {
+      const tag = await createTag(req.body);
+      logActivity(admin.name, admin.admin_id, `Created Tag "${req.body.tag_name}"`, "Tag", req);
+      res.json(tag);
+    } catch (e: any) { res.status(500).json({ error: "Tag create failed: " + e?.message }); }
   });
   app.put("/api/tags/:id", async (req, res) => {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
-    try { res.json(await updateTag(parseInt(req.params.id, 10), req.body || {})); } catch (e: any) { res.status(500).json({ error: "Tag update failed: " + e?.message }); }
+    try {
+      const tag = await updateTag(parseInt(req.params.id, 10), req.body || {});
+      logActivity(admin.name, admin.admin_id, `Updated Tag #${req.params.id}${req.body?.tag_name ? `: "${req.body.tag_name}"` : ""}`, "Tag", req);
+      res.json(tag);
+    } catch (e: any) { res.status(500).json({ error: "Tag update failed: " + e?.message }); }
   });
   app.delete("/api/tags/:id", async (req, res) => {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     const ok = await deleteTag(parseInt(req.params.id, 10));
+    if (ok) logActivity(admin.name, admin.admin_id, `Deleted Tag #${req.params.id}`, "Tag", req);
     res.json({ success: ok });
   });
 
@@ -588,7 +627,7 @@ async function startServer() {
     try {
       const { id, ...payload } = req.body || {};
       const ads = id ? await updateAd(Number(id), payload) : await createAd(payload);
-      logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement");
+      logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement", req);
       return res.json(ads);
     } catch (err: any) {
       return res.status(500).json({ error: "Ad save failed: " + err?.message });
@@ -601,7 +640,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     const ok = await deleteAd(parseInt(req.params.id, 10));
     if (!ok) return res.status(404).json({ error: "Ad not found" });
-    logActivity(admin.name, admin.admin_id, `Deleted Advertisement #${req.params.id}`, "Advertisement");
+    logActivity(admin.name, admin.admin_id, `Deleted Advertisement #${req.params.id}`, "Advertisement", req);
     res.json({ success: true });
   });
 
@@ -674,7 +713,7 @@ async function startServer() {
     };
 
     dbAds.unshift(newAd);
-    logActivity("Elena Rostova", 1, `Created Advertisement #${newId}: "${newAd.title}"`, "Advertisement");
+    logActivity(actorName(req), 0, `Created Advertisement #${newId}: "${newAd.title}"`, "Advertisement", req);
     res.status(201).json(newAd);
   });
 
@@ -690,8 +729,14 @@ async function startServer() {
   app.get("/api/activity-logs", async (req, res) => {
     if (!(await requireAdmin(req))) return res.status(401).json({ error: "Unauthorized" });
     res.setHeader("Cache-Control", "no-store");
-    const real = await getActivityLogs();
-    res.json([...dbActivityLogs, ...real]);
+    // Panel actions (persisted), anything logged since the last restart, and
+    // the legacy CMS trail — newest first, no duplicates.
+    const [stored, real] = await Promise.all([getPanelActivity(), getActivityLogs()]);
+    const seen = new Set<number>();
+    const merged = [...dbActivityLogs, ...stored]
+      .filter((l) => (seen.has(l.id) ? false : (seen.add(l.id), true)))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    res.json([...merged, ...real]);
   });
 
   // GET /api/users — real ci_admin accounts (no passwords).
@@ -816,7 +861,7 @@ async function startServer() {
       created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
     };
     dbImages.unshift(newImg);
-    logActivity("Elena Rostova", 1, `Uploaded image asset '${newImg.file_name}'`, "Image Library");
+    logActivity(actorName(req), 0, `Uploaded image asset '${newImg.file_name}'`, "Image Library", req);
     res.status(201).json(newImg);
   });
 
@@ -832,7 +877,7 @@ async function startServer() {
       ...req.body,
       updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
     };
-    logActivity("Elena Rostova", 1, "Updated Site Configuration & SEO Defaults", "Setting");
+    logActivity(actorName(req), 0, "Updated Site Configuration & SEO Defaults", "Setting", req);
     res.json(dbSetting);
   });
 

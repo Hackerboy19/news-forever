@@ -650,8 +650,28 @@ async function getSubAdmins() {
     return [];
   }
 }
+var activityLabelCache = null;
+async function getActivityLabels() {
+  if (activityLabelCache) return activityLabelCache;
+  const map = /* @__PURE__ */ new Map();
+  try {
+    const [rows] = await dbPool.query(`SELECT * FROM ci_activity_status LIMIT 500`);
+    for (const row of rows) {
+      const id = Number(row.id ?? row.activity_id ?? row.status_id);
+      if (!Number.isFinite(id)) continue;
+      const entry = Object.entries(row).find(
+        ([k, v]) => typeof v === "string" && v.trim() !== "" && !/^\d+$/.test(v.trim()) && !/(date|time|created|updated|ip)/i.test(k)
+      );
+      if (entry) map.set(id, String(entry[1]).trim());
+    }
+  } catch {
+  }
+  activityLabelCache = map;
+  return map;
+}
 async function getActivityLogs(limit = 100) {
   try {
+    const labels = await getActivityLabels();
     const [rows] = await dbPool.query(
       `SELECT l.id, l.activity_id, l.user_id, l.admin_id, l.created_at,
               a.username, a.firstname, a.lastname
@@ -664,14 +684,49 @@ async function getActivityLogs(limit = 100) {
       id: r.id,
       user_id: r.user_id || r.admin_id,
       user_name: [r.firstname, r.lastname].filter(Boolean).join(" ").trim() || r.username || `Admin #${r.admin_id}`,
-      activity: `Activity code ${r.activity_id}`,
-      module: "System",
+      activity: labels.get(Number(r.activity_id)) || `Activity code ${r.activity_id}`,
+      module: "Legacy CMS",
       ip_address: "",
       created_at: r.created_at ? String(r.created_at) : ""
     }));
   } catch (err) {
     handleDbError("getActivityLogs", err);
     return [];
+  }
+}
+var ACTIVITY_KEY = "nf_activity_log";
+var ACTIVITY_KEEP = 300;
+async function getPanelActivity() {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT page_description FROM ci_setting WHERE page_key = ? LIMIT 1`,
+      [ACTIVITY_KEY]
+    );
+    const list = rows;
+    if (!list.length) return [];
+    const parsed = JSON.parse(list[0].page_description || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    handleDbError("getPanelActivity", err);
+    return [];
+  }
+}
+async function appendPanelActivity(entry) {
+  try {
+    const current = await getPanelActivity();
+    const next = [entry, ...current].slice(0, ACTIVITY_KEEP);
+    const json = JSON.stringify(next);
+    const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [ACTIVITY_KEY]);
+    if (rows.length > 0) {
+      await dbPool.query(`UPDATE ci_setting SET page_description = ? WHERE page_key = ?`, [json, ACTIVITY_KEY]);
+    } else {
+      await dbPool.query(
+        `INSERT INTO ci_setting (page_key, page_description, email, phone, address, map, status) VALUES (?, ?, '', '', '', '', 1)`,
+        [ACTIVITY_KEY, json]
+      );
+    }
+  } catch (err) {
+    handleDbError("appendPanelActivity", err);
   }
 }
 var CONFIG_KEY = "nf_site_config";
@@ -1366,23 +1421,30 @@ async function startServer() {
   let dbSubscribers = [];
   let dbImages = [];
   let dbSetting = { ...siteSetting };
-  const logActivity = (userName, userId, activity, moduleName) => {
+  const clientIp = (req) => {
+    const fwd = String(req?.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    return fwd || req?.socket?.remoteAddress || "";
+  };
+  const actorName = (req) => String(req?.headers["x-admin-user"] || "").trim() || "Unknown";
+  const logActivity = (userName, userId, activity, moduleName, req) => {
     const newLog = {
       id: Date.now(),
       user_id: userId,
       user_name: userName,
       activity,
       module: moduleName,
-      ip_address: "127.0.0.1",
+      ip_address: clientIp(req),
       created_at: (/* @__PURE__ */ new Date()).toISOString().replace("T", " ").substring(0, 19)
     };
     dbActivityLogs.unshift(newLog);
+    void appendPanelActivity(newLog);
   };
   const requireAdmin = async (req) => verifyAdmin(String(req.headers["x-admin-user"] || ""), String(req.headers["x-admin-pass"] || ""));
   app.post("/api/admin/login", async (req, res) => {
     const { username, password } = req.body || {};
     const admin = await verifyAdmin(String(username || ""), String(password || ""));
     if (!admin) return res.status(401).json({ error: "Invalid credentials or database unreachable" });
+    logActivity(admin.name, admin.admin_id, "Signed in to the admin panel", "Session", req);
     res.json(admin);
   });
   app.post("/api/admin/change-password", async (req, res) => {
@@ -1427,6 +1489,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const saved = await saveSiteConfig(req.body || {});
+      logActivity(admin.name, admin.admin_id, "Updated Site Settings", "Site Settings", req);
       await syncHomepageShell(import_path.default.join(process.cwd(), "dist"));
       res.json(saved);
     } catch (err) {
@@ -1462,7 +1525,7 @@ async function startServer() {
     try {
       const saved = await saveStaticPage(slug, req.body || {});
       pageSlugCache.at = 0;
-      logActivity(admin.name, admin.admin_id, `Updated page "${slug}"`, "Pages");
+      logActivity(admin.name, admin.admin_id, `Updated page "${slug}"`, "Pages", req);
       res.json(saved);
     } catch (err) {
       res.status(500).json({ error: "Page save failed: " + err?.message });
@@ -1474,7 +1537,7 @@ async function startServer() {
     const slug = normSlug(String(req.params.slug));
     const ok = await deleteStaticPage(slug);
     pageSlugCache.at = 0;
-    logActivity(admin.name, admin.admin_id, `Deleted page "${slug}"`, "Pages");
+    logActivity(admin.name, admin.admin_id, `Deleted page "${slug}"`, "Pages", req);
     res.json({ success: ok });
   });
   app.get("/api/health", (_req, res) => {
@@ -1555,7 +1618,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const created = await createBlog(req.body, admin.admin_id);
-      logActivity(admin.name, admin.admin_id, `Created Blog Article #${created.id}: "${created.title}"`, "Blog");
+      logActivity(admin.name, admin.admin_id, `Created Blog Article #${created.id}: "${created.title}"`, "Blog", req);
       res.status(201).json(created);
     } catch (err) {
       console.error("createBlog failed:", err?.message);
@@ -1569,7 +1632,7 @@ async function startServer() {
       const id = parseInt(req.params.id, 10);
       const updated = await updateBlog(id, req.body);
       if (!updated) return res.status(404).json({ error: "Blog not found" });
-      logActivity(admin.name, admin.admin_id, `Updated Blog Article #${id}: "${updated.title}"`, "Blog");
+      logActivity(admin.name, admin.admin_id, `Updated Blog Article #${id}: "${updated.title}"`, "Blog", req);
       res.json(updated);
     } catch (err) {
       console.error("updateBlog failed:", err?.message);
@@ -1582,7 +1645,7 @@ async function startServer() {
     const id = parseInt(req.params.id, 10);
     const ok = await deleteBlog(id);
     if (!ok) return res.status(404).json({ error: "Blog not found" });
-    logActivity(admin.name, admin.admin_id, `Deleted Blog Article #${id}`, "Blog");
+    logActivity(admin.name, admin.admin_id, `Deleted Blog Article #${id}`, "Blog", req);
     res.json({ success: true, id });
   });
   app.post("/api/blogs/bulk-action", async (req, res) => {
@@ -1593,7 +1656,7 @@ async function startServer() {
       return res.status(400).json({ error: "Invalid bulk action payload" });
     }
     const affected = await bulkBlogAction(ids.map(Number), action);
-    logActivity(admin.name, admin.admin_id, `Bulk ${action} on ${affected} blogs`, "Blog");
+    logActivity(admin.name, admin.admin_id, `Bulk ${action} on ${affected} blogs`, "Blog", req);
     res.json({ success: true, affected, ids, action });
   });
   app.get("/api/categories", async (_req, res) => {
@@ -1609,7 +1672,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const cats = await createCategory(req.body || {});
-      logActivity(admin.name, admin.admin_id, `Created Category "${req.body?.category_name}"`, "Category");
+      logActivity(admin.name, admin.admin_id, `Created Category "${req.body?.category_name}"`, "Category", req);
       return res.json(cats);
     } catch (err) {
       return res.status(500).json({ error: "Category save failed: " + err?.message });
@@ -1630,7 +1693,7 @@ async function startServer() {
       created_at: now
     };
     dbCategories.unshift(newCategory);
-    logActivity("Elena Rostova", 1, `Created Category #${newId}: "${newCategory.category_name}"`, "Category");
+    logActivity(actorName(req), 0, `Created Category #${newId}: "${newCategory.category_name}"`, "Category", req);
     res.status(201).json(newCategory);
   });
   app.put("/api/categories/:id", async (req, res) => {
@@ -1638,6 +1701,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
       const cats = await updateCategory(parseInt(req.params.id, 10), req.body || {});
+      logActivity(admin.name, admin.admin_id, `Updated Category #${req.params.id}${req.body?.category_name ? `: "${req.body.category_name}"` : ""}`, "Category", req);
       return res.json(cats);
     } catch (err) {
       return res.status(500).json({ error: "Category update failed: " + err?.message });
@@ -1648,7 +1712,7 @@ async function startServer() {
     const idx = dbCategories.findIndex((c) => c.id === id);
     if (idx === -1) return res.status(404).json({ error: "Category not found" });
     dbCategories[idx] = { ...dbCategories[idx], ...req.body, id };
-    logActivity("Elena Rostova", 1, `Updated Category #${id}: "${dbCategories[idx].category_name}"`, "Category");
+    logActivity(actorName(req), 0, `Updated Category #${id}: "${dbCategories[idx].category_name}"`, "Category", req);
     res.json(dbCategories[idx]);
   });
   app.delete("/api/categories/:id", async (req, res) => {
@@ -1656,12 +1720,13 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     const ok = await deleteCategory(parseInt(req.params.id, 10));
     if (!ok) return res.status(404).json({ error: "Category not found" });
+    logActivity(admin.name, admin.admin_id, `Deleted Category #${req.params.id}`, "Category", req);
     return res.json({ success: true, id: parseInt(req.params.id, 10) });
   });
   app.delete("/api/_legacy_categories_unused/:id", (req, res) => {
     const id = parseInt(req.params.id, 10);
     dbCategories = dbCategories.filter((c) => c.id !== id);
-    logActivity("Elena Rostova", 1, `Deleted Category #${id}`, "Category");
+    logActivity(actorName(req), 0, `Deleted Category #${id}`, "Category", req);
     res.json({ success: true, id });
   });
   app.get("/api/tags", async (_req, res) => {
@@ -1672,7 +1737,9 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     if (!req.body?.tag_name) return res.status(400).json({ error: "tag_name required" });
     try {
-      res.json(await createTag(req.body));
+      const tag = await createTag(req.body);
+      logActivity(admin.name, admin.admin_id, `Created Tag "${req.body.tag_name}"`, "Tag", req);
+      res.json(tag);
     } catch (e) {
       res.status(500).json({ error: "Tag create failed: " + e?.message });
     }
@@ -1681,7 +1748,9 @@ async function startServer() {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     try {
-      res.json(await updateTag(parseInt(req.params.id, 10), req.body || {}));
+      const tag = await updateTag(parseInt(req.params.id, 10), req.body || {});
+      logActivity(admin.name, admin.admin_id, `Updated Tag #${req.params.id}${req.body?.tag_name ? `: "${req.body.tag_name}"` : ""}`, "Tag", req);
+      res.json(tag);
     } catch (e) {
       res.status(500).json({ error: "Tag update failed: " + e?.message });
     }
@@ -1690,6 +1759,7 @@ async function startServer() {
     const admin = await requireAdmin(req);
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     const ok = await deleteTag(parseInt(req.params.id, 10));
+    if (ok) logActivity(admin.name, admin.admin_id, `Deleted Tag #${req.params.id}`, "Tag", req);
     res.json({ success: ok });
   });
   app.get("/api/advertisements", async (req, res) => {
@@ -1707,7 +1777,7 @@ async function startServer() {
     try {
       const { id, ...payload } = req.body || {};
       const ads = id ? await updateAd(Number(id), payload) : await createAd(payload);
-      logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement");
+      logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement", req);
       return res.json(ads);
     } catch (err) {
       return res.status(500).json({ error: "Ad save failed: " + err?.message });
@@ -1718,7 +1788,7 @@ async function startServer() {
     if (!admin) return res.status(401).json({ error: "Unauthorized" });
     const ok = await deleteAd(parseInt(req.params.id, 10));
     if (!ok) return res.status(404).json({ error: "Ad not found" });
-    logActivity(admin.name, admin.admin_id, `Deleted Advertisement #${req.params.id}`, "Advertisement");
+    logActivity(admin.name, admin.admin_id, `Deleted Advertisement #${req.params.id}`, "Advertisement", req);
     res.json({ success: true });
   });
   app.post("/api/upload-image", async (req, res) => {
@@ -1780,7 +1850,7 @@ async function startServer() {
       created_at: now
     };
     dbAds.unshift(newAd);
-    logActivity("Elena Rostova", 1, `Created Advertisement #${newId}: "${newAd.title}"`, "Advertisement");
+    logActivity(actorName(req), 0, `Created Advertisement #${newId}: "${newAd.title}"`, "Advertisement", req);
     res.status(201).json(newAd);
   });
   app.post("/api/advertisements/:id/click", async (req, res) => {
@@ -1791,8 +1861,10 @@ async function startServer() {
   app.get("/api/activity-logs", async (req, res) => {
     if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
     res.setHeader("Cache-Control", "no-store");
-    const real = await getActivityLogs();
-    res.json([...dbActivityLogs, ...real]);
+    const [stored, real] = await Promise.all([getPanelActivity(), getActivityLogs()]);
+    const seen = /* @__PURE__ */ new Set();
+    const merged = [...dbActivityLogs, ...stored].filter((l) => seen.has(l.id) ? false : (seen.add(l.id), true)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    res.json([...merged, ...real]);
   });
   app.get("/api/users", async (req, res) => {
     if (!await requireAdmin(req)) return res.status(401).json({ error: "Unauthorized" });
@@ -1918,7 +1990,7 @@ async function startServer() {
       created_at: (/* @__PURE__ */ new Date()).toISOString().replace("T", " ").substring(0, 19)
     };
     dbImages.unshift(newImg);
-    logActivity("Elena Rostova", 1, `Uploaded image asset '${newImg.file_name}'`, "Image Library");
+    logActivity(actorName(req), 0, `Uploaded image asset '${newImg.file_name}'`, "Image Library", req);
     res.status(201).json(newImg);
   });
   app.get("/api/settings", (_req, res) => {
@@ -1930,7 +2002,7 @@ async function startServer() {
       ...req.body,
       updated_at: (/* @__PURE__ */ new Date()).toISOString().replace("T", " ").substring(0, 19)
     };
-    logActivity("Elena Rostova", 1, "Updated Site Configuration & SEO Defaults", "Setting");
+    logActivity(actorName(req), 0, "Updated Site Configuration & SEO Defaults", "Setting", req);
     res.json(dbSetting);
   });
   let sitemapCache = { xml: "", at: 0 };

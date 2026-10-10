@@ -431,9 +431,50 @@ export async function getSubAdmins(): Promise<CIUser[]> {
   }
 }
 
-/** Real activity trail from ci_activity_log (labels joined from ci_activity_status). */
+/**
+ * Labels for the codes in ci_activity_log.activity_id, read from
+ * ci_activity_status.
+ *
+ * The column holding the text differs between CodeIgniter builds, so rather
+ * than guess a name the first row is inspected and the first non-numeric,
+ * non-timestamp string column is taken as the label. Cached for the life of
+ * the process; an absent table simply yields no labels.
+ */
+let activityLabelCache: Map<number, string> | null = null;
+async function getActivityLabels(): Promise<Map<number, string>> {
+  if (activityLabelCache) return activityLabelCache;
+  const map = new Map<number, string>();
+  try {
+    const [rows] = await dbPool.query(`SELECT * FROM ci_activity_status LIMIT 500`);
+    for (const row of rows as any[]) {
+      const id = Number(row.id ?? row.activity_id ?? row.status_id);
+      if (!Number.isFinite(id)) continue;
+      const entry = Object.entries(row).find(
+        ([k, v]) =>
+          typeof v === 'string' &&
+          v.trim() !== '' &&
+          !/^\d+$/.test(v.trim()) &&
+          !/(date|time|created|updated|ip)/i.test(k)
+      );
+      if (entry) map.set(id, String(entry[1]).trim());
+    }
+  } catch {
+    // No such table on this install — codes stay unlabelled.
+  }
+  activityLabelCache = map;
+  return map;
+}
+
+/**
+ * Real activity trail from ci_activity_log, with the code resolved to the
+ * label stored in ci_activity_status.
+ *
+ * The join the old comment promised was never actually written, so every
+ * row in the admin panel read "Activity code 7" under a module of "System".
+ */
 export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
   try {
+    const labels = await getActivityLabels();
     const [rows] = await dbPool.query(
       `SELECT l.id, l.activity_id, l.user_id, l.admin_id, l.created_at,
               a.username, a.firstname, a.lastname
@@ -446,14 +487,60 @@ export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
       id: r.id,
       user_id: r.user_id || r.admin_id,
       user_name: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username || `Admin #${r.admin_id}`,
-      activity: `Activity code ${r.activity_id}`,
-      module: 'System',
+      activity: labels.get(Number(r.activity_id)) || `Activity code ${r.activity_id}`,
+      module: 'Legacy CMS',
       ip_address: '',
       created_at: r.created_at ? String(r.created_at) : '',
     }));
   } catch (err) {
     handleDbError('getActivityLogs', err);
     return [];
+  }
+}
+
+const ACTIVITY_KEY = 'nf_activity_log';
+const ACTIVITY_KEEP = 300;
+
+/**
+ * The actions taken in this admin panel.
+ *
+ * They used to live in a variable, so every restart wiped them and the panel
+ * showed an empty or misleadingly short history. Stored as JSON in the same
+ * ci_setting row style the site config already uses — no schema change, and
+ * nothing is written to the legacy ci_activity_log.
+ */
+export async function getPanelActivity(): Promise<CIActivityLog[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT page_description FROM ci_setting WHERE page_key = ? LIMIT 1`,
+      [ACTIVITY_KEY]
+    );
+    const list = rows as any[];
+    if (!list.length) return [];
+    const parsed = JSON.parse(list[0].page_description || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    handleDbError('getPanelActivity', err);
+    return [];
+  }
+}
+
+export async function appendPanelActivity(entry: CIActivityLog): Promise<void> {
+  try {
+    const current = await getPanelActivity();
+    const next = [entry, ...current].slice(0, ACTIVITY_KEEP);
+    const json = JSON.stringify(next);
+    const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [ACTIVITY_KEY]);
+    if ((rows as any[]).length > 0) {
+      await dbPool.query(`UPDATE ci_setting SET page_description = ? WHERE page_key = ?`, [json, ACTIVITY_KEY]);
+    } else {
+      await dbPool.query(
+        `INSERT INTO ci_setting (page_key, page_description, email, phone, address, map, status) VALUES (?, ?, '', '', '', '', 1)`,
+        [ACTIVITY_KEY, json]
+      );
+    }
+  } catch (err) {
+    handleDbError('appendPanelActivity', err);
   }
 }
 

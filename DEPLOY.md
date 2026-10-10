@@ -11,7 +11,7 @@ Upload these four into your app's **`dist/` folder**, replacing what is there:
 | ---------------------------------- | --------------------------------- |
 | `nf-dist/server.cjs`               | `<app-root>/dist/server.cjs`      |
 | `nf-dist/index.html`               | `<app-root>/dist/index.html`      |
-| `nf-dist/assets/index-UTUjZhj0.js` | `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-BBm6ZvXI.js` | `<app-root>/dist/assets/`         |
 | `nf-dist/assets/index-CS9BcfSV.css`| `<app-root>/dist/assets/`         |
 
 `nf-dist.zip` holds the same four files with that same layout, so unzipping it
@@ -137,6 +137,16 @@ LCP is not fixed by a single change; the critical path was shortened:
 
 Re-run PageSpeed Insights for mobile after this is live; the field data in
 Search Console updates over about 28 days.
+
+## Activity Log
+
+The log now shows real entries: legacy `ci_activity_log` codes are resolved
+to their labels from `ci_activity_status` (they used to read "Activity code
+7"), panel actions are recorded against the signed-in admin and the real
+client IP rather than a placeholder name, logins and tag/category/settings
+edits are recorded, and entries are stored in `ci_setting` so a restart no
+longer wipes the history. The legacy table is never written to. Nothing from
+before this build can be recovered — the trail starts at the restart.
 
 ## Still needed outside the code
 
