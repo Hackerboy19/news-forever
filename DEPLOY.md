@@ -11,7 +11,7 @@ Upload these four into your app's **`dist/` folder**, replacing what is there:
 | ---------------------------------- | --------------------------------- |
 | `nf-dist/server.cjs`               | `<app-root>/dist/server.cjs`      |
 | `nf-dist/index.html`               | `<app-root>/dist/index.html`      |
-| `nf-dist/assets/index-CqnvnT4V.js` | `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-DKD4nsQz.js` | `<app-root>/dist/assets/`         |
 | `nf-dist/assets/index-DzyqzxnE.css`| `<app-root>/dist/assets/`         |
 
 `nf-dist.zip` holds the same four files with that same layout, so unzipping it
@@ -87,6 +87,32 @@ curl -s -o /dev/null -w '%{http_code}\n' https://newsforever.in/api/blogs
   **OG Title** is left blank.
 - Article pages emit `og:image:width`, `height` and `type`, so Facebook and
   LinkedIn can build a preview card on first scrape.
+- Site search now covers all 664 published articles instead of the newest 200.
+  The palette loads a body-free index (~460 KB) the first time it is opened,
+  so older stories are findable by title, slug, summary, category, keyword or
+  author. The count beside **All** is the real archive total.
+
+## Feeds and search (nothing to upload by hand)
+
+`/news-sitemap.xml`, `/feed`, `/sitemap.xml` and `/robots.txt` are **generated
+by `server.cjs` on request** — there is no file to create or upload for them.
+Uploading `server.cjs` and restarting is the whole job. Check them with:
+
+```bash
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' https://newsforever.in/news-sitemap.xml
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' https://newsforever.in/feed
+```
+
+In Search Console the sitemap is submitted by URL — Sitemaps → "Add a new
+sitemap" → `news-sitemap.xml`.
+
+Search covers the whole archive through a new endpoint, worth a glance after
+the restart:
+
+```bash
+# should report 664 (every published article), not 200
+curl -s https://newsforever.in/api/search-index | grep -o '"id":' | wc -l
+```
 
 ## Still needed outside the code
 

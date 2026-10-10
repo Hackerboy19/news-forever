@@ -40,6 +40,7 @@ import {
   updateCategory,
   deleteCategory,
   getPublishedBlogs,
+  getSearchIndex,
   getBlogByUrlSlug,
   incrementBlogViews,
   incrementAdClick,
@@ -294,7 +295,12 @@ async function startServer() {
         return res.json(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))));
       }
 
-      let result = await getPublishedBlogs(limit, categorySlug);
+      // ?search= is a whole-catalogue question, so it must not be answered
+      // from the newest 200 rows only.
+      let result = await getPublishedBlogs(
+        req.query.search && !req.query.limit ? 100000 : limit,
+        categorySlug
+      );
 
       if (req.query.status !== undefined) {
         const statusNum = parseInt(req.query.status as string, 10);
@@ -316,6 +322,21 @@ async function startServer() {
     } catch (err) {
       console.error("GET /api/blogs failed:", err);
       res.status(500).json({ error: "Failed to load articles" });
+    }
+  });
+
+  // GET /api/search-index — every published article, trimmed to the fields
+  // search renders and matches on. The palette used to filter the /api/blogs
+  // page, which is capped at 200 of 664 published articles, so anything older
+  // than the newest 200 was unfindable.
+  app.get("/api/search-index", async (_req, res) => {
+    try {
+      const rows = await getSearchIndex();
+      res.set("Cache-Control", "public, max-age=300");
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/search-index failed:", err);
+      res.status(500).json({ error: "Failed to load search index" });
     }
   });
 

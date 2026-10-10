@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog } from '../types.js';
+import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog, SearchItem } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
 import { resolveAuthorName, NEWSROOM_BYLINE } from './editorial.js';
 
@@ -222,6 +222,66 @@ export async function getPublishedBlogs(limit = 50, categorySlug?: string): Prom
     return (rows as RawBlogRow[]).map((row, i) => mapBlogRow(row, i));
   } catch (err) {
     handleDbError('getPublishedBlogs', err);
+    return [];
+  }
+}
+
+let searchIndexCache: { data: SearchItem[]; at: number } | null = null;
+const SEARCH_INDEX_CACHE_MS = 300_000;
+
+/**
+ * Every published article, trimmed to what search needs.
+ *
+ * The site list endpoint caps at 200 rows and ships each article's full HTML
+ * body, so the palette could only ever search the newest 200 of 664. This
+ * query drops `description` (about 70% of that payload) and takes only the
+ * first 400 characters as a summary fallback, which makes the whole catalogue
+ * small enough to send in one go — roughly 200 KB against the 4.5 MB an
+ * uncapped /api/blogs would be.
+ */
+export async function getSearchIndex(): Promise<SearchItem[]> {
+  if (searchIndexCache && Date.now() - searchIndexCache.at < SEARCH_INDEX_CACHE_MS) {
+    return searchIndexCache.data;
+  }
+  try {
+    const query = `
+      SELECT b.id, b.title, b.url, b.image, b.alt_tag, b.cat_id, b.sub_cat_id,
+             b.meta_keyword, b.meta_description, b.created_at,
+             LEFT(b.description, 400) AS description_head,
+             c.cat_name AS category_name,
+             sc.cat_name AS sub_category_name,
+             a.firstname AS author_firstname,
+             a.lastname AS author_lastname
+      FROM ci_blog b
+      LEFT JOIN ci_category c ON b.cat_id = c.id
+      LEFT JOIN ci_category sc ON b.sub_cat_id = sc.id
+      LEFT JOIN ci_admin a ON b.user_created_by = a.admin_id
+      WHERE b.status = 1
+      ORDER BY b.created_at DESC, b.id DESC
+    `;
+    const [rows] = await dbPool.query(query);
+    const data = (rows as any[]).map((row) => {
+      const summarySource = row.meta_description?.trim() || stripHtml(row.description_head || '');
+      const author = [row.author_firstname, row.author_lastname].filter(Boolean).join(' ').trim();
+      return {
+        id: row.id,
+        title: row.title || '',
+        url: (row.url || '').trim(),
+        short_content: summarySource.length > 180 ? summarySource.slice(0, 177).trimEnd() + '…' : summarySource,
+        category_id: row.cat_id,
+        sub_category_id: row.sub_cat_id,
+        category_name: row.sub_category_name || row.category_name || 'News',
+        image: assetUrl(row.image),
+        alt_tag: row.alt_tag || row.title || '',
+        author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
+        meta_keyword: row.meta_keyword || '',
+        created_at: row.created_at || '',
+      } as SearchItem;
+    });
+    searchIndexCache = { data, at: Date.now() };
+    return data;
+  } catch (err) {
+    handleDbError('getSearchIndex', err);
     return [];
   }
 }

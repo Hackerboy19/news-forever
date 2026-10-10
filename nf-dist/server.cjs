@@ -478,6 +478,54 @@ async function getPublishedBlogs(limit = 50, categorySlug) {
     return [];
   }
 }
+var searchIndexCache = null;
+var SEARCH_INDEX_CACHE_MS = 3e5;
+async function getSearchIndex() {
+  if (searchIndexCache && Date.now() - searchIndexCache.at < SEARCH_INDEX_CACHE_MS) {
+    return searchIndexCache.data;
+  }
+  try {
+    const query = `
+      SELECT b.id, b.title, b.url, b.image, b.alt_tag, b.cat_id, b.sub_cat_id,
+             b.meta_keyword, b.meta_description, b.created_at,
+             LEFT(b.description, 400) AS description_head,
+             c.cat_name AS category_name,
+             sc.cat_name AS sub_category_name,
+             a.firstname AS author_firstname,
+             a.lastname AS author_lastname
+      FROM ci_blog b
+      LEFT JOIN ci_category c ON b.cat_id = c.id
+      LEFT JOIN ci_category sc ON b.sub_cat_id = sc.id
+      LEFT JOIN ci_admin a ON b.user_created_by = a.admin_id
+      WHERE b.status = 1
+      ORDER BY b.created_at DESC, b.id DESC
+    `;
+    const [rows] = await dbPool.query(query);
+    const data = rows.map((row) => {
+      const summarySource = row.meta_description?.trim() || stripHtml(row.description_head || "");
+      const author = [row.author_firstname, row.author_lastname].filter(Boolean).join(" ").trim();
+      return {
+        id: row.id,
+        title: row.title || "",
+        url: (row.url || "").trim(),
+        short_content: summarySource.length > 180 ? summarySource.slice(0, 177).trimEnd() + "\u2026" : summarySource,
+        category_id: row.cat_id,
+        sub_category_id: row.sub_cat_id,
+        category_name: row.sub_category_name || row.category_name || "News",
+        image: assetUrl(row.image),
+        alt_tag: row.alt_tag || row.title || "",
+        author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
+        meta_keyword: row.meta_keyword || "",
+        created_at: row.created_at || ""
+      };
+    });
+    searchIndexCache = { data, at: Date.now() };
+    return data;
+  } catch (err) {
+    handleDbError("getSearchIndex", err);
+    return [];
+  }
+}
 async function incrementBlogViews(id) {
   try {
     await dbPool.query(`UPDATE ci_blog SET views = views + 1 WHERE id = ?`, [id]);
@@ -1436,7 +1484,10 @@ async function startServer() {
         const all = await getPublishedBlogs(1e5);
         return res.json(all.filter((b) => (b.tag_ids || []).some((id) => ids.has(id))));
       }
-      let result = await getPublishedBlogs(limit, categorySlug);
+      let result = await getPublishedBlogs(
+        req.query.search && !req.query.limit ? 1e5 : limit,
+        categorySlug
+      );
       if (req.query.status !== void 0) {
         const statusNum = parseInt(req.query.status, 10);
         result = result.filter((b) => b.status === statusNum);
@@ -1455,6 +1506,16 @@ async function startServer() {
     } catch (err) {
       console.error("GET /api/blogs failed:", err);
       res.status(500).json({ error: "Failed to load articles" });
+    }
+  });
+  app.get("/api/search-index", async (_req, res) => {
+    try {
+      const rows = await getSearchIndex();
+      res.set("Cache-Control", "public, max-age=300");
+      res.json(rows);
+    } catch (err) {
+      console.error("GET /api/search-index failed:", err);
+      res.status(500).json({ error: "Failed to load search index" });
     }
   });
   app.post("/api/blogs/:id/view", async (req, res) => {

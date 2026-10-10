@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CICategory, CIAdvertisement, CISetting, CIBlog } from '../types';
+import { CICategory, CIAdvertisement, CISetting, CIBlog, SearchItem } from '../types';
 import { 
   Search, 
   Menu, 
@@ -126,9 +126,50 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     }
   }, [commandPaletteOpen]);
 
-  // Real-time filtering over blogs real data
+  // The search palette must cover every published article, not the newest 200
+  // that /api/blogs returns. The full-catalogue index is fetched once, lazily,
+  // the first time the palette opens — it is ~200 KB because it carries no
+  // article bodies, and it is cached for the rest of the visit.
+  const [searchIndex, setSearchIndex] = useState<SearchItem[] | null>(null);
+  const [indexState, setIndexState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+
+  // One request per visit, tracked in a ref rather than in indexState: a state
+  // value cannot gate this effect, because setting it re-runs the effect and
+  // the first run's cleanup would then cancel its own in-flight fetch.
+  const indexRequested = useRef(false);
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  useEffect(() => {
+    if (!commandPaletteOpen || indexRequested.current) return;
+    indexRequested.current = true;
+    setIndexState('loading');
+    fetch('/api/search-index')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((rows: SearchItem[]) => {
+        if (!aliveRef.current) return;
+        if (Array.isArray(rows) && rows.length) {
+          setSearchIndex(rows);
+          setIndexState('ready');
+        } else {
+          // Nothing usable came back; keep searching the loaded articles
+          // rather than showing an empty palette.
+          setIndexState('error');
+        }
+      })
+      .catch(() => {
+        if (!aliveRef.current) return;
+        // Let the next open try again instead of searching 200 rows forever.
+        indexRequested.current = false;
+        setIndexState('error');
+      });
+  }, [commandPaletteOpen]);
+
+  // Real-time filtering over real data: the whole catalogue once the index has
+  // loaded, the already-loaded articles until then (and if the fetch fails).
+  const searchPool: SearchItem[] = searchIndex ?? blogs;
   const selectedCat = categories.find((c) => c.category_name === selectedCatFilter);
-  const filteredArticles = blogs.filter((article) => {
+  const filteredArticles = searchPool.filter((article) => {
     const matchesCat =
       selectedCatFilter === 'all' ||
       (selectedCat
@@ -140,13 +181,19 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     if (!query) return true;
 
     return (
-      article.title.toLowerCase().includes(query) ||
+      (article.title || '').toLowerCase().includes(query) ||
+      (article.url && article.url.toLowerCase().includes(query)) ||
       (article.short_content && article.short_content.toLowerCase().includes(query)) ||
       (article.category_name && article.category_name.toLowerCase().includes(query)) ||
       (article.meta_keyword && article.meta_keyword.toLowerCase().includes(query)) ||
       (article.author_name && article.author_name.toLowerCase().includes(query))
     );
   });
+
+  // Render a page of results rather than all 664 rows of an empty query —
+  // the count above the list still reports every match.
+  const PALETTE_PAGE = 60;
+  const visibleArticles = filteredArticles.slice(0, PALETTE_PAGE);
 
   // Top-level ci_category rows that actually have published articles
   const topCategories = categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0);
@@ -810,7 +857,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-200'
                 }`}
               >
-                {t('allCount')} ({blogs.length})
+                {t('allCount')} ({searchPool.length})
               </button>
               {topCategories.map((cat) => (
                 <button
@@ -830,8 +877,11 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             {/* Article Results Header Status */}
             <div className="px-4 py-2 bg-stone-50 border-b border-stone-100 flex items-center justify-between text-[11px] font-mono text-stone-500">
               <span>
-                {paletteQuery.trim()
-                  ? `Found ${filteredArticles.length} matching article${filteredArticles.length === 1 ? '' : 's'}`
+                {indexState === 'loading' && !searchIndex
+                  ? 'Loading full archive…'
+                  : paletteQuery.trim()
+                  ? `Found ${filteredArticles.length} matching article${filteredArticles.length === 1 ? '' : 's'}` +
+                    (filteredArticles.length > visibleArticles.length ? ` — showing first ${visibleArticles.length}` : '')
                   : `${t('trendingStories')} (${filteredArticles.length})`}
               </span>
               <span className="hidden sm:inline text-stone-400">{t('clickResult')}</span>
@@ -839,8 +889,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             {/* Results List */}
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100 p-2 space-y-1">
-              {filteredArticles.length > 0 ? (
-                filteredArticles.map((article) => (
+              {visibleArticles.length > 0 ? (
+                visibleArticles.map((article) => (
                   <div
                     key={article.id}
                     onClick={() => {

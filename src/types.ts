@@ -45,6 +45,29 @@ export interface CIBlog {
   h6_tag?: string;
 }
 
+/**
+ * One row of the site-wide search index: every published article, carrying
+ * only the fields the search palette actually renders or matches on.
+ *
+ * Deliberately a subset of CIBlog (structurally compatible, so a CIBlog[] can
+ * stand in as a fallback) and deliberately without `content` — the full
+ * article body is ~70% of /api/blogs' payload, and nothing in search needs it.
+ */
+export interface SearchItem {
+  id: number;
+  title: string;
+  url: string;
+  short_content: string;
+  category_id: number;
+  sub_category_id?: number;
+  category_name?: string;
+  image: string;
+  alt_tag: string;
+  author_name?: string;
+  meta_keyword: string;
+  created_at: string;
+}
+
 export interface CICategory {
   id: number;
   parent_id?: number; // ci_category.parent_id (0 = top level)
