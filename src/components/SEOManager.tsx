@@ -82,32 +82,20 @@ export const SEOManager: React.FC<SEOProps> = ({
     const activeImage = article?.og_image || article?.image || og_image || image || 'https://newsforever.in/assets/img/logo.png';
     setMetaTag('property', 'og:image', activeImage);
 
-    const activeUrl = article?.og_url || og_url || (typeof window !== 'undefined' ? window.location.href : '');
-    if (activeUrl) {
-      setMetaTag('property', 'og:url', activeUrl);
-      setLinkTag('canonical', activeUrl);
-    }
+    // Canonical = origin + clean path, never the query string (?lang=hi,
+    // utm_*) or the legacy og_url column (can hold a stray space). This must
+    // match the server-rendered canonical, otherwise Google sees two
+    // conflicting canonicals and picks its own ("Duplicate, Google chose
+    // different canonical than user").
+    const cleanPath = window.location.pathname.replace(/\/+$/, '') || '/';
+    const activeUrl = og_url || window.location.origin + cleanPath;
+    setMetaTag('property', 'og:url', activeUrl);
+    setLinkTag('canonical', activeUrl);
 
-    // hreflang alternates — valid now that ?lang=hi is a distinct, indexable
-    // URL serving server-translated Hindi content
-    const base = window.location.origin + window.location.pathname;
-    const alternates: [string, string][] = [
-      ['en-IN', base],
-      ['hi-IN', `${base}?lang=hi`],
-      ['x-default', base],
-    ];
-    for (const [code, href] of alternates) {
-      const id = `hreflang-${code}`;
-      let link = document.getElementById(id) as HTMLLinkElement | null;
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'alternate';
-        link.id = id;
-        document.head.appendChild(link);
-      }
-      link.hreflang = code;
-      link.href = href;
-    }
+    // ?lang=hi is a client-side translation of the same server HTML, not a
+    // separate indexable page, so it must not be advertised via hreflang
+    // (the server canonicals it to the English URL). Remove stale alternates.
+    document.querySelectorAll('link[id^="hreflang-"]').forEach((el) => el.remove());
 
     // 4. JSON-LD structured data — keeps the rich niche keywords (beauty
     // pageant, awards) for ranking even though the visible nav uses broad
