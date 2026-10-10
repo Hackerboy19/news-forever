@@ -828,11 +828,18 @@ export async function changeAdminPassword(
  * would break URLs that work today.
  */
 export function normaliseSlug(raw: string | undefined): string {
-  return (raw || '')
-    .replace(/\s+/g, '-')   // any whitespace run, including newlines, becomes one hyphen
-    .replace(/-{2,}/g, '-')  // collapse the runs that creates
-    .replace(/^-+|-+$/g, '') // and never lead or trail with one
-    .trim();
+  // Whitespace and nothing else.
+  //
+  // An earlier version also collapsed repeated hyphens and stripped leading
+  // and trailing ones. That was wrong: live articles are published at
+  // `/-tanvi-yatin-khairnar-miss-teen-india-2025`,
+  // `/-best-homoeopathy-doctor-hajipur-dr-ritu-roy-` and
+  // `/Miss--Mrs-and-Miss-Teen-FSIA-International-Beauty-pageant-Grand-Finale-2023`,
+  // all answering 200 today. Tidying those on save would have silently
+  // changed the URL of any such article the moment an editor pressed Save,
+  // and 404'd the link Google already has. Whitespace is the only thing a
+  // URL genuinely cannot carry, so it is the only thing touched here.
+  return (raw || '').replace(/\s+/g, '-');
 }
 
 /** Legacy CodeIgniter created_at format: 'YYYY-MM-DD : HH:MM:SS' */

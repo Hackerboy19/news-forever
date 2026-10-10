@@ -850,7 +850,7 @@ async function changeAdminPassword(username, currentPassword, newPassword) {
   return result.affectedRows > 0;
 }
 function normaliseSlug(raw) {
-  return (raw || "").replace(/\s+/g, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "").trim();
+  return (raw || "").replace(/\s+/g, "-");
 }
 function legacyNow() {
   const d = /* @__PURE__ */ new Date();
@@ -1896,6 +1896,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
     const RESERVED = /* @__PURE__ */ new Set(["", "admin", "category", "tag", "api", "assets", "uploads", "report.html", "favicon.ico", "sitemap.xml", "robots.txt", "rss.xml", "feed.rss"]);
     const BUILTIN_PAGES = /* @__PURE__ */ new Set(["privacy-policy", "terms-of-service", "disclaimer"]);
     const dimCache = /* @__PURE__ */ new Map();
+    const tidyPath = (p) => p.replace(/\s+/g, " ").trim();
     app.get("*", async (req, res) => {
       try {
         let html = await getTemplate();
@@ -1904,7 +1905,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
         let injected = false;
         let status = 200;
         if (seg && !seg.includes("/")) {
-          const tidySeg = normaliseSlug(seg);
+          const tidySeg = tidyPath(seg);
           if (tidySeg && tidySeg !== seg && await getBlogByUrlSlug(tidySeg)) {
             return res.redirect(301, `/${encodeURI(tidySeg)}`);
           }
@@ -2027,7 +2028,7 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             ].filter(Boolean).join("\n");
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
           } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news" && !BUILTIN_PAGES.has(seg.toLowerCase())) {
-            const tidy = normaliseSlug(seg);
+            const tidy = tidyPath(seg);
             if (tidy && tidy !== seg) {
               const viaTidy = await getBlogByUrlSlug(tidy);
               if (viaTidy) return res.redirect(301, `/${encodeURI(tidy)}`);

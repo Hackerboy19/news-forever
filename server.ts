@@ -40,7 +40,6 @@ import {
   deleteCategory,
   getPublishedBlogs,
   getBlogByUrlSlug,
-  normaliseSlug,
   incrementBlogViews,
   incrementAdClick,
   getAllCategories,
@@ -1008,6 +1007,15 @@ async function startServer() {
       return result;
     }
 
+    /**
+     * The slug a visitor probably meant, for a path carrying stray whitespace.
+     *
+     * Not normaliseSlug: that one turns whitespace into hyphens because it is
+     * minting a slug to store. Here we are matching against slugs that already
+     * exist, where the whitespace is noise from a bad link, so it comes out.
+     */
+    const tidyPath = (p: string) => p.replace(/\s+/g, " ").trim();
+
     app.get("*", async (req, res) => {
       try {
         let html = await getTemplate();
@@ -1028,7 +1036,7 @@ async function startServer() {
         // already pointed at the clean one, but a 301 is stronger and leaves
         // only one answer, so redirect before doing any of the work below.
         if (seg && !seg.includes("/")) {
-          const tidySeg = normaliseSlug(seg);
+          const tidySeg = tidyPath(seg);
           if (tidySeg && tidySeg !== seg && (await getBlogByUrlSlug(tidySeg))) {
             return res.redirect(301, `/${encodeURI(tidySeg)}`);
           }
@@ -1189,7 +1197,7 @@ async function startServer() {
             // 1. A path that only differs by stray whitespace. A slug saved
             //    with a leading space or a pasted-in headline cannot be
             //    served as typed, but the tidied form often exists.
-            const tidy = normaliseSlug(seg);
+            const tidy = tidyPath(seg);
             if (tidy && tidy !== seg) {
               const viaTidy = await getBlogByUrlSlug(tidy);
               if (viaTidy) return res.redirect(301, `/${encodeURI(tidy)}`);
