@@ -2036,8 +2036,21 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             const key = (tidy || seg).toLowerCase();
             const cat = (await getAllCategories()).find((c) => (c.slug || "").toLowerCase() === key);
             if (cat) return res.redirect(301, `/category/${encodeURIComponent(cat.slug)}`);
-            const tg = (await getActiveTags()).find((t) => (t.slug || "").toLowerCase() === key);
-            if (tg) return res.redirect(301, `/tag/${encodeURIComponent(tg.slug)}`);
+            const allTags = await getActiveTags();
+            const matching = allTags.filter((t) => (t.slug || "").toLowerCase() === key);
+            if (matching.length) {
+              const ids = new Set(matching.map((t) => t.id));
+              const tagged = (await getPublishedBlogs(1e5)).filter(
+                (b) => (b.tag_ids || []).some((id) => ids.has(id))
+              );
+              if (tagged.length === 1) {
+                const only = (tagged[0].url || "").trim();
+                if (only && only.toLowerCase() !== key) {
+                  return res.redirect(301, `/${encodeURI(only)}`);
+                }
+              }
+              return res.redirect(301, `/tag/${encodeURIComponent(matching[0].slug)}`);
+            }
             status = 404;
           }
         }

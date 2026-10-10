@@ -1211,8 +1211,29 @@ async function startServer() {
             const key = (tidy || seg).toLowerCase();
             const cat = (await getAllCategories()).find((c) => (c.slug || "").toLowerCase() === key);
             if (cat) return res.redirect(301, `/category/${encodeURIComponent(cat.slug)}`);
-            const tg = (await getActiveTags()).find((t) => (t.slug || "").toLowerCase() === key);
-            if (tg) return res.redirect(301, `/tag/${encodeURIComponent(tg.slug)}`);
+            const allTags = await getActiveTags();
+            const matching = allTags.filter((t) => (t.slug || "").toLowerCase() === key);
+            if (matching.length) {
+              // A tag named after one person or event is almost always the
+              // article's own earlier slug — /minakshi-mrs-jaipur-2025 was the
+              // article now at /meenakshi-mrs-jaipur-2025, before someone
+              // corrected the spelling. Sending such a link to the tag listing
+              // leaves the reader a click short and splits the old URL's value
+              // across two pages, so when the tag holds exactly one article,
+              // go straight to it. Tags covering several articles are real
+              // listings and keep going to /tag/<slug>.
+              const ids = new Set(matching.map((t) => t.id));
+              const tagged = (await getPublishedBlogs(100000)).filter((b) =>
+                (b.tag_ids || []).some((id) => ids.has(id))
+              );
+              if (tagged.length === 1) {
+                const only = (tagged[0].url || "").trim();
+                if (only && only.toLowerCase() !== key) {
+                  return res.redirect(301, `/${encodeURI(only)}`);
+                }
+              }
+              return res.redirect(301, `/tag/${encodeURIComponent(matching[0].slug)}`);
+            }
             // Nothing matches — a real 404, which is the honest answer.
             status = 404;
           }
