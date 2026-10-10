@@ -40,6 +40,7 @@ import {
   deleteCategory,
   getPublishedBlogs,
   getBlogByUrlSlug,
+  normaliseSlug,
   incrementBlogViews,
   incrementAdClick,
   getAllCategories,
@@ -1021,6 +1022,17 @@ async function startServer() {
           .replace(/\n?\s*<script\s+type="application\/ld\+json">[\s\S]*?<\/script>/gi, "");
         let injected = false;
         let status = 200;
+        // A path carrying stray whitespace resolves to the same article as
+        // the tidy one, because the slug lookup trims its parameter — so the
+        // article was being served at two URLs at once. The canonical tag
+        // already pointed at the clean one, but a 301 is stronger and leaves
+        // only one answer, so redirect before doing any of the work below.
+        if (seg && !seg.includes("/")) {
+          const tidySeg = normaliseSlug(seg);
+          if (tidySeg && tidySeg !== seg && (await getBlogByUrlSlug(tidySeg))) {
+            return res.redirect(301, `/${encodeURI(tidySeg)}`);
+          }
+        }
         // Admin-created static page? (single segment, in the page set)
         const pageSet = seg && !seg.includes("/") && !RESERVED.has(seg.split("/")[0]) ? await getPageSlugSet() : null;
         const isStaticPage = !!pageSet && pageSet.has(seg.toLowerCase());
@@ -1170,9 +1182,30 @@ async function startServer() {
             ].filter(Boolean).join("\n");
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
           } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news" && !BUILTIN_PAGES.has(seg.toLowerCase())) {
-            // Bare single-segment path that is neither a static page (handled
-            // above) nor an article, and not the latest-news landing → genuine
-            // 404. Category/tag pages use prefixes so are never mis-flagged.
+            // Not an article. Before calling it a 404, try the two shapes
+            // Search Console actually reports, and send a 301 so the ranking
+            // of the old link moves to the live one instead of being lost.
+            //
+            // 1. A path that only differs by stray whitespace. A slug saved
+            //    with a leading space or a pasted-in headline cannot be
+            //    served as typed, but the tidied form often exists.
+            const tidy = normaliseSlug(seg);
+            if (tidy && tidy !== seg) {
+              const viaTidy = await getBlogByUrlSlug(tidy);
+              if (viaTidy) return res.redirect(301, `/${encodeURI(tidy)}`);
+            }
+            // 2. A bare category or tag slug. The old CodeIgniter site linked
+            //    these without a prefix (/Miss-Universe-2026), and only the
+            //    /News/<slug> form was being redirected, so the bare ones
+            //    stayed 404 even though the section is live. Categories are
+            //    checked first: a bare slug on the old site was a section
+            //    page far more often than a tag.
+            const key = (tidy || seg).toLowerCase();
+            const cat = (await getAllCategories()).find((c) => (c.slug || "").toLowerCase() === key);
+            if (cat) return res.redirect(301, `/category/${encodeURIComponent(cat.slug)}`);
+            const tg = (await getActiveTags()).find((t) => (t.slug || "").toLowerCase() === key);
+            if (tg) return res.redirect(301, `/tag/${encodeURIComponent(tg.slug)}`);
+            // Nothing matches — a real 404, which is the honest answer.
             status = 404;
           }
         }

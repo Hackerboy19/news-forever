@@ -665,7 +665,7 @@ async function deleteAd(id) {
 async function createCategory(payload) {
   const row = {
     parent_id: payload.parent_id ?? 0,
-    url: (payload.slug || "").trim(),
+    url: normaliseSlug(payload.slug),
     cat_name: payload.category_name || "",
     meta_title: payload.meta_title || payload.category_name || "",
     meta_keyword: "",
@@ -693,7 +693,7 @@ async function createCategory(payload) {
 async function updateCategory(id, payload) {
   const cols = {};
   if (payload.category_name !== void 0) cols.cat_name = payload.category_name;
-  if (payload.slug !== void 0) cols.url = payload.slug.trim();
+  if (payload.slug !== void 0) cols.url = normaliseSlug(payload.slug);
   if (payload.parent_id !== void 0) cols.parent_id = payload.parent_id;
   if (payload.status !== void 0) cols.status = payload.status;
   if (payload.meta_title !== void 0) cols.meta_title = payload.meta_title;
@@ -742,7 +742,7 @@ async function createTag(data) {
 async function updateTag(id, data) {
   const cols = {};
   if (data.tag_name !== void 0) cols.tag_name = data.tag_name;
-  if (data.slug !== void 0) cols.url = data.slug.trim() || slugifyTag(data.tag_name || "");
+  if (data.slug !== void 0) cols.url = normaliseSlug(data.slug) || slugifyTag(data.tag_name || "");
   if (data.status !== void 0) cols.status = data.status;
   const names = Object.keys(cols);
   if (names.length) {
@@ -849,6 +849,9 @@ async function changeAdminPassword(username, currentPassword, newPassword) {
   );
   return result.affectedRows > 0;
 }
+function normaliseSlug(raw) {
+  return (raw || "").replace(/\s+/g, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "").trim();
+}
 function legacyNow() {
   const d = /* @__PURE__ */ new Date();
   const pad = (n) => String(n).padStart(2, "0");
@@ -866,7 +869,7 @@ function toBlogColumns(payload) {
   if (payload.tag_ids !== void 0) cols.tag_id = payload.tag_ids.join(",");
   if (payload.image !== void 0) cols.image = toLegacyAssetPath(payload.image);
   if (payload.alt_tag !== void 0) cols.alt_tag = payload.alt_tag;
-  if (payload.url !== void 0) cols.url = payload.url.trim();
+  if (payload.url !== void 0) cols.url = normaliseSlug(payload.url);
   if (payload.meta_title !== void 0) cols.meta_title = payload.meta_title;
   if (payload.meta_keyword !== void 0) cols.meta_keyword = payload.meta_keyword;
   if (payload.meta_description !== void 0) cols.meta_description = payload.meta_description;
@@ -1900,6 +1903,12 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
         html = html.replace(/\n?\s*<meta\s+(name="description"|name="keywords"|property="og:[^"]*"|name="twitter:[^"]*")[^>]*>/gi, "").replace(/\n?\s*<link\s+rel="canonical"[^>]*>/gi, "").replace(/\n?\s*<script\s+type="application\/ld\+json">[\s\S]*?<\/script>/gi, "");
         let injected = false;
         let status = 200;
+        if (seg && !seg.includes("/")) {
+          const tidySeg = normaliseSlug(seg);
+          if (tidySeg && tidySeg !== seg && await getBlogByUrlSlug(tidySeg)) {
+            return res.redirect(301, `/${encodeURI(tidySeg)}`);
+          }
+        }
         const pageSet = seg && !seg.includes("/") && !RESERVED.has(seg.split("/")[0]) ? await getPageSlugSet() : null;
         const isStaticPage = !!pageSet && pageSet.has(seg.toLowerCase());
         if (isStaticPage) {
@@ -2018,6 +2027,16 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             ].filter(Boolean).join("\n");
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
           } else if (!seg.includes("/") && seg.toLowerCase() !== "latest-news" && !BUILTIN_PAGES.has(seg.toLowerCase())) {
+            const tidy = normaliseSlug(seg);
+            if (tidy && tidy !== seg) {
+              const viaTidy = await getBlogByUrlSlug(tidy);
+              if (viaTidy) return res.redirect(301, `/${encodeURI(tidy)}`);
+            }
+            const key = (tidy || seg).toLowerCase();
+            const cat = (await getAllCategories()).find((c) => (c.slug || "").toLowerCase() === key);
+            if (cat) return res.redirect(301, `/category/${encodeURIComponent(cat.slug)}`);
+            const tg = (await getActiveTags()).find((t) => (t.slug || "").toLowerCase() === key);
+            if (tg) return res.redirect(301, `/tag/${encodeURIComponent(tg.slug)}`);
             status = 404;
           }
         }

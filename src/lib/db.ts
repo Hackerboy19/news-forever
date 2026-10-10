@@ -590,7 +590,7 @@ export async function deleteAd(id: number): Promise<boolean> {
 export async function createCategory(payload: Partial<CICategory>): Promise<CICategory[]> {
   const row: Record<string, string | number> = {
     parent_id: payload.parent_id ?? 0,
-    url: (payload.slug || '').trim(),
+    url: normaliseSlug(payload.slug),
     cat_name: payload.category_name || '',
     meta_title: payload.meta_title || payload.category_name || '',
     meta_keyword: '', meta_description: payload.meta_description || '',
@@ -611,7 +611,7 @@ export async function createCategory(payload: Partial<CICategory>): Promise<CICa
 export async function updateCategory(id: number, payload: Partial<CICategory>): Promise<CICategory[]> {
   const cols: Record<string, string | number> = {};
   if (payload.category_name !== undefined) cols.cat_name = payload.category_name;
-  if (payload.slug !== undefined) cols.url = payload.slug.trim();
+  if (payload.slug !== undefined) cols.url = normaliseSlug(payload.slug);
   if (payload.parent_id !== undefined) cols.parent_id = payload.parent_id;
   if (payload.status !== undefined) cols.status = payload.status;
   if (payload.meta_title !== undefined) cols.meta_title = payload.meta_title;
@@ -666,7 +666,7 @@ export async function createTag(data: { tag_name: string; slug?: string; status?
 export async function updateTag(id: number, data: { tag_name?: string; slug?: string; status?: number }) {
   const cols: Record<string, any> = {};
   if (data.tag_name !== undefined) cols.tag_name = data.tag_name;
-  if (data.slug !== undefined) cols.url = data.slug.trim() || slugifyTag(data.tag_name || '');
+  if (data.slug !== undefined) cols.url = normaliseSlug(data.slug) || slugifyTag(data.tag_name || '');
   if (data.status !== undefined) cols.status = data.status;
   const names = Object.keys(cols);
   if (names.length) {
@@ -813,6 +813,28 @@ export async function changeAdminPassword(
   return (result as any).affectedRows > 0;
 }
 
+/**
+ * Make a slug safe to live in a URL, without changing what it says.
+ *
+ * Search Console reported 404s for paths like `/ tanvi-yatin-khairnar-...`,
+ * `/Miss Teen India 2022 Manushi Parmar 1st Runner-Up` and one containing a
+ * literal newline — slugs saved with a leading space, inner spaces or a
+ * pasted-in headline. A URL cannot carry raw whitespace, so those pages were
+ * unreachable from the moment they were saved.
+ *
+ * Deliberately conservative: whitespace only. Case, punctuation and
+ * non-ASCII are left exactly as entered, because live slugs rely on them
+ * (`Miss-Universe-2026`, `Beauty-Pageant`) and lower-casing or stripping
+ * would break URLs that work today.
+ */
+export function normaliseSlug(raw: string | undefined): string {
+  return (raw || '')
+    .replace(/\s+/g, '-')   // any whitespace run, including newlines, becomes one hyphen
+    .replace(/-{2,}/g, '-')  // collapse the runs that creates
+    .replace(/^-+|-+$/g, '') // and never lead or trail with one
+    .trim();
+}
+
 /** Legacy CodeIgniter created_at format: 'YYYY-MM-DD : HH:MM:SS' */
 function legacyNow(): string {
   const d = new Date();
@@ -835,7 +857,7 @@ function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number
   if (payload.tag_ids !== undefined) cols.tag_id = payload.tag_ids.join(',');
   if (payload.image !== undefined) cols.image = toLegacyAssetPath(payload.image);
   if (payload.alt_tag !== undefined) cols.alt_tag = payload.alt_tag;
-  if (payload.url !== undefined) cols.url = payload.url.trim();
+  if (payload.url !== undefined) cols.url = normaliseSlug(payload.url);
   if (payload.meta_title !== undefined) cols.meta_title = payload.meta_title;
   if (payload.meta_keyword !== undefined) cols.meta_keyword = payload.meta_keyword;
   if (payload.meta_description !== undefined) cols.meta_description = payload.meta_description;
