@@ -297,6 +297,8 @@ export async function incrementBlogViews(id: number): Promise<void> {
 
 export async function incrementAdClick(id: number): Promise<void> {
   try {
+    // Only where the install has somewhere to put the number.
+    if (!(await adHasColumn('click_count'))) return;
     await dbPool.query(`UPDATE ci_advertisement SET click_count = click_count + 1 WHERE id = ?`, [id]);
   } catch (err) {
     handleDbError('incrementAdClick', err);
@@ -1224,7 +1226,7 @@ function mapAdRow(row: RawAdRow): CIAdvertisement {
     position: row.position,
     priority: row.priority,
     status: row.status,
-    click_count: 0,
+    click_count: row.click_count ?? 0,
     impressions: 0,
     created_at: row.created_at || '',
   };
@@ -1239,9 +1241,12 @@ function mapAdRow(row: RawAdRow): CIAdvertisement {
  */
 export async function getAllAdsAdmin(): Promise<CIAdvertisement[]> {
   try {
+    const cols = await adSelectColumns([
+      'id', 'advertisement_title', 'advertisement_url', 'advertisement_image',
+      'alt_tag', 'priority', 'position', 'status', 'click_count', 'created_at',
+    ]);
     const [rows] = await dbPool.query(`
-      SELECT id, advertisement_title, advertisement_url, advertisement_image,
-             alt_tag, priority, position, status, created_at
+      SELECT ${cols.map((c) => `\`${c}\``).join(', ')}
       FROM ci_advertisement
       ORDER BY status DESC, priority ASC, id DESC
     `);
@@ -1252,11 +1257,38 @@ export async function getAllAdsAdmin(): Promise<CIAdvertisement[]> {
   }
 }
 
+/**
+ * The columns an ad query may ask for, narrowed to the ones this install's
+ * ci_advertisement actually has.
+ *
+ * This is why no ad ever reached the site. The admin query does not select
+ * click_count and worked fine; the public one did, and this table has no
+ * such column, so MySQL rejected the whole statement, the error was caught,
+ * and the endpoint answered with an empty list. Ads were live and active in
+ * the manager and invisible everywhere else.
+ */
+async function adSelectColumns(wanted: string[]): Promise<string[]> {
+  const schema = await describeTable('ci_advertisement');
+  // Definition unreadable → ask for everything, exactly as before.
+  if (schema.length === 0) return wanted;
+  const known = new Set(schema.map((c) => c.name));
+  return wanted.filter((c) => known.has(c));
+}
+
+/** Does this install's ci_advertisement have the column? Unknown → assume yes. */
+async function adHasColumn(name: string): Promise<boolean> {
+  const schema = await describeTable('ci_advertisement');
+  return schema.length === 0 || schema.some((c) => c.name === name);
+}
+
 export async function getActiveAds(): Promise<CIAdvertisement[]> {
   try {
+    const cols = await adSelectColumns([
+      'id', 'advertisement_title', 'advertisement_url', 'advertisement_image',
+      'alt_tag', 'priority', 'position', 'status', 'click_count', 'created_at',
+    ]);
     const query = `
-      SELECT id, advertisement_title, advertisement_url, advertisement_image,
-             alt_tag, priority, position, status, click_count, created_at
+      SELECT ${cols.map((c) => `\`${c}\``).join(', ')}
       FROM ci_advertisement
       WHERE status = 1
       ORDER BY priority ASC, id DESC

@@ -565,6 +565,7 @@ async function incrementBlogViews(id) {
 }
 async function incrementAdClick(id) {
   try {
+    if (!await adHasColumn("click_count")) return;
     await dbPool.query(`UPDATE ci_advertisement SET click_count = click_count + 1 WHERE id = ?`, [id]);
   } catch (err) {
     handleDbError("incrementAdClick", err);
@@ -1285,16 +1286,27 @@ function mapAdRow(row) {
     position: row.position,
     priority: row.priority,
     status: row.status,
-    click_count: 0,
+    click_count: row.click_count ?? 0,
     impressions: 0,
     created_at: row.created_at || ""
   };
 }
 async function getAllAdsAdmin() {
   try {
+    const cols = await adSelectColumns([
+      "id",
+      "advertisement_title",
+      "advertisement_url",
+      "advertisement_image",
+      "alt_tag",
+      "priority",
+      "position",
+      "status",
+      "click_count",
+      "created_at"
+    ]);
     const [rows] = await dbPool.query(`
-      SELECT id, advertisement_title, advertisement_url, advertisement_image,
-             alt_tag, priority, position, status, created_at
+      SELECT ${cols.map((c) => `\`${c}\``).join(", ")}
       FROM ci_advertisement
       ORDER BY status DESC, priority ASC, id DESC
     `);
@@ -1304,11 +1316,32 @@ async function getAllAdsAdmin() {
     return [];
   }
 }
+async function adSelectColumns(wanted) {
+  const schema = await describeTable("ci_advertisement");
+  if (schema.length === 0) return wanted;
+  const known = new Set(schema.map((c) => c.name));
+  return wanted.filter((c) => known.has(c));
+}
+async function adHasColumn(name) {
+  const schema = await describeTable("ci_advertisement");
+  return schema.length === 0 || schema.some((c) => c.name === name);
+}
 async function getActiveAds() {
   try {
+    const cols = await adSelectColumns([
+      "id",
+      "advertisement_title",
+      "advertisement_url",
+      "advertisement_image",
+      "alt_tag",
+      "priority",
+      "position",
+      "status",
+      "click_count",
+      "created_at"
+    ]);
     const query = `
-      SELECT id, advertisement_title, advertisement_url, advertisement_image,
-             alt_tag, priority, position, status, click_count, created_at
+      SELECT ${cols.map((c) => `\`${c}\``).join(", ")}
       FROM ci_advertisement
       WHERE status = 1
       ORDER BY priority ASC, id DESC
