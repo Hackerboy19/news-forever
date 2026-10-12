@@ -82,6 +82,8 @@ export interface FeedArticle {
   title: string;
   summary: string;
   published: Date;
+  /** Absolute URL of the article's own image, when the row has one. */
+  image?: string;
 }
 
 /**
@@ -129,11 +131,33 @@ export function selectFeedArticles(
       title,
       summary: (b.short_content || b.meta_description || '').trim(),
       published,
+      image: (b.og_image || b.image || '').trim() || undefined,
     });
   }
 
   out.sort((a, z) => z.published.getTime() - a.published.getTime());
   return typeof opts.limit === 'number' ? out.slice(0, opts.limit) : out;
+}
+
+/** MIME type for a feed image, from its extension. Unknown types are left out
+ *  rather than guessed, since a wrong type is worse than none. */
+export function imageMimeType(url: string): string | null {
+  const ext = (url.split('?')[0].split('#')[0].match(/\.([a-z0-9]+)$/i) || [])[1];
+  switch ((ext || '').toLowerCase()) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'avif':
+      return 'image/avif';
+    default:
+      return null;
+  }
 }
 
 /** Absolute, canonical URL for an article — the same shape the page's own canonical tag uses. */
@@ -184,7 +208,14 @@ export function buildRssFeed(
   blogs: CIBlog[],
   origin: string,
   now: Date = new Date(),
-  opts: { title?: string; description?: string } = {}
+  opts: {
+    title?: string;
+    description?: string;
+    /** Publication logo, shown by readers next to the channel. */
+    logo?: string;
+    /** Byte size of an image, when the server can measure the file on disk. */
+    imageBytes?: (url: string) => number | undefined;
+  } = {}
 ): string {
   const base = origin.replace(/\/+$/, '');
   const items = selectFeedArticles(blogs, { now, limit: RSS_MAX_ITEMS });
@@ -199,6 +230,13 @@ export function buildRssFeed(
   const body = items
     .map((a) => {
       const link = articleUrl(base, a.slug);
+      const img = a.image && /^https?:\/\//i.test(a.image) ? a.image : '';
+      const mime = img ? imageMimeType(img) : null;
+      // Two ways of carrying the picture, because readers disagree about
+      // which they honour. <enclosure> needs a byte length, so it is only
+      // emitted when the caller could measure the file; media:content has no
+      // such requirement and is what most aggregators read.
+      const bytes = img ? opts.imageBytes?.(img) : undefined;
       return (
         `    <item>\n` +
         `      <title>${xmlEscape(a.title)}</title>\n` +
@@ -206,6 +244,12 @@ export function buildRssFeed(
         `      <guid isPermaLink="true">${xmlEscape(link)}</guid>\n` +
         `      <pubDate>${rfc822(a.published)}</pubDate>\n` +
         (a.summary ? `      <description>${xmlEscape(a.summary)}</description>\n` : '') +
+        (img && mime
+          ? `      <media:content url="${xmlEscape(img)}" medium="image" type="${mime}" />\n`
+          : '') +
+        (img && mime && typeof bytes === 'number' && bytes > 0
+          ? `      <enclosure url="${xmlEscape(img)}" type="${mime}" length="${bytes}" />\n`
+          : '') +
         `    </item>`
       );
     })
@@ -213,7 +257,8 @@ export function buildRssFeed(
 
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">\n` +
+    `<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"\n` +
+    `     xmlns:media="http://search.yahoo.com/mrss/">\n` +
     `  <channel>\n` +
     `    <title>${xmlEscape(channelTitle)}</title>\n` +
     `    <link>${xmlEscape(base + '/')}</link>\n` +
@@ -221,6 +266,13 @@ export function buildRssFeed(
     `    <language>${PUBLICATION_LANGUAGE}</language>\n` +
     `    <lastBuildDate>${rfc822(lastBuild)}</lastBuildDate>\n` +
     `    <atom:link href="${xmlEscape(base + '/feed')}" rel="self" type="application/rss+xml" />\n` +
+    (opts.logo && /^https?:\/\//i.test(opts.logo)
+      ? `    <image>\n` +
+        `      <url>${xmlEscape(opts.logo)}</url>\n` +
+        `      <title>${xmlEscape(channelTitle)}</title>\n` +
+        `      <link>${xmlEscape(base + '/')}</link>\n` +
+        `    </image>\n`
+      : '') +
     (body ? `${body}\n` : '') +
     `  </channel>\n` +
     `</rss>\n`

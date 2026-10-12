@@ -701,30 +701,92 @@ function toAdColumns(payload: Partial<CIAdvertisement>): Record<string, string |
   return cols;
 }
 
+/**
+ * The real shape of a legacy table, read once from the database.
+ *
+ * ci_advertisement was created by the old CodeIgniter installer, and which
+ * columns it has varies between installs. Inserting a fixed list of columns
+ * fails on any install that has an extra NOT NULL column without a default —
+ * MySQL in strict mode rejects the whole row with "Field 'x' doesn't have a
+ * default value", which is how an ad save can appear to do nothing. Reading
+ * the definition lets the insert name only columns that exist and fill in
+ * the ones the table insists on.
+ */
+interface ColumnInfo { name: string; nullable: boolean; hasDefault: boolean; type: string; isAuto: boolean }
+const tableColumnCache = new Map<string, ColumnInfo[]>();
+async function describeTable(table: string): Promise<ColumnInfo[]> {
+  const cached = tableColumnCache.get(table);
+  if (cached) return cached;
+  let cols: ColumnInfo[] = [];
+  try {
+    const [rows] = await dbPool.query(`SHOW COLUMNS FROM \`${table}\``);
+    cols = (rows as any[]).map((r) => ({
+      name: String(r.Field),
+      nullable: String(r.Null).toUpperCase() === 'YES',
+      hasDefault: r.Default !== null && r.Default !== undefined,
+      type: String(r.Type || '').toLowerCase(),
+      isAuto: String(r.Extra || '').toLowerCase().includes('auto_increment'),
+    }));
+  } catch (err) {
+    handleDbError('describeTable:' + table, err);
+    cols = [];
+  }
+  tableColumnCache.set(table, cols);
+  return cols;
+}
+
+/** A harmless value for a NOT NULL column the caller said nothing about. */
+function emptyValueFor(col: ColumnInfo): string | number {
+  if (/int|decimal|float|double|bit|year/.test(col.type)) return 0;
+  if (/datetime|timestamp/.test(col.type)) return legacyNow();
+  if (/^date/.test(col.type)) return legacyNow().slice(0, 10);
+  return '';
+}
+
 export async function createAd(payload: Partial<CIAdvertisement>): Promise<CIAdvertisement[]> {
   const defaults: Record<string, string | number> = {
     advertisement_title: '', advertisement_url: '', advertisement_image: '', alt_tag: '',
     priority: 2, position: 'right', status: 1,
   };
-  const row = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+  const wanted: Record<string, string | number> = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+
+  const schema = await describeTable('ci_advertisement');
+  const row: Record<string, string | number> = {};
+  if (schema.length === 0) {
+    // Could not read the definition — behave exactly as before.
+    Object.assign(row, wanted);
+  } else {
+    const known = new Set(schema.map((c) => c.name));
+    for (const [k, v] of Object.entries(wanted)) if (known.has(k)) row[k] = v;
+    // Anything the table requires and the form never asked about.
+    for (const col of schema) {
+      if (col.isAuto || col.nullable || col.hasDefault) continue;
+      if (row[col.name] === undefined) row[col.name] = emptyValueFor(col);
+    }
+  }
+
   const names = Object.keys(row);
   await dbPool.query(
     `INSERT INTO ci_advertisement (${names.map((n) => `\`${n}\``).join(',')}) VALUES (${names.map(() => '?').join(',')})`,
-    names.map((n) => row[n as keyof typeof row])
+    names.map((n) => row[n])
   );
-  return getActiveAds();
+  return getAllAdsAdmin();
 }
 
 export async function updateAd(id: number, payload: Partial<CIAdvertisement>): Promise<CIAdvertisement[]> {
   const cols = toAdColumns(payload);
-  const names = Object.keys(cols);
+  const schema = await describeTable('ci_advertisement');
+  const known = schema.length ? new Set(schema.map((c) => c.name)) : null;
+  const names = Object.keys(cols).filter((n) => !known || known.has(n));
   if (names.length > 0) {
     await dbPool.query(
       `UPDATE ci_advertisement SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`,
       [...names.map((n) => cols[n]), id]
     );
   }
-  return getActiveAds();
+  // The admin list, not the active one: an ad that was just switched off has
+  // to stay on screen, or there is no way to switch it back on.
+  return getAllAdsAdmin();
 }
 
 export async function deleteAd(id: number): Promise<boolean> {

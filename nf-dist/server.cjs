@@ -99,11 +99,30 @@ function selectFeedArticles(blogs, opts = {}) {
       slug,
       title,
       summary: (b.short_content || b.meta_description || "").trim(),
-      published
+      published,
+      image: (b.og_image || b.image || "").trim() || void 0
     });
   }
   out.sort((a, z) => z.published.getTime() - a.published.getTime());
   return typeof opts.limit === "number" ? out.slice(0, opts.limit) : out;
+}
+function imageMimeType(url) {
+  const ext = (url.split("?")[0].split("#")[0].match(/\.([a-z0-9]+)$/i) || [])[1];
+  switch ((ext || "").toLowerCase()) {
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "avif":
+      return "image/avif";
+    default:
+      return null;
+  }
 }
 function articleUrl(origin, slug) {
   return `${origin.replace(/\/+$/, "")}/${encodeURI(slug)}`;
@@ -142,16 +161,22 @@ function buildRssFeed(blogs, origin, now = /* @__PURE__ */ new Date(), opts = {}
   const lastBuild = items.length ? items[0].published : now;
   const body = items.map((a) => {
     const link = articleUrl(base, a.slug);
+    const img = a.image && /^https?:\/\//i.test(a.image) ? a.image : "";
+    const mime = img ? imageMimeType(img) : null;
+    const bytes = img ? opts.imageBytes?.(img) : void 0;
     return `    <item>
       <title>${xmlEscape(a.title)}</title>
       <link>${xmlEscape(link)}</link>
       <guid isPermaLink="true">${xmlEscape(link)}</guid>
       <pubDate>${rfc822(a.published)}</pubDate>
 ` + (a.summary ? `      <description>${xmlEscape(a.summary)}</description>
+` : "") + (img && mime ? `      <media:content url="${xmlEscape(img)}" medium="image" type="${mime}" />
+` : "") + (img && mime && typeof bytes === "number" && bytes > 0 ? `      <enclosure url="${xmlEscape(img)}" type="${mime}" length="${bytes}" />
 ` : "") + `    </item>`;
   }).join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"
+     xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title>${xmlEscape(channelTitle)}</title>
     <link>${xmlEscape(base + "/")}</link>
@@ -159,7 +184,12 @@ function buildRssFeed(blogs, origin, now = /* @__PURE__ */ new Date(), opts = {}
     <language>${PUBLICATION_LANGUAGE}</language>
     <lastBuildDate>${rfc822(lastBuild)}</lastBuildDate>
     <atom:link href="${xmlEscape(base + "/feed")}" rel="self" type="application/rss+xml" />
-` + (body ? `${body}
+` + (opts.logo && /^https?:\/\//i.test(opts.logo) ? `    <image>
+      <url>${xmlEscape(opts.logo)}</url>
+      <title>${xmlEscape(channelTitle)}</title>
+      <link>${xmlEscape(base + "/")}</link>
+    </image>
+` : "") + (body ? `${body}
 ` : "") + `  </channel>
 </rss>
 `;
@@ -854,6 +884,33 @@ function toAdColumns(payload) {
   if (payload.status !== void 0) cols.status = payload.status;
   return cols;
 }
+var tableColumnCache = /* @__PURE__ */ new Map();
+async function describeTable(table) {
+  const cached = tableColumnCache.get(table);
+  if (cached) return cached;
+  let cols = [];
+  try {
+    const [rows] = await dbPool.query(`SHOW COLUMNS FROM \`${table}\``);
+    cols = rows.map((r) => ({
+      name: String(r.Field),
+      nullable: String(r.Null).toUpperCase() === "YES",
+      hasDefault: r.Default !== null && r.Default !== void 0,
+      type: String(r.Type || "").toLowerCase(),
+      isAuto: String(r.Extra || "").toLowerCase().includes("auto_increment")
+    }));
+  } catch (err) {
+    handleDbError("describeTable:" + table, err);
+    cols = [];
+  }
+  tableColumnCache.set(table, cols);
+  return cols;
+}
+function emptyValueFor(col) {
+  if (/int|decimal|float|double|bit|year/.test(col.type)) return 0;
+  if (/datetime|timestamp/.test(col.type)) return legacyNow();
+  if (/^date/.test(col.type)) return legacyNow().slice(0, 10);
+  return "";
+}
 async function createAd(payload) {
   const defaults = {
     advertisement_title: "",
@@ -864,24 +921,38 @@ async function createAd(payload) {
     position: "right",
     status: 1
   };
-  const row = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+  const wanted = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+  const schema = await describeTable("ci_advertisement");
+  const row = {};
+  if (schema.length === 0) {
+    Object.assign(row, wanted);
+  } else {
+    const known = new Set(schema.map((c) => c.name));
+    for (const [k, v] of Object.entries(wanted)) if (known.has(k)) row[k] = v;
+    for (const col of schema) {
+      if (col.isAuto || col.nullable || col.hasDefault) continue;
+      if (row[col.name] === void 0) row[col.name] = emptyValueFor(col);
+    }
+  }
   const names = Object.keys(row);
   await dbPool.query(
     `INSERT INTO ci_advertisement (${names.map((n) => `\`${n}\``).join(",")}) VALUES (${names.map(() => "?").join(",")})`,
     names.map((n) => row[n])
   );
-  return getActiveAds();
+  return getAllAdsAdmin();
 }
 async function updateAd(id, payload) {
   const cols = toAdColumns(payload);
-  const names = Object.keys(cols);
+  const schema = await describeTable("ci_advertisement");
+  const known = schema.length ? new Set(schema.map((c) => c.name)) : null;
+  const names = Object.keys(cols).filter((n) => !known || known.has(n));
   if (names.length > 0) {
     await dbPool.query(
       `UPDATE ci_advertisement SET ${names.map((n) => `\`${n}\` = ?`).join(", ")} WHERE id = ?`,
       [...names.map((n) => cols[n]), id]
     );
   }
-  return getActiveAds();
+  return getAllAdsAdmin();
 }
 async function deleteAd(id) {
   const [result] = await dbPool.query(`DELETE FROM ci_advertisement WHERE id = ?`, [id]);
@@ -1365,6 +1436,33 @@ async function answerQuestion(question, articleHtml, fallbackSummary) {
 
 // server.ts
 var shellCache = "";
+function legacyMediaRoot() {
+  return process.env.LEGACY_MEDIA_ROOT || process.cwd();
+}
+var byteSizeCache = /* @__PURE__ */ new Map();
+function imageByteSize(absUrl) {
+  if (!absUrl) return void 0;
+  if (byteSizeCache.has(absUrl)) return byteSizeCache.get(absUrl);
+  let size;
+  try {
+    const root = import_path.default.resolve(legacyMediaRoot());
+    let pathname;
+    try {
+      pathname = new URL(absUrl).pathname;
+    } catch {
+      pathname = absUrl;
+    }
+    const file = import_path.default.resolve(root, decodeURIComponent(pathname).replace(/^\/+/, ""));
+    if (file.startsWith(root) && import_fs.default.existsSync(file)) {
+      const st = import_fs.default.statSync(file);
+      if (st.isFile() && st.size > 0) size = st.size;
+    }
+  } catch {
+    size = void 0;
+  }
+  byteSizeCache.set(absUrl, size);
+  return size;
+}
 function configBootstrap(cfg) {
   const json = JSON.stringify(cfg ?? {}).replace(/</g, "\\u003c");
   return `<script id="nf-config">window.__NF_CONFIG__=${json}</script>`;
@@ -1780,6 +1878,7 @@ async function startServer() {
       logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement", req);
       return res.json(ads);
     } catch (err) {
+      console.error("POST /api/advertisements failed:", err?.message);
       return res.status(500).json({ error: "Ad save failed: " + err?.message });
     }
   });
@@ -2078,9 +2177,14 @@ ${rows.join("\n")}
       const now = Date.now();
       if (!feedCache.xml || now - feedCache.at > 10 * 60 * 1e3) {
         const blogs = await getPublishedBlogs(1e5);
+        const cfg = await getSiteConfig();
         feedCache = {
           xml: buildRssFeed(blogs, originOf(req), /* @__PURE__ */ new Date(), {
-            title: siteSetting.meta_default_title || void 0
+            title: siteSetting.meta_default_title || void 0,
+            // The masthead the admin uploaded, when there is one — never a
+            // placeholder.
+            logo: (cfg.logoUrl || "").trim() || void 0,
+            imageBytes: imageByteSize
           }),
           at: now
         };
@@ -2265,18 +2369,30 @@ Sitemap: ${host}/news-sitemap.xml
             const dim = imageDimensions(img, mediaRoot);
             const ogTitle = esc(article.og_title || article.meta_title || article.title);
             const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
+            const publishedAt = parseLegacyDate(article.created_at);
+            const modifiedAt = parseLegacyDate(article.updated_at || article.created_at) || publishedAt;
+            const isoOrDate = (d, raw) => d ? d.toISOString() : (raw || "").slice(0, 10) || void 0;
+            const logoUrl = ((await getSiteConfig()).logoUrl || "").trim();
             const ld = {
               "@context": "https://schema.org",
               "@type": "NewsArticle",
               headline: article.meta_title || article.title,
               description: article.meta_description || article.short_content || "",
-              image: img ? [img] : void 0,
-              datePublished: (article.created_at || "").slice(0, 10) || void 0,
-              dateModified: (article.updated_at || article.created_at || "").slice(0, 10) || void 0,
+              // An ImageObject with the real pixel size, read from the file on
+              // disk, rather than a bare URL Google has to fetch to measure.
+              image: img ? [
+                dim ? { "@type": "ImageObject", url: img, width: dim.width, height: dim.height } : img
+              ] : void 0,
+              datePublished: isoOrDate(publishedAt, article.created_at),
+              dateModified: isoOrDate(modifiedAt, article.updated_at || article.created_at),
               mainEntityOfPage: urlRaw,
               url: urlRaw,
               author: { "@type": "Organization", name: "News Forever", url: origin },
-              publisher: { "@type": "Organization", name: "News Forever" },
+              publisher: {
+                "@type": "Organization",
+                name: "News Forever",
+                ...logoUrl ? { logo: { "@type": "ImageObject", url: logoUrl } } : {}
+              },
               ...article.category_name ? { articleSection: article.category_name } : {},
               ...article.meta_keyword ? { keywords: article.meta_keyword } : {},
               ...article.person_name ? { about: { "@type": "Person", name: article.person_name } } : {}

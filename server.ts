@@ -3,7 +3,7 @@ import express from "express";
 import path from "path";
 import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
-import { buildNewsSitemap, buildRssFeed } from "./src/lib/feeds";
+import { buildNewsSitemap, buildRssFeed, parseLegacyDate } from "./src/lib/feeds";
 import { translateArticle, translateTitles } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
 import { answerQuestion } from "./src/lib/qa";
@@ -78,6 +78,43 @@ import {
  * ignored: a stale title is worth far less than a homepage that still serves.
  */
 let shellCache = "";
+/** Where the legacy assets/ and uploads/ trees live on disk. */
+function legacyMediaRoot(): string {
+  return process.env.LEGACY_MEDIA_ROOT || process.cwd();
+}
+
+/**
+ * Size in bytes of an image this server hosts, for the RSS <enclosure>,
+ * whose length attribute is required by the spec. Remote or missing files
+ * return undefined and the enclosure is simply left out rather than
+ * advertised with a made-up length. Cached, like the dimension probe.
+ */
+const byteSizeCache = new Map<string, number | undefined>();
+function imageByteSize(absUrl: string): number | undefined {
+  if (!absUrl) return undefined;
+  if (byteSizeCache.has(absUrl)) return byteSizeCache.get(absUrl);
+  let size: number | undefined;
+  try {
+    const root = path.resolve(legacyMediaRoot());
+    let pathname: string;
+    try {
+      pathname = new URL(absUrl).pathname;
+    } catch {
+      pathname = absUrl;
+    }
+    const file = path.resolve(root, decodeURIComponent(pathname).replace(/^\/+/, ""));
+    // Stay inside the media root: a crafted path must not stat the filesystem.
+    if (file.startsWith(root) && nodeFs.existsSync(file)) {
+      const st = nodeFs.statSync(file);
+      if (st.isFile() && st.size > 0) size = st.size;
+    }
+  } catch {
+    size = undefined;
+  }
+  byteSizeCache.set(absUrl, size);
+  return size;
+}
+
 /**
  * Inline the site settings into the HTML shell.
  *
@@ -630,6 +667,10 @@ async function startServer() {
       logActivity(admin.name, admin.admin_id, `${id ? "Updated" : "Created"} Advertisement "${payload.title || id}"`, "Advertisement", req);
       return res.json(ads);
     } catch (err: any) {
+      // Logged as well as returned: an ad write that the legacy table rejects
+      // is the kind of failure that otherwise only exists in a dismissed
+      // browser alert, with nothing in the server log to diagnose from.
+      console.error("POST /api/advertisements failed:", err?.message);
       return res.status(500).json({ error: "Ad save failed: " + err?.message });
     }
   });
@@ -973,9 +1014,14 @@ async function startServer() {
       const now = Date.now();
       if (!feedCache.xml || now - feedCache.at > 10 * 60 * 1000) {
         const blogs = await getPublishedBlogs(100000);
+        const cfg = await getSiteConfig();
         feedCache = {
           xml: buildRssFeed(blogs, originOf(req), new Date(), {
             title: siteSetting.meta_default_title || undefined,
+            // The masthead the admin uploaded, when there is one — never a
+            // placeholder.
+            logo: (cfg.logoUrl || "").trim() || undefined,
+            imageBytes: imageByteSize,
           }),
           at: now,
         };
@@ -1263,18 +1309,43 @@ async function startServer() {
             const ogTitle = esc(article.og_title || article.meta_title || article.title);
             const ogDesc = esc(article.og_description || article.meta_description || article.short_content || "");
             // JSON-LD NewsArticle for rich results + name-based search relevance.
+            // Full timestamps, not just the date. ci_blog.created_at holds the
+            // time as well ("2025-11-17 : 14:32:08"); emitting only the date
+            // told Google News the story broke at midnight, which for a
+            // recency-ranked surface is the wrong answer. Falls back to the
+            // date portion if the legacy string will not parse.
+            const publishedAt = parseLegacyDate(article.created_at);
+            const modifiedAt = parseLegacyDate(article.updated_at || article.created_at) || publishedAt;
+            const isoOrDate = (d: Date | null, raw: string | undefined) =>
+              d ? d.toISOString() : (raw || "").slice(0, 10) || undefined;
+            // The publisher logo the admin actually uploaded. Google asks for
+            // one on Article markup; it is left out entirely when the site has
+            // not set a logo, rather than pointing at something that is not it.
+            const logoUrl = ((await getSiteConfig()).logoUrl || "").trim();
             const ld = {
               "@context": "https://schema.org",
               "@type": "NewsArticle",
               headline: article.meta_title || article.title,
               description: article.meta_description || article.short_content || "",
-              image: img ? [img] : undefined,
-              datePublished: (article.created_at || "").slice(0, 10) || undefined,
-              dateModified: ((article.updated_at || article.created_at || "").slice(0, 10)) || undefined,
+              // An ImageObject with the real pixel size, read from the file on
+              // disk, rather than a bare URL Google has to fetch to measure.
+              image: img
+                ? [
+                    dim
+                      ? { "@type": "ImageObject", url: img, width: dim.width, height: dim.height }
+                      : img,
+                  ]
+                : undefined,
+              datePublished: isoOrDate(publishedAt, article.created_at),
+              dateModified: isoOrDate(modifiedAt, article.updated_at || article.created_at),
               mainEntityOfPage: urlRaw,
               url: urlRaw,
               author: { "@type": "Organization", name: "News Forever", url: origin },
-              publisher: { "@type": "Organization", name: "News Forever" },
+              publisher: {
+                "@type": "Organization",
+                name: "News Forever",
+                ...(logoUrl ? { logo: { "@type": "ImageObject", url: logoUrl } } : {}),
+              },
               ...(article.category_name ? { articleSection: article.category_name } : {}),
               ...(article.meta_keyword ? { keywords: article.meta_keyword } : {}),
               ...(article.person_name ? { about: { "@type": "Person", name: article.person_name } } : {}),

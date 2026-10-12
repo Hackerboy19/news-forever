@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  imageMimeType,
   parseLegacyDate,
   rfc822,
   xmlEscape,
@@ -176,4 +177,80 @@ test('articleUrl percent-encodes without mangling an ordinary slug', () => {
   assert.equal(articleUrl(ORIGIN + '/', 'plain-slug'), 'https://newsforever.in/plain-slug');
   assert.equal(articleUrl(ORIGIN, '-leading-hyphen-'), 'https://newsforever.in/-leading-hyphen-');
   assert.equal(articleUrl(ORIGIN, 'Miss--Mrs-2023'), 'https://newsforever.in/Miss--Mrs-2023');
+});
+
+test('rss items carry the article image for readers that show one', () => {
+  const xml = buildRssFeed(
+    [blog({ url: 'with-pic', image: 'https://newsforever.in/assets/img/blog/1.jpg', created_at: hoursAgo(1) })],
+    ORIGIN,
+    NOW
+  );
+  assert.match(xml, /xmlns:media="http:\/\/search\.yahoo\.com\/mrss\/"/);
+  assert.match(
+    xml,
+    /<media:content url="https:\/\/newsforever\.in\/assets\/img\/blog\/1\.jpg" medium="image" type="image\/jpeg" \/>/
+  );
+  assert.ok(!xml.includes('<enclosure'), 'no enclosure without a measured byte length');
+});
+
+test('an enclosure appears only when the file size is known', () => {
+  const xml = buildRssFeed(
+    [blog({ url: 'with-pic', image: 'https://newsforever.in/assets/img/blog/1.png', created_at: hoursAgo(1) })],
+    ORIGIN,
+    NOW,
+    { imageBytes: () => 54321 }
+  );
+  assert.match(xml, /<enclosure url="[^"]+1\.png" type="image\/png" length="54321" \/>/);
+});
+
+test('an image of unknown type is left out rather than mislabelled', () => {
+  const xml = buildRssFeed(
+    [blog({ url: 'odd', image: 'https://newsforever.in/assets/img/blog/1.bmp', created_at: hoursAgo(1) })],
+    ORIGIN,
+    NOW,
+    { imageBytes: () => 100 }
+  );
+  assert.ok(!xml.includes('media:content'));
+  assert.ok(!xml.includes('<enclosure'));
+});
+
+test('a relative image path is not advertised as a feed image', () => {
+  const xml = buildRssFeed(
+    [blog({ url: 'rel', image: 'assets/img/blog/1.jpg', created_at: hoursAgo(1) })],
+    ORIGIN,
+    NOW,
+    { imageBytes: () => 100 }
+  );
+  assert.ok(!xml.includes('media:content'), 'feed readers cannot resolve a relative path');
+});
+
+test('the channel image is the real logo, and absent when there is none', () => {
+  const withLogo = buildRssFeed([blog({ created_at: hoursAgo(1) })], ORIGIN, NOW, {
+    logo: 'https://newsforever.in/uploads/logo.png',
+  });
+  assert.match(withLogo, /<image>[\s\S]*<url>https:\/\/newsforever\.in\/uploads\/logo\.png<\/url>[\s\S]*<\/image>/);
+  const without = buildRssFeed([blog({ created_at: hoursAgo(1) })], ORIGIN, NOW);
+  assert.ok(!without.includes('<image>'));
+});
+
+test('a hostile image URL cannot break out of the attribute', () => {
+  const xml = buildRssFeed(
+    [blog({ url: 'x', image: 'https://newsforever.in/a".jpg?q="><script>alert(1)</script>', created_at: hoursAgo(1) })],
+    ORIGIN,
+    NOW,
+    { imageBytes: () => 10 }
+  );
+  assert.ok(!xml.includes('<script>'), 'markup must not survive');
+  const attr = (xml.match(/<media:content url="([^"]*)"/) || [])[1] || '';
+  assert.ok(attr.length > 0, 'the image is still advertised');
+  assert.ok(!attr.includes('"') && !attr.includes('<'), `raw character left in attribute: ${attr}`);
+  assert.match(attr, /&quot;/, 'the quote is escaped, not dropped');
+});
+
+test('imageMimeType reads the extension and admits when it cannot tell', () => {
+  assert.equal(imageMimeType('/a/b.JPG'), 'image/jpeg');
+  assert.equal(imageMimeType('https://x/y.webp?v=2'), 'image/webp');
+  assert.equal(imageMimeType('https://x/y.avif#a'), 'image/avif');
+  assert.equal(imageMimeType('https://x/y'), null);
+  assert.equal(imageMimeType('https://x/y.tiff'), null);
 });

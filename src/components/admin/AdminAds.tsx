@@ -271,6 +271,22 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                 />
               </div>
 
+              {/* Without this there was no way to switch an ad off, or to
+                  switch a switched-off one back on. */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  Status <span className="text-zinc-500 font-normal">(only active ads appear on the site)</span>
+                </label>
+                <select
+                  value={editingAd.status === 0 ? 0 : 1}
+                  onChange={(e) => setEditingAd(prev => ({ ...prev, status: parseInt(e.target.value, 10) }))}
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
+                >
+                  <option value={1}>Active — showing on the site</option>
+                  <option value={0}>Inactive — hidden, kept for later</option>
+                </select>
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#222222]">
                 <button
                   type="button"

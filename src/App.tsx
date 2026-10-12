@@ -138,6 +138,16 @@ export function App() {
   const [categories, setCategories] = useState<CICategory[]>([]);
   const [tags, setTags] = useState<CITag[]>([]);
   const [ads, setAds] = useState<CIAdvertisement[]>([]);
+  /**
+   * The ad manager's own list, from /api/advertisements?status=all.
+   *
+   * The panel used to show the public list, which is active ads only (plus
+   * the demo banners that ship in the bundle). Switching an ad off made it
+   * disappear from the manager with no way back, and a newly saved row that
+   * was not active never appeared at all — the section looked like it was
+   * ignoring every edit.
+   */
+  const [adminAds, setAdminAds] = useState<CIAdvertisement[]>([]);
   const [activityLogs, setActivityLogs] = useState<CIActivityLog[]>([]);
   const [users, setUsers] = useState<CIUser[]>([]);
   const [subAdmins, setSubAdmins] = useState<CIUser[]>([]);
@@ -322,7 +332,12 @@ export function App() {
   // until the next save. Re-fetch it whenever a session is present.
   useEffect(() => {
     fetchAdminData(adminAuth);
-    if (adminAuth) refreshAdminBlogs(adminAuth);
+    if (adminAuth) {
+      refreshAdminBlogs(adminAuth);
+      refreshAdminAds(adminAuth);
+    } else {
+      setAdminAds([]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminAuth]);
 
@@ -471,6 +486,25 @@ export function App() {
     setAdminAuth(null);
     setViewMode('public');
     fetchData(); // back to the published-only list
+  };
+
+  /** Ad manager list includes inactive ads (status=all, auth required). */
+  const refreshAdminAds = async (creds: AdminCredentials | null = adminAuth) => {
+    if (!creds) return;
+    try {
+      const res = await fetch('/api/advertisements?status=all', { headers: adminHeaders(creds) });
+      if (res.ok) setAdminAds(await res.json());
+    } catch (err) {
+      console.error('Failed to refresh admin ad list', err);
+    }
+  };
+
+  /** Public ad list, so the site reflects a change straight after a save. */
+  const refreshPublicAds = async () => {
+    try {
+      const resAds = await fetch('/api/advertisements').then((r) => (r.ok ? r.json() : []));
+      setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
+    } catch { /* the site keeps the list it already has */ }
   };
 
   /** Admin blog list includes drafts (status=all, auth required). */
@@ -737,12 +771,12 @@ export function App() {
         body: JSON.stringify(payload),
       });
       if (await handleWriteError(res)) return;
+      // The server answers with the manager's list (inactive ads included),
+      // so the row that was just saved is always on screen afterwards.
       const data = await res.json();
-      if (Array.isArray(data)) setAds(data);
-      else {
-        const resAds = await fetch('/api/advertisements').then(r => r.json());
-        setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      }
+      if (Array.isArray(data)) setAdminAds(data);
+      else await refreshAdminAds();
+      await refreshPublicAds();
     } catch (err) {
       alert('Could not save the ad. Please try again.');
     }
@@ -753,6 +787,7 @@ export function App() {
     try {
       const res = await fetch(`/api/advertisements/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
+      setAdminAds(prev => prev.filter(a => a.id !== id));
       setAds(prev => prev.filter(a => a.id !== id));
     } catch (err) {
       alert('Could not delete the ad. Please try again.');
@@ -855,7 +890,8 @@ export function App() {
               <AdminDashboard
                 blogs={blogs}
                 categories={categories}
-                ads={ads}
+                /* Real ads only (inactive included), not the demo banners. */
+                ads={adminAds.length ? adminAds : ads}
                 activityLogs={activityLogs}
                 onNavigate={(tab) => setAdminTab(tab)}
                 onNewArticle={() => {
@@ -897,7 +933,7 @@ export function App() {
 
             {adminTab === 'Advertisement' && (
               <AdminAds
-                ads={ads}
+                ads={adminAds}
                 onSaveAd={handleSaveAd}
                 onDeleteAd={handleDeleteAd}
               />
@@ -1008,8 +1044,11 @@ export function App() {
       onSwitchToAdmin={() => {
         setViewMode('admin');
         // Returning from the public site, where the list was replaced by the
-        // published-only page, so load the admin list (drafts included) again.
-        if (adminAuth) refreshAdminBlogs(adminAuth);
+        // published-only page, so load the admin lists again.
+        if (adminAuth) {
+          refreshAdminBlogs(adminAuth);
+          refreshAdminAds(adminAuth);
+        }
       }}
       onSubscribe={handleSubscribe}
       dateFilter={dateFilter}
