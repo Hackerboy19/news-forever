@@ -314,6 +314,18 @@ ${text}`
   if (!out) throw new Error("gemini empty");
   return out.trim();
 }
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var BATCH = 4;
+var BATCH_PAUSE_MS = 150;
+async function translateOnce(text) {
+  try {
+    return await translateText(text);
+  } catch (err) {
+    if (!/429|rate|timeout|ECONN|socket/i.test(String(err?.message || err))) throw err;
+    await sleep(600);
+    return translateText(text);
+  }
+}
 async function translateText(text) {
   const key = process.env.GEMINI_API_KEY;
   if (key) {
@@ -343,11 +355,11 @@ async function translateHtml(html) {
     }
   });
   let done = 0;
-  const BATCH = 12;
   for (let i = 0; i < jobs.length; i += BATCH) {
+    if (i > 0) await sleep(BATCH_PAUSE_MS);
     const slice = jobs.slice(i, i + BATCH);
     const results = await Promise.all(
-      slice.map((j) => translateText(j.text).then((t) => {
+      slice.map((j) => translateOnce(j.text).then((t) => {
         done++;
         return t;
       }).catch(() => j.text))
@@ -365,10 +377,10 @@ async function translateTitles(titles) {
   const pending = [...new Set(titles)].filter((t) => t && t.length > 3).slice(0, 80);
   const todo = pending.filter((t) => !titleCache.has(t));
   lastFailure = "";
-  const BATCH = 12;
   for (let i = 0; i < todo.length; i += BATCH) {
+    if (i > 0) await sleep(BATCH_PAUSE_MS);
     const slice = todo.slice(i, i + BATCH);
-    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => null)));
+    const results = await Promise.all(slice.map((t) => translateOnce(t).catch(() => null)));
     results.forEach((r, k) => {
       if (r) titleCache.set(slice[k], r);
     });

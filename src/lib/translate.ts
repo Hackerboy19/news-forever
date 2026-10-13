@@ -74,6 +74,30 @@ async function geminiTranslate(text: string, apiKey: string): Promise<string> {
   return out.trim();
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * How many translate calls to have in flight at once.
+ *
+ * The keyless endpoint answers 429 to a burst from one IP, which is what
+ * made every card headline stay English while the article page (fewer, more
+ * spread-out calls) came through. Small batches with a pause between them
+ * get a page of headlines translated instead of none.
+ */
+const BATCH = 4;
+const BATCH_PAUSE_MS = 150;
+
+/** One retry on a rate-limited or failed call, then give up on that string. */
+async function translateOnce(text: string): Promise<string> {
+  try {
+    return await translateText(text);
+  } catch (err: any) {
+    if (!/429|rate|timeout|ECONN|socket/i.test(String(err?.message || err))) throw err;
+    await sleep(600);
+    return translateText(text);
+  }
+}
+
 async function translateText(text: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (key) {
@@ -113,11 +137,11 @@ async function translateHtml(html: string): Promise<string> {
   // the provider is down, and returning the English body as though it were
   // Hindi is worse than admitting the failure.
   let done = 0;
-  const BATCH = 12;
   for (let i = 0; i < jobs.length; i += BATCH) {
+    if (i > 0) await sleep(BATCH_PAUSE_MS);
     const slice = jobs.slice(i, i + BATCH);
     const results = await Promise.all(
-      slice.map((j) => translateText(j.text).then((t) => { done++; return t; }).catch(() => j.text))
+      slice.map((j) => translateOnce(j.text).then((t) => { done++; return t; }).catch(() => j.text))
     );
     results.forEach((r, k) => {
       tokens[slice[k].index] = r;
@@ -136,10 +160,10 @@ export async function translateTitles(titles: string[]): Promise<Record<string, 
   const todo = pending.filter((t) => !titleCache.has(t));
 
   lastFailure = '';
-  const BATCH = 12;
   for (let i = 0; i < todo.length; i += BATCH) {
+    if (i > 0) await sleep(BATCH_PAUSE_MS);
     const slice = todo.slice(i, i + BATCH);
-    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => null)));
+    const results = await Promise.all(slice.map((t) => translateOnce(t).catch(() => null)));
     // A title that could not be translated is not cached as itself — that
     // would pin the English version for the life of the process, long after
     // the provider recovered.
