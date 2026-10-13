@@ -182,6 +182,21 @@ async function startServer() {
   // Outbound HTTP (Hindi translation, article Q&A, the legacy image bridge)
   // needs a fetch. Node 18+ has one; older hosts do not, and this server runs
   // on one of those. Installed before anything can make a call.
+  // A copy of this bundle left inside dist/ would still be downloadable:
+  // nginx serves that directory as the site root. Say so loudly at boot —
+  // the file is a leftover from the old layout and should be deleted.
+  try {
+    const strayBundle = path.join(process.cwd(), "dist", "server.cjs");
+    if (nodeFs.existsSync(strayBundle)) {
+      console.warn(
+        `[security] ${strayBundle} is inside the web root and can be downloaded. ` +
+          `The server now runs from ${path.join(process.cwd(), "server.cjs")} — delete the copy in dist/.`
+      );
+    }
+  } catch {
+    /* a failed check must never stop the server booting */
+  }
+
   const fetchKind = ensureFetch();
   console.log(`[http] outbound fetch: ${fetchKind} (node ${process.version})`);
   const ts = translationStoreStats();

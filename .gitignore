@@ -10,3 +10,7 @@ coverage/
 
 # Runtime translation cache — belongs on the server, not in the repo
 .nf-cache/
+
+# Built server bundle — lives beside the app, not in the web-served dist/
+/server.cjs
+/server.cjs.map

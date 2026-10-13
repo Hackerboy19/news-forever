@@ -5,26 +5,38 @@ be uploaded — `src/`, `api/` and the config files are build inputs only.
 
 ## The files
 
-Upload these four into your app's **`dist/` folder**, replacing what is there:
+**The layout changed in this build.** The server bundle no longer lives in
+`dist/`: nginx serves that directory as the site root, which made
+`https://newsforever.in/server.cjs` downloadable by anyone. It now sits
+beside `dist/`, where the web cannot reach it.
 
-| Upload this                        | To this path on the server        |
-| ---------------------------------- | --------------------------------- |
-| `nf-dist/server.cjs`               | `<app-root>/dist/server.cjs`      |
-| `nf-dist/index.html`               | `<app-root>/dist/index.html`      |
-| `nf-dist/assets/index-fpN1RoRM.js` | `<app-root>/dist/assets/`         |
-| `nf-dist/assets/index-CRDOQoNW.css`| `<app-root>/dist/assets/`         |
+`nf-dist.zip` already has the right shape, so unzip it **at the app root**
+(`httpdocs` — the folder that contains `dist/`, `node_modules/` and `.env`),
+not inside `dist/`:
 
-`nf-dist.zip` holds the same four files with that same layout, so unzipping it
-into `dist/` does the whole job in one step.
+```
+<app-root>/server.cjs              ← the server (new location)
+<app-root>/dist/index.html
+<app-root>/dist/assets/index-*.js
+<app-root>/dist/assets/index-*.css
+```
 
-`<app-root>` is the directory Plesk shows as the Node application root — the
-one containing `dist/`, `node_modules/` and `.env`. The server resolves the
-site from `process.cwd() + "/dist"`, so the files must sit under `dist/`, not
-at the app root.
+Three things to do once, with this build:
 
-The asset filenames carry a content hash and change on every build. `index.html`
-references the new pair, so old `assets/index-*.js` and `assets/index-*.css`
-files are simply unused after this — safe to leave, tidier to delete.
+1. **Delete `<app-root>/dist/server.cjs`** — the old copy, still
+   downloadable until it is gone. The boot log complains about it by name
+   if it is left behind.
+2. **Plesk → Node.js → Application Startup File**: change `dist/server.cjs`
+   to `server.cjs`. (If the app fails to start, put it back and tell me —
+   nothing else needs reverting.)
+3. Restart.
+
+Afterwards `https://newsforever.in/server.cjs` must answer **404**. If it
+still answers 200, nginx is serving the app root rather than `dist/`, and
+the nginx rule further down is the answer instead.
+
+Old `assets/index-*.js` and `.css` files are unused after this — safe to
+leave, tidier to delete.
 
 ## One setting in `.env`
 
@@ -200,22 +212,15 @@ free limits are ever exceeded, translating the whole 664-article archive on
 the paid tier is roughly a dollar on Flash-Lite and under ten on Flash, once
 — the disk cache means it is never paid for twice.
 
-## One thing only you can close: `/server.cjs` is downloadable
+## If `/server.cjs` is still downloadable
 
-nginx serves the app's `dist/` directory as the site root, so the server
-bundle sitting inside it is reachable at `https://newsforever.in/server.cjs`.
-It holds no passwords — those come from `.env` at runtime — but it is the
-whole server source, and it should not be public. Two ways to close it:
+It should 404 after the move above. If it does not, this host serves the
+app root itself, and the file has to be denied explicitly: Plesk → Domains
+→ newsforever.in → Apache & nginx Settings → *Additional nginx directives*:
 
-- **Move the bundle out of `dist/`** (a build change here, plus one field in
-  Plesk → Node.js → *Application Startup File*). Ask and I will do the build
-  side.
-- **Deny it in nginx**: Plesk → Domains → newsforever.in → Apache & nginx
-  Settings → *Additional nginx directives*:
-
-  ```nginx
-  location ~* ^/(server\.cjs|.*\.map|.*\.zip)$ { deny all; }
-  ```
+```nginx
+location ~* ^/(server\.cjs|.*\.map|.*\.zip)$ { deny all; }
+```
 
 ## Still needed outside the code
 

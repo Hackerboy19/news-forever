@@ -1888,6 +1888,15 @@ async function syncHomepageShell(distPath) {
   }
 }
 async function startServer() {
+  try {
+    const strayBundle = import_path2.default.join(process.cwd(), "dist", "server.cjs");
+    if (import_fs2.default.existsSync(strayBundle)) {
+      console.warn(
+        `[security] ${strayBundle} is inside the web root and can be downloaded. The server now runs from ${import_path2.default.join(process.cwd(), "server.cjs")} \u2014 delete the copy in dist/.`
+      );
+    }
+  } catch {
+  }
   const fetchKind = ensureFetch();
   console.log(`[http] outbound fetch: ${fetchKind} (node ${process.version})`);
   const ts = storeStats();
