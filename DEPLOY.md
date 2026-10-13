@@ -150,42 +150,42 @@ before this build can be recovered — the trail starts at the restart.
 
 ## Hindi translation (HI button)
 
-The HI button translates the interface, and asks the server to translate the
-article itself. On this server that request is failing, so articles stay in
-English while the rest of the page turns Hindi:
+Articles and headlines are translated on the server when a reader switches
+to HI. No API key is needed: four providers are tried in order, and whichever
+answered last is tried first next time.
 
-```bash
-curl -s 'https://newsforever.in/api/translate?slug=<any-article-slug>'
-```
+1. Gemini — only if `GEMINI_API_KEY` is set. Best quality, private quota.
+2. `translate.googleapis.com` — keyless.
+3. `clients5.google.com` — keyless, and a **separate quota** from the one
+   above, which is what keeps the site going when that one answers 429.
+4. MyMemory — keyless, short strings only.
 
-After this build the answer says why, e.g.
-`{"translated":false,"reason":"gtx: gtx 429"}`. The keyless Google endpoint
-the server falls back on is routinely rate-limited or blocked for shared
-hosting IPs, which is the likely reading of a 429 or a network error.
+**Every translation is kept on disk** in `<app-root>/.nf-cache/hi/`, outside
+`dist/`, so nothing in it is reachable over the web. An article is therefore
+translated once, ever: later readers — and the server after a restart or a
+deploy — get it with no outbound call at all. A translation is dropped and
+redone only when an editor changes the English, which a fingerprint catches.
 
-The real cause on this host turned out to be the Node version: `fetch` only
-became a global in Node 18, and every outbound call was failing with
-`fetch is not defined`. This build carries a small shim so it works either
-way — the boot log now prints which is in use:
-
-```
-[http] outbound fetch: shim (node v16.20.2)
-```
-
-`shim` means the host is on an old Node. Switching the app to **Node 18 or
-newer** in Plesk → Node.js is still worth doing: it is faster, supported, and
-the line will then read `native`.
-
-A Gemini API key gives better translations than the free endpoint, and the
-code prefers it when present. Add one line to `.env` and restart:
+Do not delete `.nf-cache`; it is the site's Hindi edition. The boot log
+reports it:
 
 ```
-GEMINI_API_KEY=<your key from aistudio.google.com/apikey>
+[i18n] translation cache: disk at /…/.nf-cache/hi — 128 article(s), 940 headline(s)
 ```
 
-Nothing else changes: translations are computed once per article and cached
-in memory, the database is never written to, and English stays the stored
-version.
+`memory` instead of `disk` means the directory could not be written, and
+translations will be lost on every restart — fix the permissions on the app
+root if you see it.
+
+`/api/translate?slug=…` says what happened: `{"translated":true,"provider":"chrome"}`,
+or a `reason` naming each provider's error when they all refuse.
+
+A Gemini key is still worth adding if you want better Hindi than a machine
+endpoint gives — one line in `.env` and a restart:
+
+```
+GEMINI_API_KEY=<key from aistudio.google.com/apikey>
+```
 
 ## One thing only you can close: `/server.cjs` is downloadable
 

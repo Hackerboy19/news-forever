@@ -101,8 +101,8 @@ function ensureFetch() {
 }
 
 // server.ts
-var import_path = __toESM(require("path"), 1);
-var import_fs = __toESM(require("fs"), 1);
+var import_path2 = __toESM(require("path"), 1);
+var import_fs2 = __toESM(require("fs"), 1);
 
 // src/data/siteConfig.ts
 var siteSetting = {
@@ -272,6 +272,152 @@ function buildRssFeed(blogs, origin, now = /* @__PURE__ */ new Date(), opts = {}
 `;
 }
 
+// src/lib/translateStore.ts
+var import_fs = __toESM(require("fs"), 1);
+var import_path = __toESM(require("path"), 1);
+function fingerprint(...parts) {
+  const text = parts.map((p) => p || "").join("\0");
+  let h1 = 2166136261;
+  let h2 = 16777619;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = Math.imul(h2 + c, 2246822507) ^ h2 >>> 13;
+  }
+  return `${text.length.toString(36)}-${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
+}
+var DIR = process.env.TRANSLATION_CACHE_DIR || import_path.default.join(process.cwd(), ".nf-cache", "hi");
+var TITLES_FILE = import_path.default.join(DIR, "_titles.json");
+var MAX_TITLES = 5e3;
+var mode = "unknown";
+var memArticles = /* @__PURE__ */ new Map();
+var titles = null;
+var titlesDirty = false;
+var titlesTimer = null;
+function ensureDir() {
+  if (mode === "disk") return true;
+  if (mode === "memory") return false;
+  try {
+    import_fs.default.mkdirSync(DIR, { recursive: true });
+    const probe = import_path.default.join(DIR, ".probe");
+    import_fs.default.writeFileSync(probe, "ok");
+    import_fs.default.unlinkSync(probe);
+    mode = "disk";
+  } catch {
+    mode = "memory";
+  }
+  return mode === "disk";
+}
+function storeMode() {
+  ensureDir();
+  return mode;
+}
+function fileFor(slug) {
+  const safe = slug.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/\.{2,}/g, "_").replace(/^[._-]+/, "").slice(0, 120) || "untitled";
+  return import_path.default.join(DIR, `${safe}.json`);
+}
+function loadArticle(slug, fp) {
+  const fresh = (d) => d && d.translated && (!fp || !d.fp || d.fp === fp) ? d : null;
+  const mem = fresh(memArticles.get(slug));
+  if (mem) return mem;
+  if (!ensureDir()) return null;
+  try {
+    const data = JSON.parse(import_fs.default.readFileSync(fileFor(slug), "utf8"));
+    const ok = fresh(data);
+    if (ok) {
+      memArticles.set(slug, ok);
+      return ok;
+    }
+    if (data?.translated) memArticles.delete(slug);
+  } catch {
+  }
+  return null;
+}
+function saveArticle(slug, data) {
+  if (!data?.translated) return;
+  const withTime = { ...data, at: (/* @__PURE__ */ new Date()).toISOString() };
+  memArticles.set(slug, withTime);
+  if (!ensureDir()) return;
+  try {
+    import_fs.default.writeFileSync(fileFor(slug), JSON.stringify(withTime), "utf8");
+  } catch {
+  }
+}
+function loadTitles() {
+  if (titles) return titles;
+  titles = {};
+  if (ensureDir()) {
+    try {
+      const parsed = JSON.parse(import_fs.default.readFileSync(TITLES_FILE, "utf8"));
+      if (parsed && typeof parsed === "object") titles = parsed;
+    } catch {
+    }
+  }
+  return titles;
+}
+function saveTitles(pairs) {
+  const all = loadTitles();
+  let changed = false;
+  for (const [en, hi] of Object.entries(pairs)) {
+    if (en && hi && all[en] !== hi) {
+      all[en] = hi;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  const keys = Object.keys(all);
+  if (keys.length > MAX_TITLES) {
+    for (const k of keys.slice(0, keys.length - MAX_TITLES)) delete all[k];
+  }
+  titlesDirty = true;
+  if (titlesTimer || !ensureDir()) return;
+  titlesTimer = setTimeout(() => {
+    titlesTimer = null;
+    flushTitles();
+  }, 500);
+  if (typeof titlesTimer.unref === "function") titlesTimer.unref();
+}
+function flushTitles() {
+  if (!titlesDirty || !titles) return;
+  if (!ensureDir()) return;
+  titlesDirty = false;
+  try {
+    import_fs.default.writeFileSync(TITLES_FILE, JSON.stringify(titles), "utf8");
+  } catch {
+  }
+}
+var exitHooked = false;
+function hookExit() {
+  if (exitHooked) return;
+  exitHooked = true;
+  const bye = () => flushTitles();
+  process.on("beforeExit", bye);
+  process.on("exit", bye);
+  for (const sig of ["SIGTERM", "SIGINT"]) {
+    process.on(sig, () => {
+      flushTitles();
+      process.exit(0);
+    });
+  }
+}
+hookExit();
+function storeStats() {
+  let onDisk = 0;
+  if (ensureDir()) {
+    try {
+      onDisk = import_fs.default.readdirSync(DIR).filter((f) => f.endsWith(".json") && f !== "_titles.json").length;
+    } catch {
+      onDisk = 0;
+    }
+  }
+  return {
+    mode: storeMode(),
+    dir: DIR,
+    articles: Math.max(onDisk, memArticles.size),
+    titles: Object.keys(loadTitles()).length
+  };
+}
+
 // src/lib/translate.ts
 var lastFailure = "";
 function lastTranslationError() {
@@ -279,6 +425,29 @@ function lastTranslationError() {
 }
 var lastProvider = "none";
 var cache = /* @__PURE__ */ new Map();
+async function chromeTranslate(text, target = "hi") {
+  const url = "https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=" + target + "&q=" + encodeURIComponent(text);
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!res.ok) throw new Error(`chrome ${res.status}`);
+  const data = await res.json();
+  const first = Array.isArray(data) ? data[0] : null;
+  const out = typeof first === "string" ? first : Array.isArray(first) ? String(first[0] ?? "") : "";
+  if (!out) throw new Error("chrome empty");
+  return out;
+}
+var MYMEMORY_MAX = 480;
+async function myMemoryTranslate(text, target = "hi") {
+  if (text.length > MYMEMORY_MAX) throw new Error("mymemory too long");
+  const url = "https://api.mymemory.translated.net/get?langpair=en%7C" + target + "&q=" + encodeURIComponent(text);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`mymemory ${res.status}`);
+  const data = await res.json();
+  const out = data?.responseData?.translatedText;
+  if (!out || /MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(String(out))) {
+    throw new Error(`mymemory ${data?.responseStatus || "rejected"}`);
+  }
+  return String(out);
+}
 async function gtxTranslate(text, target = "hi") {
   if (!text.trim()) return text;
   const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=" + target + "&dt=t&q=" + encodeURIComponent(text);
@@ -326,25 +495,32 @@ async function translateOnce(text) {
     return translateText(text);
   }
 }
+var preferred = "";
 async function translateText(text) {
   const key = process.env.GEMINI_API_KEY;
-  if (key) {
+  const chain = [];
+  if (key) chain.push({ name: "gemini", run: () => geminiTranslate(text, key) });
+  chain.push({ name: "gtx", run: () => gtxTranslate(text) });
+  chain.push({ name: "chrome", run: () => chromeTranslate(text) });
+  chain.push({ name: "mymemory", run: () => myMemoryTranslate(text) });
+  const ordered = preferred ? [...chain.filter((c) => c.name === preferred), ...chain.filter((c) => c.name !== preferred)] : chain;
+  const errors = [];
+  for (const provider of ordered) {
     try {
-      const out = await geminiTranslate(text, key);
-      lastProvider = "gemini";
-      return out;
+      const out = await provider.run();
+      if (out && out.trim()) {
+        lastProvider = provider.name;
+        preferred = provider.name;
+        return out;
+      }
+      errors.push(`${provider.name}: empty`);
     } catch (err) {
-      lastFailure = `gemini: ${err?.message || err}`;
+      errors.push(`${provider.name}: ${err?.message || err}`);
     }
   }
-  try {
-    const out = await gtxTranslate(text);
-    lastProvider = "gtx";
-    return out;
-  } catch (err) {
-    lastFailure = `gtx: ${err?.message || err}`;
-    throw err;
-  }
+  preferred = "";
+  lastFailure = errors.join("; ");
+  throw new Error(lastFailure);
 }
 async function translateHtml(html) {
   const tokens = html.split(/(<[^>]+>)/g);
@@ -372,26 +548,44 @@ async function translateHtml(html) {
   return tokens.join("");
 }
 var titleCache = /* @__PURE__ */ new Map();
-async function translateTitles(titles) {
+var titlesSeeded = false;
+function seedTitles() {
+  if (titlesSeeded) return;
+  titlesSeeded = true;
+  for (const [en, hi] of Object.entries(loadTitles())) titleCache.set(en, hi);
+}
+async function translateTitles(titles2) {
+  seedTitles();
   const out = {};
-  const pending = [...new Set(titles)].filter((t) => t && t.length > 3).slice(0, 80);
+  const pending = [...new Set(titles2)].filter((t) => t && t.length > 3).slice(0, 80);
   const todo = pending.filter((t) => !titleCache.has(t));
   lastFailure = "";
   for (let i = 0; i < todo.length; i += BATCH) {
     if (i > 0) await sleep(BATCH_PAUSE_MS);
     const slice = todo.slice(i, i + BATCH);
     const results = await Promise.all(slice.map((t) => translateOnce(t).catch(() => null)));
+    const fresh = {};
     results.forEach((r, k) => {
-      if (r) titleCache.set(slice[k], r);
+      if (r) {
+        titleCache.set(slice[k], r);
+        fresh[slice[k]] = r;
+      }
     });
+    saveTitles(fresh);
   }
   for (const t of pending) out[t] = titleCache.get(t) || t;
   return out;
 }
 async function translateArticle(article) {
-  const cacheKey = `hi:${article.url}`;
+  const fp = fingerprint(article.title, article.content, article.meta_description);
+  const cacheKey = `hi:${article.url}:${fp}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
+  const stored = loadArticle(article.url, fp);
+  if (stored?.translated) {
+    cache.set(cacheKey, stored);
+    return { ...stored, provider: stored.provider || "cache" };
+  }
   lastFailure = "";
   const field = async (text, html = false) => {
     if (!text || !text.trim()) return text || "";
@@ -424,6 +618,7 @@ async function translateArticle(article) {
     ...lastFailure ? { reason: `partial: ${lastFailure}` } : {}
   };
   cache.set(cacheKey, out);
+  saveArticle(article.url, { ...out, fp });
   return out;
 }
 
@@ -518,8 +713,8 @@ var dbPool = import_promise.default.createPool({
   connectTimeout: 8e3
 });
 var ASSET_BASE = (process.env.LEGACY_ASSET_BASE || "https://newsforever.in/").replace(/\/$/, "") + "/";
-function assetUrl(path2) {
-  const p = (path2 || "").trim();
+function assetUrl(path3) {
+  const p = (path3 || "").trim();
   if (!p) return "";
   if (/^https?:\/\//i.test(p)) return p;
   return ASSET_BASE + p.replace(/^\//, "");
@@ -1608,16 +1803,16 @@ function imageByteSize(absUrl) {
   if (byteSizeCache.has(absUrl)) return byteSizeCache.get(absUrl);
   let size;
   try {
-    const root = import_path.default.resolve(legacyMediaRoot());
+    const root = import_path2.default.resolve(legacyMediaRoot());
     let pathname;
     try {
       pathname = new URL(absUrl).pathname;
     } catch {
       pathname = absUrl;
     }
-    const file = import_path.default.resolve(root, decodeURIComponent(pathname).replace(/^\/+/, ""));
-    if (file.startsWith(root) && import_fs.default.existsSync(file)) {
-      const st = import_fs.default.statSync(file);
+    const file = import_path2.default.resolve(root, decodeURIComponent(pathname).replace(/^\/+/, ""));
+    if (file.startsWith(root) && import_fs2.default.existsSync(file)) {
+      const st = import_fs2.default.statSync(file);
       if (st.isFile() && st.size > 0) size = st.size;
     }
   } catch {
@@ -1639,14 +1834,14 @@ function withConfigBootstrap(html, cfg) {
   </head>`);
 }
 async function syncHomepageShell(distPath) {
-  const file = import_path.default.join(distPath, "index.html");
+  const file = import_path2.default.join(distPath, "index.html");
   try {
     const cfg = await getSiteConfig();
     const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const title = esc(cfg.siteTitle || siteSetting.meta_default_title || "");
     const desc = esc(cfg.siteDescription || siteSetting.meta_default_description || "");
     const keys = esc(cfg.siteKeywords || siteSetting.meta_default_keywords || "");
-    let html = import_fs.default.readFileSync(file, "utf8");
+    let html = import_fs2.default.readFileSync(file, "utf8");
     const before = html;
     html = withConfigBootstrap(html, cfg);
     const setContent = (attr, name, value) => {
@@ -1662,7 +1857,7 @@ async function syncHomepageShell(distPath) {
     setContent("name", "twitter:title", title);
     setContent("name", "twitter:description", desc);
     if (html !== before) {
-      import_fs.default.writeFileSync(file, html, "utf8");
+      import_fs2.default.writeFileSync(file, html, "utf8");
       console.log("[shell] homepage meta + settings synced into dist/index.html");
     }
     shellCache = "";
@@ -1673,6 +1868,10 @@ async function syncHomepageShell(distPath) {
 async function startServer() {
   const fetchKind = ensureFetch();
   console.log(`[http] outbound fetch: ${fetchKind} (node ${process.version})`);
+  const ts = storeStats();
+  console.log(
+    `[i18n] translation cache: ${ts.mode} at ${ts.dir} \u2014 ${ts.articles} article(s), ${ts.titles} headline(s)` + (ts.mode === "memory" ? " (not writable: translations will be lost on restart)" : "")
+  );
   const app = (0, import_express.default)();
   const PORT = parseInt(process.env.PORT || "3000", 10);
   app.use(import_express.default.json({ limit: "15mb" }));
@@ -1729,11 +1928,11 @@ async function startServer() {
     res.json(await translateArticle(article));
   });
   app.post("/api/translate-titles", async (req, res) => {
-    const { titles } = req.body || {};
-    if (!Array.isArray(titles) || titles.length === 0) {
+    const { titles: titles2 } = req.body || {};
+    if (!Array.isArray(titles2) || titles2.length === 0) {
       return res.status(400).json({ error: "titles array required" });
     }
-    const asked = titles.map(String);
+    const asked = titles2.map(String);
     const translations = await translateTitles(asked);
     const changed = asked.filter((t) => translations[t] && translations[t] !== t).length;
     const err = lastTranslationError();
@@ -1758,7 +1957,7 @@ async function startServer() {
     try {
       const saved = await saveSiteConfig(req.body || {});
       logActivity(admin.name, admin.admin_id, "Updated Site Settings", "Site Settings", req);
-      await syncHomepageShell(import_path.default.join(process.cwd(), "dist"));
+      await syncHomepageShell(import_path2.default.join(process.cwd(), "dist"));
       res.json(saved);
     } catch (err) {
       res.status(500).json({ error: "Config save failed: " + err?.message });
@@ -2067,7 +2266,7 @@ async function startServer() {
     if (!data || !filename) return res.status(400).json({ error: "filename and data required" });
     if (!bridgeConfigured()) {
       try {
-        const fs = await import("fs/promises");
+        const fs2 = await import("fs/promises");
         const sub = folder === "advertisement" ? "advertisement" : "blog";
         const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, "");
         const ext = (safe.split(".").pop() || "png").toLowerCase();
@@ -2077,10 +2276,10 @@ async function startServer() {
         const buf = Buffer.from(String(data), "base64");
         if (buf.length < 50) return res.status(400).json({ error: "Image data looks empty or corrupt" });
         if (buf.length > 8 * 1024 * 1024) return res.status(400).json({ error: "Image too large (max 8 MB)" });
-        const dir = import_path.default.join(process.cwd(), "uploads", sub);
-        await fs.mkdir(dir, { recursive: true });
+        const dir = import_path2.default.join(process.cwd(), "uploads", sub);
+        await fs2.mkdir(dir, { recursive: true });
         const fname = `${Date.now()}_${safe || "upload." + ext}`;
-        await fs.writeFile(import_path.default.join(dir, fname), buf);
+        await fs2.writeFile(import_path2.default.join(dir, fname), buf);
         const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
         const host = req.get("host");
         const abs = `${proto}://${host}/uploads/${sub}/${fname}`;
@@ -2090,14 +2289,14 @@ async function startServer() {
       }
     }
     try {
-      const path2 = await bridgeUploadImage(
+      const path3 = await bridgeUploadImage(
         { username: String(req.headers["x-admin-user"] || ""), password: String(req.headers["x-admin-pass"] || "") },
         folder === "advertisement" ? "advertisement" : "blog",
         String(filename),
         String(data),
         alt ? String(alt) : void 0
       );
-      return res.json({ success: true, path: path2 });
+      return res.json({ success: true, path: path3 });
     } catch (err) {
       return res.status(502).json({ error: err?.message || "Upload failed" });
     }
@@ -2408,16 +2607,16 @@ Sitemap: ${host}/news-sitemap.xml
           pathname = absUrl;
         }
         const rel = decodeURIComponent(pathname).replace(/^\/+/, "");
-        const file = import_path.default.resolve(root, rel);
-        if (file.startsWith(import_path.default.resolve(root)) && import_fs.default.existsSync(file)) {
-          const fd = import_fs.default.openSync(file, "r");
+        const file = import_path2.default.resolve(root, rel);
+        if (file.startsWith(import_path2.default.resolve(root)) && import_fs2.default.existsSync(file)) {
+          const fd = import_fs2.default.openSync(file, "r");
           const buf = Buffer.alloc(32);
-          const read = import_fs.default.readSync(fd, buf, 0, 32, 0);
-          import_fs.default.closeSync(fd);
+          const read = import_fs2.default.readSync(fd, buf, 0, 32, 0);
+          import_fs2.default.closeSync(fd);
           if (read >= 24 && buf.slice(0, 8).toString("hex") === "89504e470d0a1a0a") {
             result = { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20), mime: "image/png" };
           } else if (read >= 3 && buf[0] === 255 && buf[1] === 216) {
-            const whole = import_fs.default.readFileSync(file);
+            const whole = import_fs2.default.readFileSync(file);
             let off = 2;
             while (off + 9 < whole.length) {
               if (whole[off] !== 255) {
@@ -2439,7 +2638,7 @@ Sitemap: ${host}/news-sitemap.xml
           } else if (read >= 10 && buf.slice(0, 3).toString("ascii") === "GIF") {
             result = { width: buf.readUInt16LE(6), height: buf.readUInt16LE(8), mime: "image/gif" };
           } else if (read >= 30 && buf.slice(8, 12).toString("ascii") === "WEBP") {
-            const whole = import_fs.default.readFileSync(file);
+            const whole = import_fs2.default.readFileSync(file);
             if (whole.slice(12, 16).toString("ascii") === "VP8X") {
               result = {
                 width: 1 + (whole[24] | whole[25] << 8 | whole[26] << 16),
@@ -2455,11 +2654,11 @@ Sitemap: ${host}/news-sitemap.xml
       dimCache.set(absUrl, result);
       return result;
     };
-    const distPath = import_path.default.join(process.cwd(), "dist");
+    const distPath = import_path2.default.join(process.cwd(), "dist");
     app.use(import_express.default.static(distPath, { index: false }));
     const mediaRoot = process.env.LEGACY_MEDIA_ROOT || process.cwd();
-    const assetsDir = import_path.default.join(mediaRoot, "assets");
-    const uploadsDir = import_path.default.join(mediaRoot, "uploads");
+    const assetsDir = import_path2.default.join(mediaRoot, "assets");
+    const uploadsDir = import_path2.default.join(mediaRoot, "uploads");
     app.use("/assets", import_express.default.static(assetsDir));
     app.use("/uploads", import_express.default.static(uploadsDir));
     {
@@ -2477,9 +2676,9 @@ Sitemap: ${host}/news-sitemap.xml
     app.use(["/assets", "/uploads"], (_req, res) => {
       res.status(404).type("text/plain").send("Not found");
     });
-    const fs = await import("fs/promises");
+    const fs2 = await import("fs/promises");
     const getTemplate = async () => {
-      if (!shellCache) shellCache = await fs.readFile(import_path.default.join(distPath, "index.html"), "utf8");
+      if (!shellCache) shellCache = await fs2.readFile(import_path2.default.join(distPath, "index.html"), "utf8");
       return shellCache;
     };
     const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -2809,14 +3008,14 @@ Sitemap: ${host}/news-sitemap.xml
         }
         res.status(status).set("Content-Type", "text/html; charset=utf-8").set("Cache-Control", "public, max-age=0, must-revalidate").send(html);
       } catch {
-        res.sendFile(import_path.default.join(distPath, "index.html"));
+        res.sendFile(import_path2.default.join(distPath, "index.html"));
       }
     });
   }
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Express Backend + Headless CodeIgniter Bridge Server running at http://0.0.0.0:${PORT}`);
     if (process.env.NODE_ENV === "production") {
-      void syncHomepageShell(import_path.default.join(process.cwd(), "dist"));
+      void syncHomepageShell(import_path2.default.join(process.cwd(), "dist"));
     }
   });
 }

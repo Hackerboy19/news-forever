@@ -5,7 +5,7 @@ import path from "path";
 import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
 import { buildNewsSitemap, buildRssFeed, parseLegacyDate } from "./src/lib/feeds";
-import { translateArticle, translateTitles, lastTranslationError } from "./src/lib/translate";
+import { translateArticle, translateTitles, lastTranslationError, translationStoreStats } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
 import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
@@ -184,6 +184,11 @@ async function startServer() {
   // on one of those. Installed before anything can make a call.
   const fetchKind = ensureFetch();
   console.log(`[http] outbound fetch: ${fetchKind} (node ${process.version})`);
+  const ts = translationStoreStats();
+  console.log(
+    `[i18n] translation cache: ${ts.mode} at ${ts.dir} — ${ts.articles} article(s), ${ts.titles} headline(s)` +
+      (ts.mode === "memory" ? " (not writable: translations will be lost on restart)" : "")
+  );
 
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);

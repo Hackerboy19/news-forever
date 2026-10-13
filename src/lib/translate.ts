@@ -1,14 +1,27 @@
 /**
  * Server-side Hindi translation layer for ci_blog content.
  *
- * Provider chain:
- *   1. GEMINI_API_KEY set  → Gemini flash translation (best quality)
- *   2. otherwise           → Google Translate public gtx endpoint (keyless)
- * Results are cached in-memory per lambda and edge-cached by the CDN, so a
- * translated article is computed once and then served instantly.
+ * Provider chain, tried in order until one answers:
+ *   1. Gemini, when GEMINI_API_KEY is set — best quality, no shared quota
+ *   2. translate.googleapis.com (gtx), keyless
+ *   3. clients5.google.com (dict-chrome-ex), keyless and a separate quota
+ *      from gtx, so a rate-limited IP usually still gets through here
+ *   4. MyMemory, keyless, for short strings
+ *
+ * No key is required: 2-4 are free endpoints, and the chain exists because
+ * any one of them will rate-limit a single server's IP. Whichever answered
+ * last is tried first next time, so a dead provider is not re-tried for
+ * every string.
+ *
+ * Results are stored on disk (see translateStore), so an article is
+ * translated once and stays translated across restarts and deploys.
  * H2–H6 / paragraph structure of the description HTML is preserved by
  * translating text nodes only. Database rows are never modified.
  */
+
+import { loadArticle, saveArticle, loadTitles, saveTitles, storeStats, fingerprint } from './translateStore';
+
+export { storeStats as translationStoreStats };
 
 interface TranslatedArticle {
   translated: boolean;
@@ -19,7 +32,7 @@ interface TranslatedArticle {
   meta_keyword?: string;
   /** Why nothing (or only part) came back, for diagnosis from outside. */
   reason?: string;
-  /** Which provider answered: 'gemini', 'gtx', or 'none'. */
+  /** Which provider answered: 'gemini', 'gtx', 'chrome', 'mymemory', 'cache' or 'none'. */
   provider?: string;
 }
 
@@ -34,6 +47,50 @@ export function lastTranslationError(): string {
 let lastProvider = 'none';
 
 const cache = new Map<string, TranslatedArticle>();
+
+/**
+ * The same Google service behind a different front door. It is a separate
+ * quota from translate.googleapis.com, which matters when that one has
+ * started answering 429 to this server.
+ */
+async function chromeTranslate(text: string, target = 'hi'): Promise<string> {
+  const url =
+    'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=' +
+    target +
+    '&q=' +
+    encodeURIComponent(text);
+  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!res.ok) throw new Error(`chrome ${res.status}`);
+  const data: any = await res.json();
+  // Either ["translated"] or [["translated","original"]] depending on length.
+  const first = Array.isArray(data) ? data[0] : null;
+  const out = typeof first === 'string' ? first : Array.isArray(first) ? String(first[0] ?? '') : '';
+  if (!out) throw new Error('chrome empty');
+  return out;
+}
+
+/**
+ * MyMemory, a free translation memory. Its anonymous limit is per-day and
+ * per-IP, and it rejects long queries, so it is the last resort and only
+ * for short strings — headlines, meta descriptions, single paragraphs.
+ */
+const MYMEMORY_MAX = 480;
+async function myMemoryTranslate(text: string, target = 'hi'): Promise<string> {
+  if (text.length > MYMEMORY_MAX) throw new Error('mymemory too long');
+  const url =
+    'https://api.mymemory.translated.net/get?langpair=en%7C' +
+    target +
+    '&q=' +
+    encodeURIComponent(text);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`mymemory ${res.status}`);
+  const data: any = await res.json();
+  const out = data?.responseData?.translatedText;
+  if (!out || /MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(String(out))) {
+    throw new Error(`mymemory ${data?.responseStatus || 'rejected'}`);
+  }
+  return String(out);
+}
 
 async function gtxTranslate(text: string, target = 'hi'): Promise<string> {
   if (!text.trim()) return text;
@@ -98,27 +155,41 @@ async function translateOnce(text: string): Promise<string> {
   }
 }
 
+/** Whichever provider last worked — tried first, so a dead one is not
+ *  re-tried for every single string on the page. */
+let preferred = '';
+
 async function translateText(text: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
-  if (key) {
+  const chain: { name: string; run: () => Promise<string> }[] = [];
+  if (key) chain.push({ name: 'gemini', run: () => geminiTranslate(text, key) });
+  chain.push({ name: 'gtx', run: () => gtxTranslate(text) });
+  chain.push({ name: 'chrome', run: () => chromeTranslate(text) });
+  chain.push({ name: 'mymemory', run: () => myMemoryTranslate(text) });
+
+  const ordered = preferred
+    ? [...chain.filter((c) => c.name === preferred), ...chain.filter((c) => c.name !== preferred)]
+    : chain;
+
+  const errors: string[] = [];
+  for (const provider of ordered) {
     try {
-      const out = await geminiTranslate(text, key);
-      lastProvider = 'gemini';
-      return out;
+      const out = await provider.run();
+      if (out && out.trim()) {
+        lastProvider = provider.name;
+        preferred = provider.name;
+        return out;
+      }
+      errors.push(`${provider.name}: empty`);
     } catch (err: any) {
-      lastFailure = `gemini: ${err?.message || err}`;
+      errors.push(`${provider.name}: ${err?.message || err}`);
     }
   }
-  try {
-    const out = await gtxTranslate(text);
-    lastProvider = 'gtx';
-    return out;
-  } catch (err: any) {
-    // Shared hosting is often rate-limited or blocked outright on this
-    // endpoint, which is exactly the case that used to disappear silently.
-    lastFailure = `gtx: ${err?.message || err}`;
-    throw err;
-  }
+  // Every free endpoint refused. Forget the preference so the next attempt
+  // starts from the top of the chain rather than the one that just failed.
+  preferred = '';
+  lastFailure = errors.join('; ');
+  throw new Error(lastFailure);
 }
 
 /** Translate HTML while preserving tags: only text nodes are translated. */
@@ -152,9 +223,16 @@ async function translateHtml(html: string): Promise<string> {
 }
 
 const titleCache = new Map<string, string>();
+let titlesSeeded = false;
+function seedTitles(): void {
+  if (titlesSeeded) return;
+  titlesSeeded = true;
+  for (const [en, hi] of Object.entries(loadTitles())) titleCache.set(en, hi);
+}
 
 /** Batch-translate blog titles (feed/ticker/cards). Cached per title. */
 export async function translateTitles(titles: string[]): Promise<Record<string, string>> {
+  seedTitles();
   const out: Record<string, string> = {};
   const pending = [...new Set(titles)].filter((t) => t && t.length > 3).slice(0, 80);
   const todo = pending.filter((t) => !titleCache.has(t));
@@ -167,7 +245,14 @@ export async function translateTitles(titles: string[]): Promise<Record<string, 
     // A title that could not be translated is not cached as itself — that
     // would pin the English version for the life of the process, long after
     // the provider recovered.
-    results.forEach((r, k) => { if (r) titleCache.set(slice[k], r); });
+    const fresh: Record<string, string> = {};
+    results.forEach((r, k) => {
+      if (r) {
+        titleCache.set(slice[k], r);
+        fresh[slice[k]] = r;
+      }
+    });
+    saveTitles(fresh);
   }
   for (const t of pending) out[t] = titleCache.get(t) || t;
   return out;
@@ -181,9 +266,16 @@ export async function translateArticle(article: {
   meta_description?: string;
   meta_keyword?: string;
 }): Promise<TranslatedArticle> {
-  const cacheKey = `hi:${article.url}`;
+  const fp = fingerprint(article.title, article.content, article.meta_description);
+  const cacheKey = `hi:${article.url}:${fp}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
+  // Translated on an earlier visit, possibly before the last restart.
+  const stored = loadArticle(article.url, fp);
+  if (stored?.translated) {
+    cache.set(cacheKey, stored as TranslatedArticle);
+    return { ...stored, provider: stored.provider || 'cache' } as TranslatedArticle;
+  }
 
   // Each field is translated on its own. This used to be one Promise.all
   // with no per-field catch, so a single failed call — a rate-limited
@@ -225,5 +317,8 @@ export async function translateArticle(article: {
     ...(lastFailure ? { reason: `partial: ${lastFailure}` } : {}),
   };
   cache.set(cacheKey, out);
+  // Kept on disk so this article never needs a provider again — until an
+  // editor changes the English, which the fingerprint catches.
+  saveArticle(article.url, { ...out, fp });
   return out;
 }
