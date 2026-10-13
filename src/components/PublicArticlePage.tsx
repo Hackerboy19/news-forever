@@ -155,17 +155,24 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   // Server-side Hindi translation (cached at the edge) when HI is active
   const [hiPayload, setHiPayload] = useState<any>(null);
   const [translating, setTranslating] = useState(false);
+  /** HI is on, the translation was attempted, and it did not come back. */
+  const [hiUnavailable, setHiUnavailable] = useState(false);
   useEffect(() => {
     setHiPayload(null);
+    setHiUnavailable(false);
     if (lang !== 'hi' || !baseArticle) return;
     let cancelled = false;
     setTranslating(true);
     fetch(`/api/translate?slug=${encodeURIComponent(baseArticle.url)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled && d?.translated) setHiPayload(d);
+        if (cancelled) return;
+        if (d?.translated) setHiPayload(d);
+        // Say so rather than showing an English article inside a Hindi page
+        // and leaving the reader to wonder whether the button worked.
+        else setHiUnavailable(true);
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setHiUnavailable(true); })
       .finally(() => {
         if (!cancelled) setTranslating(false);
       });
@@ -438,6 +445,15 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Translation attempted and unavailable — the article below is in
+              English, and saying so is better than silence. */}
+          {hiUnavailable && !translating && (
+            <div className="flex items-start gap-2 text-xs text-stone-600 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">
+              <span className="font-bold text-amber-700 shrink-0">i</span>
+              <span>यह लेख फ़िलहाल अंग्रेज़ी में ही उपलब्ध है — अनुवाद सेवा अभी जवाब नहीं दे रही। बाकी पेज हिंदी में है।</span>
+            </div>
+          )}
 
           {/* Hindi translation in progress indicator */}
           {translating && (

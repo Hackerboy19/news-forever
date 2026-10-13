@@ -4,7 +4,7 @@ import path from "path";
 import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
 import { buildNewsSitemap, buildRssFeed, parseLegacyDate } from "./src/lib/feeds";
-import { translateArticle, translateTitles } from "./src/lib/translate";
+import { translateArticle, translateTitles, lastTranslationError } from "./src/lib/translate";
 import { bridgeConfigured, bridgeUploadImage } from "./src/lib/bridge";
 import { answerQuestion } from "./src/lib/qa";
 import { CIBlog, CICategory, CIAdvertisement, CIActivityLog, CISetting, CISubscriber, CIImageLibrary } from "./src/types";
@@ -275,7 +275,15 @@ async function startServer() {
     if (!Array.isArray(titles) || titles.length === 0) {
       return res.status(400).json({ error: "titles array required" });
     }
-    res.json({ translations: await translateTitles(titles.map(String)) });
+    const asked = titles.map(String);
+    const translations = await translateTitles(asked);
+    // Say when nothing came back translated. Without this the endpoint
+    // answered 200 with the English titles echoed back, which is
+    // indistinguishable from "these were already Hindi".
+    const changed = asked.filter((t) => translations[t] && translations[t] !== t).length;
+    const err = lastTranslationError();
+    if (changed === 0 && err) console.warn("translate-titles: provider unavailable —", err);
+    res.json({ translations, ...(changed === 0 && err ? { reason: err } : {}) });
   });
 
   // POST /api/ask — interactive article Q&A

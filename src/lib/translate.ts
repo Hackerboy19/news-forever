@@ -17,7 +17,21 @@ interface TranslatedArticle {
   meta_title?: string;
   meta_description?: string;
   meta_keyword?: string;
+  /** Why nothing (or only part) came back, for diagnosis from outside. */
+  reason?: string;
+  /** Which provider answered: 'gemini', 'gtx', or 'none'. */
+  provider?: string;
 }
+
+/**
+ * The last provider failure, so an endpoint can say why a page is still in
+ * English instead of silently serving it and leaving no trace.
+ */
+let lastFailure = '';
+export function lastTranslationError(): string {
+  return lastFailure;
+}
+let lastProvider = 'none';
 
 const cache = new Map<string, TranslatedArticle>();
 
@@ -64,12 +78,23 @@ async function translateText(text: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   if (key) {
     try {
-      return await geminiTranslate(text, key);
-    } catch {
-      /* fall through to gtx */
+      const out = await geminiTranslate(text, key);
+      lastProvider = 'gemini';
+      return out;
+    } catch (err: any) {
+      lastFailure = `gemini: ${err?.message || err}`;
     }
   }
-  return gtxTranslate(text);
+  try {
+    const out = await gtxTranslate(text);
+    lastProvider = 'gtx';
+    return out;
+  } catch (err: any) {
+    // Shared hosting is often rate-limited or blocked outright on this
+    // endpoint, which is exactly the case that used to disappear silently.
+    lastFailure = `gtx: ${err?.message || err}`;
+    throw err;
+  }
 }
 
 /** Translate HTML while preserving tags: only text nodes are translated. */
@@ -82,17 +107,23 @@ async function translateHtml(html: string): Promise<string> {
     }
   });
 
-  // Translate in small parallel batches to stay polite to the endpoint
+  // Translate in small parallel batches to stay polite to the endpoint.
+  // A token that fails keeps its English text, which is the right answer for
+  // one stubborn sentence — but if not a single token came back translated
+  // the provider is down, and returning the English body as though it were
+  // Hindi is worse than admitting the failure.
+  let done = 0;
   const BATCH = 12;
   for (let i = 0; i < jobs.length; i += BATCH) {
     const slice = jobs.slice(i, i + BATCH);
     const results = await Promise.all(
-      slice.map((j) => translateText(j.text).catch(() => j.text))
+      slice.map((j) => translateText(j.text).then((t) => { done++; return t; }).catch(() => j.text))
     );
     results.forEach((r, k) => {
       tokens[slice[k].index] = r;
     });
   }
+  if (jobs.length > 0 && done === 0) throw new Error(lastFailure || 'no text could be translated');
   return tokens.join('');
 }
 
@@ -104,11 +135,15 @@ export async function translateTitles(titles: string[]): Promise<Record<string, 
   const pending = [...new Set(titles)].filter((t) => t && t.length > 3).slice(0, 80);
   const todo = pending.filter((t) => !titleCache.has(t));
 
+  lastFailure = '';
   const BATCH = 12;
   for (let i = 0; i < todo.length; i += BATCH) {
     const slice = todo.slice(i, i + BATCH);
-    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => t)));
-    results.forEach((r, k) => titleCache.set(slice[k], r));
+    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => null)));
+    // A title that could not be translated is not cached as itself — that
+    // would pin the English version for the life of the process, long after
+    // the provider recovered.
+    results.forEach((r, k) => { if (r) titleCache.set(slice[k], r); });
   }
   for (const t of pending) out[t] = titleCache.get(t) || t;
   return out;
@@ -126,19 +161,45 @@ export async function translateArticle(article: {
   const hit = cache.get(cacheKey);
   if (hit) return hit;
 
-  try {
-    const [title, description, meta_title, meta_description, meta_keyword] = await Promise.all([
-      translateText(article.title),
-      translateHtml(article.content || ''),
-      translateText(article.meta_title || article.title),
-      translateText(article.meta_description || ''),
-      translateText(article.meta_keyword || ''),
-    ]);
-    const out: TranslatedArticle = { translated: true, title, description, meta_title, meta_description, meta_keyword };
-    cache.set(cacheKey, out);
-    return out;
-  } catch (err) {
-    console.warn('translateArticle failed:', (err as Error)?.message);
-    return { translated: false };
+  // Each field is translated on its own. This used to be one Promise.all
+  // with no per-field catch, so a single failed call — a rate-limited
+  // keyword line, say — threw the whole article away and the reader got
+  // English with the rest of the page in Hindi and no explanation.
+  lastFailure = '';
+  const field = async (text: string, html = false): Promise<string | null> => {
+    if (!text || !text.trim()) return text || '';
+    try {
+      return html ? await translateHtml(text) : await translateText(text);
+    } catch {
+      return null;
+    }
+  };
+
+  const [title, description, meta_title, meta_description, meta_keyword] = await Promise.all([
+    field(article.title),
+    field(article.content || '', true),
+    field(article.meta_title || article.title),
+    field(article.meta_description || ''),
+    field(article.meta_keyword || ''),
+  ]);
+
+  // The headline and the body are what "translated" means to a reader.
+  const gotAnything = title !== null || description !== null;
+  if (!gotAnything) {
+    console.warn('translateArticle: no field could be translated —', lastFailure || 'unknown');
+    return { translated: false, reason: lastFailure || 'provider unavailable', provider: 'none' };
   }
+
+  const out: TranslatedArticle = {
+    translated: true,
+    title: title ?? article.title,
+    description: description ?? article.content,
+    meta_title: meta_title ?? article.meta_title,
+    meta_description: meta_description ?? article.meta_description,
+    meta_keyword: meta_keyword ?? article.meta_keyword,
+    provider: lastProvider,
+    ...(lastFailure ? { reason: `partial: ${lastFailure}` } : {}),
+  };
+  cache.set(cacheKey, out);
+  return out;
 }

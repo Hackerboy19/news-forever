@@ -196,6 +196,11 @@ function buildRssFeed(blogs, origin, now = /* @__PURE__ */ new Date(), opts = {}
 }
 
 // src/lib/translate.ts
+var lastFailure = "";
+function lastTranslationError() {
+  return lastFailure;
+}
+var lastProvider = "none";
 var cache = /* @__PURE__ */ new Map();
 async function gtxTranslate(text, target = "hi") {
   if (!text.trim()) return text;
@@ -236,11 +241,21 @@ async function translateText(text) {
   const key = process.env.GEMINI_API_KEY;
   if (key) {
     try {
-      return await geminiTranslate(text, key);
-    } catch {
+      const out = await geminiTranslate(text, key);
+      lastProvider = "gemini";
+      return out;
+    } catch (err) {
+      lastFailure = `gemini: ${err?.message || err}`;
     }
   }
-  return gtxTranslate(text);
+  try {
+    const out = await gtxTranslate(text);
+    lastProvider = "gtx";
+    return out;
+  } catch (err) {
+    lastFailure = `gtx: ${err?.message || err}`;
+    throw err;
+  }
 }
 async function translateHtml(html) {
   const tokens = html.split(/(<[^>]+>)/g);
@@ -250,16 +265,21 @@ async function translateHtml(html) {
       jobs.push({ index, text: tok });
     }
   });
+  let done = 0;
   const BATCH = 12;
   for (let i = 0; i < jobs.length; i += BATCH) {
     const slice = jobs.slice(i, i + BATCH);
     const results = await Promise.all(
-      slice.map((j) => translateText(j.text).catch(() => j.text))
+      slice.map((j) => translateText(j.text).then((t) => {
+        done++;
+        return t;
+      }).catch(() => j.text))
     );
     results.forEach((r, k) => {
       tokens[slice[k].index] = r;
     });
   }
+  if (jobs.length > 0 && done === 0) throw new Error(lastFailure || "no text could be translated");
   return tokens.join("");
 }
 var titleCache = /* @__PURE__ */ new Map();
@@ -267,11 +287,14 @@ async function translateTitles(titles) {
   const out = {};
   const pending = [...new Set(titles)].filter((t) => t && t.length > 3).slice(0, 80);
   const todo = pending.filter((t) => !titleCache.has(t));
+  lastFailure = "";
   const BATCH = 12;
   for (let i = 0; i < todo.length; i += BATCH) {
     const slice = todo.slice(i, i + BATCH);
-    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => t)));
-    results.forEach((r, k) => titleCache.set(slice[k], r));
+    const results = await Promise.all(slice.map((t) => translateText(t).catch(() => null)));
+    results.forEach((r, k) => {
+      if (r) titleCache.set(slice[k], r);
+    });
   }
   for (const t of pending) out[t] = titleCache.get(t) || t;
   return out;
@@ -280,21 +303,39 @@ async function translateArticle(article) {
   const cacheKey = `hi:${article.url}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit;
-  try {
-    const [title, description, meta_title, meta_description, meta_keyword] = await Promise.all([
-      translateText(article.title),
-      translateHtml(article.content || ""),
-      translateText(article.meta_title || article.title),
-      translateText(article.meta_description || ""),
-      translateText(article.meta_keyword || "")
-    ]);
-    const out = { translated: true, title, description, meta_title, meta_description, meta_keyword };
-    cache.set(cacheKey, out);
-    return out;
-  } catch (err) {
-    console.warn("translateArticle failed:", err?.message);
-    return { translated: false };
+  lastFailure = "";
+  const field = async (text, html = false) => {
+    if (!text || !text.trim()) return text || "";
+    try {
+      return html ? await translateHtml(text) : await translateText(text);
+    } catch {
+      return null;
+    }
+  };
+  const [title, description, meta_title, meta_description, meta_keyword] = await Promise.all([
+    field(article.title),
+    field(article.content || "", true),
+    field(article.meta_title || article.title),
+    field(article.meta_description || ""),
+    field(article.meta_keyword || "")
+  ]);
+  const gotAnything = title !== null || description !== null;
+  if (!gotAnything) {
+    console.warn("translateArticle: no field could be translated \u2014", lastFailure || "unknown");
+    return { translated: false, reason: lastFailure || "provider unavailable", provider: "none" };
   }
+  const out = {
+    translated: true,
+    title: title ?? article.title,
+    description: description ?? article.content,
+    meta_title: meta_title ?? article.meta_title,
+    meta_description: meta_description ?? article.meta_description,
+    meta_keyword: meta_keyword ?? article.meta_keyword,
+    provider: lastProvider,
+    ...lastFailure ? { reason: `partial: ${lastFailure}` } : {}
+  };
+  cache.set(cacheKey, out);
+  return out;
 }
 
 // src/lib/db.ts
@@ -1601,7 +1642,12 @@ async function startServer() {
     if (!Array.isArray(titles) || titles.length === 0) {
       return res.status(400).json({ error: "titles array required" });
     }
-    res.json({ translations: await translateTitles(titles.map(String)) });
+    const asked = titles.map(String);
+    const translations = await translateTitles(asked);
+    const changed = asked.filter((t) => translations[t] && translations[t] !== t).length;
+    const err = lastTranslationError();
+    if (changed === 0 && err) console.warn("translate-titles: provider unavailable \u2014", err);
+    res.json({ translations, ...changed === 0 && err ? { reason: err } : {} });
   });
   app.post("/api/ask", async (req, res) => {
     const { slug, question } = req.body || {};

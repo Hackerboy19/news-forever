@@ -11,8 +11,8 @@ Upload these four into your app's **`dist/` folder**, replacing what is there:
 | ---------------------------------- | --------------------------------- |
 | `nf-dist/server.cjs`               | `<app-root>/dist/server.cjs`      |
 | `nf-dist/index.html`               | `<app-root>/dist/index.html`      |
-| `nf-dist/assets/index-BBm6ZvXI.js` | `<app-root>/dist/assets/`         |
-| `nf-dist/assets/index-CS9BcfSV.css`| `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-fpN1RoRM.js` | `<app-root>/dist/assets/`         |
+| `nf-dist/assets/index-CRDOQoNW.css`| `<app-root>/dist/assets/`         |
 
 `nf-dist.zip` holds the same four files with that same layout, so unzipping it
 into `dist/` does the whole job in one step.
@@ -147,6 +147,32 @@ client IP rather than a placeholder name, logins and tag/category/settings
 edits are recorded, and entries are stored in `ci_setting` so a restart no
 longer wipes the history. The legacy table is never written to. Nothing from
 before this build can be recovered — the trail starts at the restart.
+
+## Hindi translation (HI button)
+
+The HI button translates the interface, and asks the server to translate the
+article itself. On this server that request is failing, so articles stay in
+English while the rest of the page turns Hindi:
+
+```bash
+curl -s 'https://newsforever.in/api/translate?slug=<any-article-slug>'
+```
+
+After this build the answer says why, e.g.
+`{"translated":false,"reason":"gtx: gtx 429"}`. The keyless Google endpoint
+the server falls back on is routinely rate-limited or blocked for shared
+hosting IPs, which is the likely reading of a 429 or a network error.
+
+The reliable fix is a Gemini API key, which the code already prefers when it
+is present. Add one line to `.env` and restart:
+
+```
+GEMINI_API_KEY=<your key from aistudio.google.com/apikey>
+```
+
+Nothing else changes: translations are computed once per article and cached
+in memory, the database is never written to, and English stays the stored
+version.
 
 ## Still needed outside the code
 
