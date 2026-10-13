@@ -287,6 +287,7 @@ function fingerprint(...parts) {
   return `${text.length.toString(36)}-${(h1 >>> 0).toString(36)}${(h2 >>> 0).toString(36)}`;
 }
 var DIR = process.env.TRANSLATION_CACHE_DIR || import_path.default.join(process.cwd(), ".nf-cache", "hi");
+var CACHE_VERSION = 2;
 var TITLES_FILE = import_path.default.join(DIR, "_titles.json");
 var MAX_TITLES = 5e3;
 var mode = "unknown";
@@ -317,7 +318,7 @@ function fileFor(slug) {
   return import_path.default.join(DIR, `${safe}.json`);
 }
 function loadArticle(slug, fp) {
-  const fresh = (d) => d && d.translated && (!fp || !d.fp || d.fp === fp) ? d : null;
+  const fresh = (d) => d && d.translated && d.v === CACHE_VERSION && (!fp || !d.fp || d.fp === fp) ? d : null;
   const mem = fresh(memArticles.get(slug));
   if (mem) return mem;
   if (!ensureDir()) return null;
@@ -335,7 +336,7 @@ function loadArticle(slug, fp) {
 }
 function saveArticle(slug, data) {
   if (!data?.translated) return;
-  const withTime = { ...data, at: (/* @__PURE__ */ new Date()).toISOString() };
+  const withTime = { ...data, v: CACHE_VERSION, at: (/* @__PURE__ */ new Date()).toISOString() };
   memArticles.set(slug, withTime);
   if (!ensureDir()) return;
   try {
@@ -349,7 +350,9 @@ function loadTitles() {
   if (ensureDir()) {
     try {
       const parsed = JSON.parse(import_fs.default.readFileSync(TITLES_FILE, "utf8"));
-      if (parsed && typeof parsed === "object") titles = parsed;
+      if (parsed && typeof parsed === "object" && parsed.v === CACHE_VERSION && parsed.items) {
+        titles = parsed.items;
+      }
     } catch {
     }
   }
@@ -382,7 +385,7 @@ function flushTitles() {
   if (!ensureDir()) return;
   titlesDirty = false;
   try {
-    import_fs.default.writeFileSync(TITLES_FILE, JSON.stringify(titles), "utf8");
+    import_fs.default.writeFileSync(TITLES_FILE, JSON.stringify({ v: CACHE_VERSION, items: titles }), "utf8");
   } catch {
   }
 }
@@ -496,6 +499,23 @@ async function translateOnce(text) {
   }
 }
 var preferred = "";
+var DEVANAGARI = /[\u0900-\u097F]/;
+var COUNT_DEVANAGARI = /[\u0900-\u097F]/g;
+var COUNT_LATIN = /[A-Za-z]/g;
+function looksTranslated(source, out) {
+  const text = (out || "").trim();
+  if (!text) return false;
+  if (text === source.trim()) return false;
+  const words = [...new Set(source.toLowerCase().match(/[a-z]{3,}/g) || [])];
+  if (words.length < 4) return true;
+  if (!DEVANAGARI.test(text)) return false;
+  const lower = text.toLowerCase();
+  const survived = words.filter((w) => lower.includes(w)).length;
+  if (survived / words.length >= 0.4) return false;
+  const dev = (text.match(COUNT_DEVANAGARI) || []).length;
+  const lat = (text.match(COUNT_LATIN) || []).length;
+  return dev >= lat * 0.6;
+}
 async function translateText(text) {
   const key = process.env.GEMINI_API_KEY;
   const chain = [];
@@ -508,12 +528,13 @@ async function translateText(text) {
   for (const provider of ordered) {
     try {
       const out = await provider.run();
-      if (out && out.trim()) {
+      if (looksTranslated(text, out)) {
         lastProvider = provider.name;
         preferred = provider.name;
         return out;
       }
-      errors.push(`${provider.name}: empty`);
+      errors.push(`${provider.name}: ${out && out.trim() ? "not translated" : "empty"}`);
+      if (preferred === provider.name) preferred = "";
     } catch (err) {
       errors.push(`${provider.name}: ${err?.message || err}`);
     }

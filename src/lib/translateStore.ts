@@ -29,6 +29,8 @@ export interface StoredArticle {
   at?: string;
   /** Fingerprint of the English source this was translated from. */
   fp?: string;
+  /** Cache format version — see CACHE_VERSION. */
+  v?: number;
 }
 
 /**
@@ -51,6 +53,13 @@ export function fingerprint(...parts: (string | undefined)[]): string {
 }
 
 const DIR = process.env.TRANSLATION_CACHE_DIR || path.join(process.cwd(), '.nf-cache', 'hi');
+/**
+ * Bumped when a fix changes what a good translation looks like. Entries
+ * written by an older version are ignored and translated again — the first
+ * build accepted half-English output from one provider, and those entries
+ * would otherwise sit in the cache for good.
+ */
+const CACHE_VERSION = 2;
 const TITLES_FILE = path.join(DIR, '_titles.json');
 /** Enough for every headline on the site several times over. */
 const MAX_TITLES = 5000;
@@ -97,7 +106,7 @@ function fileFor(slug: string): string {
 
 export function loadArticle(slug: string, fp?: string): StoredArticle | null {
   const fresh = (d: StoredArticle | undefined | null) =>
-    d && d.translated && (!fp || !d.fp || d.fp === fp) ? d : null;
+    d && d.translated && d.v === CACHE_VERSION && (!fp || !d.fp || d.fp === fp) ? d : null;
 
   const mem = fresh(memArticles.get(slug));
   if (mem) return mem;
@@ -119,7 +128,7 @@ export function loadArticle(slug: string, fp?: string): StoredArticle | null {
 
 export function saveArticle(slug: string, data: StoredArticle): void {
   if (!data?.translated) return; // never cache a failure
-  const withTime = { ...data, at: new Date().toISOString() };
+  const withTime = { ...data, v: CACHE_VERSION, at: new Date().toISOString() };
   memArticles.set(slug, withTime);
   if (!ensureDir()) return;
   try {
@@ -135,7 +144,10 @@ export function loadTitles(): Record<string, string> {
   if (ensureDir()) {
     try {
       const parsed = JSON.parse(fs.readFileSync(TITLES_FILE, 'utf8'));
-      if (parsed && typeof parsed === 'object') titles = parsed;
+      // { v, items } since version 2; a bare map is version 1 and dropped.
+      if (parsed && typeof parsed === 'object' && parsed.v === CACHE_VERSION && parsed.items) {
+        titles = parsed.items as Record<string, string>;
+      }
     } catch {
       /* first run */
     }
@@ -184,7 +196,7 @@ export function flushTitles(): void {
   if (!ensureDir()) return;
   titlesDirty = false;
   try {
-    fs.writeFileSync(TITLES_FILE, JSON.stringify(titles), 'utf8');
+    fs.writeFileSync(TITLES_FILE, JSON.stringify({ v: CACHE_VERSION, items: titles }), 'utf8');
   } catch {
     /* never fatal */
   }

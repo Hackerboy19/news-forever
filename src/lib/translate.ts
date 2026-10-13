@@ -159,6 +159,42 @@ async function translateOnce(text: string): Promise<string> {
  *  re-tried for every single string on the page. */
 let preferred = '';
 
+const DEVANAGARI = /[\u0900-\u097F]/;
+const COUNT_DEVANAGARI = /[\u0900-\u097F]/g;
+const COUNT_LATIN = /[A-Za-z]/g;
+
+/**
+ * Did this provider actually translate, or hand back the English?
+ *
+ * Two of the free endpoints do that. One returns the input verbatim when it
+ * cannot help; MyMemory answers from a translation memory and will return a
+ * half-match — a headline came back as "सौंदर्य प्रतियोगिता क्या है?
+ * Complete Guide for you", Hindi for the first sentence and English for the
+ * rest. Accepting that put broken text on the page and, worse, cached it.
+ *
+ * The test is deliberately loose: short strings, names and numbers are let
+ * through, because "FSIA 2026" translates to itself and that is correct.
+ */
+export function looksTranslated(source: string, out: string): boolean {
+  const text = (out || '').trim();
+  if (!text) return false;
+  if (text === source.trim()) return false; // verbatim echo
+  const words = [...new Set((source.toLowerCase().match(/[a-z]{3,}/g) || []))];
+  if (words.length < 4) return true; // too short to judge
+  if (!DEVANAGARI.test(text)) return false; // nothing was translated at all
+
+  // How much of the English came back untouched. A few proper nouns staying
+  // in Latin is normal and expected; half the sentence is a partial match
+  // dressed up as a translation.
+  const lower = text.toLowerCase();
+  const survived = words.filter((w) => lower.includes(w)).length;
+  if (survived / words.length >= 0.4) return false;
+
+  const dev = (text.match(COUNT_DEVANAGARI) || []).length;
+  const lat = (text.match(COUNT_LATIN) || []).length;
+  return dev >= lat * 0.6;
+}
+
 async function translateText(text: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY;
   const chain: { name: string; run: () => Promise<string> }[] = [];
@@ -175,12 +211,14 @@ async function translateText(text: string): Promise<string> {
   for (const provider of ordered) {
     try {
       const out = await provider.run();
-      if (out && out.trim()) {
+      if (looksTranslated(text, out)) {
         lastProvider = provider.name;
         preferred = provider.name;
         return out;
       }
-      errors.push(`${provider.name}: empty`);
+      errors.push(`${provider.name}: ${out && out.trim() ? 'not translated' : 'empty'}`);
+      // Do not stay on a provider that is handing back English.
+      if (preferred === provider.name) preferred = '';
     } catch (err: any) {
       errors.push(`${provider.name}: ${err?.message || err}`);
     }

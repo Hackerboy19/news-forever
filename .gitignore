@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 .vercel
+
+# Runtime translation cache — belongs on the server, not in the repo
+.nf-cache/
