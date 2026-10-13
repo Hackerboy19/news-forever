@@ -24,6 +24,83 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // server.ts
 var import_config = require("dotenv/config");
 var import_express = __toESM(require("express"), 1);
+
+// src/lib/fetchPolyfill.ts
+var import_https = require("https");
+var import_http = require("http");
+var import_url = require("url");
+var TIMEOUT_MS = 15e3;
+var MAX_REDIRECTS = 3;
+function once(url, init, redirectsLeft) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new import_url.URL(url);
+    } catch (err) {
+      reject(new Error(`invalid URL: ${url}`));
+      return;
+    }
+    const send = parsed.protocol === "http:" ? import_http.request : import_https.request;
+    const body = init?.body === void 0 || init?.body === null ? void 0 : typeof init.body === "string" ? init.body : JSON.stringify(init.body);
+    const headers = { ...init?.headers || {} };
+    if (body !== void 0 && !Object.keys(headers).some((h) => h.toLowerCase() === "content-length")) {
+      headers["Content-Length"] = String(Buffer.byteLength(body));
+    }
+    const req = send(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || void 0,
+        path: parsed.pathname + parsed.search,
+        method: (init?.method || "GET").toUpperCase(),
+        headers
+      },
+      (res) => {
+        const status = res.statusCode || 0;
+        const location = res.headers.location;
+        if (status >= 300 && status < 400 && location && redirectsLeft > 0) {
+          res.resume();
+          resolve(once(new import_url.URL(location, url).toString(), init, redirectsLeft - 1));
+          return;
+        }
+        const chunks = [];
+        res.on("data", (c) => chunks.push(Buffer.from(c)));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            statusText: res.statusMessage || "",
+            headers: {
+              get: (name) => {
+                const v = res.headers[name.toLowerCase()];
+                return v === void 0 ? null : Array.isArray(v) ? v.join(", ") : String(v);
+              }
+            },
+            async text() {
+              return text;
+            },
+            async json() {
+              return JSON.parse(text);
+            }
+          });
+        });
+      }
+    );
+    req.setTimeout(TIMEOUT_MS, () => req.destroy(new Error(`timeout after ${TIMEOUT_MS}ms`)));
+    req.on("error", reject);
+    if (body !== void 0) req.write(body);
+    req.end();
+  });
+}
+function ensureFetch() {
+  const g = globalThis;
+  if (typeof g.fetch === "function") return "native";
+  g.fetch = (url, init) => once(String(url), init, MAX_REDIRECTS);
+  return "shim";
+}
+
+// server.ts
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 
@@ -1582,6 +1659,8 @@ async function syncHomepageShell(distPath) {
   }
 }
 async function startServer() {
+  const fetchKind = ensureFetch();
+  console.log(`[http] outbound fetch: ${fetchKind} (node ${process.version})`);
   const app = (0, import_express.default)();
   const PORT = parseInt(process.env.PORT || "3000", 10);
   app.use(import_express.default.json({ limit: "15mb" }));

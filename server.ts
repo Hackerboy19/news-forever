@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { ensureFetch } from "./src/lib/fetchPolyfill";
 import path from "path";
 import nodeFs from "fs";
 import { siteSetting } from "./src/data/siteConfig";
@@ -178,6 +179,12 @@ async function syncHomepageShell(distPath: string): Promise<void> {
 }
 
 async function startServer() {
+  // Outbound HTTP (Hindi translation, article Q&A, the legacy image bridge)
+  // needs a fetch. Node 18+ has one; older hosts do not, and this server runs
+  // on one of those. Installed before anything can make a call.
+  const fetchKind = ensureFetch();
+  console.log(`[http] outbound fetch: ${fetchKind} (node ${process.version})`);
+
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 

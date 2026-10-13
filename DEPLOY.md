@@ -163,8 +163,21 @@ After this build the answer says why, e.g.
 the server falls back on is routinely rate-limited or blocked for shared
 hosting IPs, which is the likely reading of a 429 or a network error.
 
-The reliable fix is a Gemini API key, which the code already prefers when it
-is present. Add one line to `.env` and restart:
+The real cause on this host turned out to be the Node version: `fetch` only
+became a global in Node 18, and every outbound call was failing with
+`fetch is not defined`. This build carries a small shim so it works either
+way — the boot log now prints which is in use:
+
+```
+[http] outbound fetch: shim (node v16.20.2)
+```
+
+`shim` means the host is on an old Node. Switching the app to **Node 18 or
+newer** in Plesk → Node.js is still worth doing: it is faster, supported, and
+the line will then read `native`.
+
+A Gemini API key gives better translations than the free endpoint, and the
+code prefers it when present. Add one line to `.env` and restart:
 
 ```
 GEMINI_API_KEY=<your key from aistudio.google.com/apikey>
@@ -173,6 +186,23 @@ GEMINI_API_KEY=<your key from aistudio.google.com/apikey>
 Nothing else changes: translations are computed once per article and cached
 in memory, the database is never written to, and English stays the stored
 version.
+
+## One thing only you can close: `/server.cjs` is downloadable
+
+nginx serves the app's `dist/` directory as the site root, so the server
+bundle sitting inside it is reachable at `https://newsforever.in/server.cjs`.
+It holds no passwords — those come from `.env` at runtime — but it is the
+whole server source, and it should not be public. Two ways to close it:
+
+- **Move the bundle out of `dist/`** (a build change here, plus one field in
+  Plesk → Node.js → *Application Startup File*). Ask and I will do the build
+  side.
+- **Deny it in nginx**: Plesk → Domains → newsforever.in → Apache & nginx
+  Settings → *Additional nginx directives*:
+
+  ```nginx
+  location ~* ^/(server\.cjs|.*\.map|.*\.zip)$ { deny all; }
+  ```
 
 ## Still needed outside the code
 
