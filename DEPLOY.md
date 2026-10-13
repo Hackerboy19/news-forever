@@ -185,7 +185,20 @@ endpoint gives — one line in `.env` and a restart:
 
 ```
 GEMINI_API_KEY=<key from aistudio.google.com/apikey>
+GEMINI_MODEL=gemini-2.5-flash     # optional; this is the default
 ```
+
+Google retires model names, so the model is settable here without a
+rebuild. If the configured one stops existing the call fails over to the
+keyless providers, and `/api/translate` names the error.
+
+Cost: the Flash and Flash-Lite models have a free tier, with the per-minute
+and per-day limits shown for your own account in AI Studio. Note that
+Google may use free-tier content to improve its products — these are
+published news articles, so that is a judgement call, not a leak. If the
+free limits are ever exceeded, translating the whole 664-article archive on
+the paid tier is roughly a dollar on Flash-Lite and under ten on Flash, once
+— the disk cache means it is never paid for twice.
 
 ## One thing only you can close: `/server.cjs` is downloadable
 

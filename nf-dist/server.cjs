@@ -459,9 +459,10 @@ async function gtxTranslate(text, target = "hi") {
   const data = await res.json();
   return (data[0] || []).map((seg) => seg[0]).join("");
 }
+var GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 async function geminiTranslate(text, apiKey) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -480,7 +481,7 @@ ${text}`
       })
     }
   );
-  if (!res.ok) throw new Error(`gemini ${res.status}`);
+  if (!res.ok) throw new Error(`gemini ${GEMINI_MODEL} ${res.status}`);
   const data = await res.json();
   const out = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!out) throw new Error("gemini empty");

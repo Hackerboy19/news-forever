@@ -105,9 +105,17 @@ async function gtxTranslate(text: string, target = 'hi'): Promise<string> {
   return (data[0] || []).map((seg: any) => seg[0]).join('');
 }
 
+/**
+ * Which Gemini model to ask. Google retires model names — the one this was
+ * written against (gemini-2.0-flash) is no longer listed — so it is settable
+ * from the environment without a rebuild, and a dead name simply fails over
+ * to the keyless providers rather than taking Hindi down with it.
+ */
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 async function geminiTranslate(text: string, apiKey: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,7 +132,7 @@ async function geminiTranslate(text: string, apiKey: string): Promise<string> {
       }),
     }
   );
-  if (!res.ok) throw new Error(`gemini ${res.status}`);
+  if (!res.ok) throw new Error(`gemini ${GEMINI_MODEL} ${res.status}`);
   const data: any = await res.json();
   const out = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!out) throw new Error('gemini empty');
