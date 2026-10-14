@@ -44,6 +44,12 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
   const [sortField, setSortField] = useState<'id' | 'title' | 'views' | 'created_at'>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  // Real counts, so the Status filter reports how many drafts there are
+  // instead of reading "Draft (0)" — that was the status code, but it looks
+  // exactly like a count of zero, which is why drafts seemed not to exist.
+  const publishedCount = blogs.filter((b) => b.status === 1).length;
+  const draftCount = blogs.filter((b) => b.status !== 1).length;
+
   // Filter & Search Logic
   const filteredBlogs = blogs.filter(b => {
     const matchesSearch = 
@@ -122,13 +128,29 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onNewBlog}
-          className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-rose-600/25 transition self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          Add Article
-        </button>
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          {/* One click to the drafts, and proof that they exist at all. */}
+          {draftCount > 0 && (
+            <button
+              onClick={() => setStatusFilter(statusFilter === 0 ? 'all' : 0)}
+              className={`px-4 py-2.5 text-sm font-semibold rounded-xl border transition ${
+                statusFilter === 0
+                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-200'
+                  : 'bg-slate-950 border-slate-700 text-amber-300 hover:border-amber-500/50'
+              }`}
+              title="Articles saved but not published"
+            >
+              {draftCount} draft{draftCount === 1 ? '' : 's'}
+            </button>
+          )}
+          <button
+            onClick={onNewBlog}
+            className="flex items-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-rose-600/25 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Add Article
+          </button>
+        </div>
       </div>
 
       {/* Filter & Search Toolbar */}
@@ -169,9 +191,9 @@ export const AdminBlogList: React.FC<AdminBlogListProps> = ({
               onChange={(e) => setStatusFilter(e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10))}
               className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-rose-500"
             >
-              <option value="all">All Statuses</option>
-              <option value={1}>Active (1)</option>
-              <option value={0}>Draft (0)</option>
+              <option value="all">All statuses ({blogs.length})</option>
+              <option value={1}>Published ({publishedCount})</option>
+              <option value={0}>Drafts ({draftCount})</option>
             </select>
           </div>
         </div>

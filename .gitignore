@@ -14,3 +14,6 @@ coverage/
 # Built server bundle — lives beside the app, not in the web-served dist/
 /server.cjs
 /server.cjs.map
+
+# Staging copy of what goes on the server; nf-dist.zip is the artifact
+/nf-dist/
