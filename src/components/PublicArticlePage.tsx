@@ -5,6 +5,10 @@ import SidebarAd from './SidebarAd';
 import InArticleAd from './InArticleAd';
 import PeopleAlsoAsk from './PeopleAlsoAsk';
 import Skeleton from './ui/Skeleton';
+import ArticleLink from './ui/ArticleLink';
+import AuthorByline from './ui/AuthorByline';
+import SponsoredBadge from './ui/SponsoredBadge';
+import { isSponsoredArticle } from '../lib/editorial';
 import { splitHtmlAtParagraphs } from '../lib/injectAds';
 import { shuffleAds } from '../lib/adRotation';
 import { useI18n } from '../lib/i18n';
@@ -88,6 +92,7 @@ interface PublicArticlePageProps {
   urlSlug: string;
   blogs: CIBlog[];
   ads: CIAdvertisement[];
+  /** Kept for callers; this page waits on its own article request instead. */
   isLoading?: boolean;
   onGoBack: () => void;
   onSelectArticle: (urlSlug: string) => void;
@@ -102,7 +107,6 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   urlSlug,
   blogs,
   ads,
-  isLoading = false,
   onGoBack,
   onSelectArticle,
 }) => {
@@ -116,11 +120,17 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   const [fetched, setFetched] = useState<(typeof blogs)[number] | null>(null);
   const [fetchTried, setFetchTried] = useState(false);
   const inList = blogs.find((b) => b.url === urlSlug);
-  const baseArticle = inList || fetched;
+  // The listing no longer ships article bodies, so a row found there is only
+  // good enough to render from while its own request is in flight.
+  const baseArticle = (fetched && fetched.url === urlSlug ? fetched : null) || inList || fetched;
 
+  // Fetch this one article straight away, without waiting for the site-wide
+  // list. The page used to sit on a skeleton until a 1.3 MB listing of every
+  // published article had been downloaded and parsed — on a phone that was
+  // seconds of nothing, for a request that returns a single row.
   useEffect(() => {
-    if (inList) { setFetched(null); setFetchTried(true); return; }
     let cancelled = false;
+    setFetched(null);
     setFetchTried(false);
     fetch(`/api/blogs/slug/${encodeURIComponent(urlSlug)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -128,8 +138,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
       .catch(() => { if (!cancelled) setFetched(null); })
       .finally(() => { if (!cancelled) setFetchTried(true); });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [urlSlug, inList?.id]);
+  }, [urlSlug]);
 
   // Count a view once per browser session per article (self-hosted counter).
   useEffect(() => {
@@ -146,17 +155,24 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
   // Server-side Hindi translation (cached at the edge) when HI is active
   const [hiPayload, setHiPayload] = useState<any>(null);
   const [translating, setTranslating] = useState(false);
+  /** HI is on, the translation was attempted, and it did not come back. */
+  const [hiUnavailable, setHiUnavailable] = useState(false);
   useEffect(() => {
     setHiPayload(null);
+    setHiUnavailable(false);
     if (lang !== 'hi' || !baseArticle) return;
     let cancelled = false;
     setTranslating(true);
     fetch(`/api/translate?slug=${encodeURIComponent(baseArticle.url)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!cancelled && d?.translated) setHiPayload(d);
+        if (cancelled) return;
+        if (d?.translated) setHiPayload(d);
+        // Say so rather than showing an English article inside a Hindi page
+        // and leaving the reader to wonder whether the button worked.
+        else setHiUnavailable(true);
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setHiUnavailable(true); })
       .finally(() => {
         if (!cancelled) setTranslating(false);
       });
@@ -187,9 +203,9 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
     [ads]
   );
 
-  // Still loading if the initial list hasn't arrived, or we're fetching this
-  // (older) article by slug and the request hasn't finished yet.
-  if (isLoading || (!article && (blogs.length === 0 || !fetchTried))) {
+  // Wait only on this article's own request — not on the site-wide listing,
+  // which this page no longer needs in order to render.
+  if (!article && !fetchTried) {
     return <PublicArticleSkeleton onGoBack={onGoBack} />;
   }
 
@@ -311,26 +327,37 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               {article.title}
             </h1>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[10px] text-stone-600 font-mono py-3 border-y border-[#E7E5E4]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-[#991B1B] flex items-center justify-center font-bold text-white text-xs">
-                  {article.author_name ? article.author_name[0] : 'E'}
-                </div>
-                <span className="text-stone-800 font-bold uppercase tracking-wider">{article.author_name || 'Elena Rostova'}</span>
+            {/* Advertising disclosure, shown above the byline so the reader
+                sees it before the copy. */}
+            {isSponsoredArticle(article) && (
+              <div className="pt-1">
+                <SponsoredBadge size="md" />
               </div>
+            )}
+
+            {/* Real ci_admin author (joined on user_created_by) — never an
+                invented name. See src/components/ui/AuthorByline.tsx. */}
+            <AuthorByline authorName={article.author_name}>
               <div className="flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 text-[#991B1B]" />
                 <span>{t('published')} {article.created_at}</span>
               </div>
-            </div>
+            </AuthorByline>
           </div>
 
           {/* ASSET MAPPING: Main Featured Image (src={article.image}, alt={article.alt_tag}) */}
           <div className="space-y-2">
-            <div className="relative overflow-hidden bg-stone-100 border border-[#E7E5E4] max-h-[480px]">
+            {/* A fixed ratio reserves the hero's space before the file
+                arrives; without it the box was zero-height and everything
+                below jumped down on load. eager + high priority pairs with
+                the <link rel="preload"> the server injects for this image. */}
+            <div className="relative overflow-hidden bg-stone-100 border border-[#E7E5E4] aspect-[16/9] max-h-[480px]">
               <img
                 src={article.image}
                 alt={article.alt_tag}
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&auto=format&fit=crop&q=80';
@@ -419,6 +446,15 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             </div>
           </div>
 
+          {/* Translation attempted and unavailable — the article below is in
+              English, and saying so is better than silence. */}
+          {hiUnavailable && !translating && (
+            <div className="flex items-start gap-2 text-xs text-stone-600 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2">
+              <span className="font-bold text-amber-700 shrink-0">i</span>
+              <span>यह लेख फ़िलहाल अंग्रेज़ी में ही उपलब्ध है — अनुवाद सेवा अभी जवाब नहीं दे रही। बाकी पेज हिंदी में है।</span>
+            </div>
+          )}
+
           {/* Hindi translation in progress indicator */}
           {translating && (
             <div className="flex items-center gap-2 text-xs font-mono text-stone-500 bg-slate-50 border border-slate-200 rounded-sm px-3 py-2 animate-pulse">
@@ -453,7 +489,13 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
             <React.Fragment key={i}>
               {i > 0 && <InArticleAd ad={inContentAds[i - 1]} />}
               <div
-                className="nf-article prose max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg space-y-4"
+                /* `article-body` (src/index.css) styles this HTML by element
+                   selector — Tailwind utilities cannot reach content injected
+                   via dangerouslySetInnerHTML. It replaces `prose`, which
+                   matched nothing because @tailwindcss/typography is not
+                   installed, leaving lists unmarked and links unstyled.
+                   `nf-article` is kept: other rules still target it. */
+                className="nf-article article-body max-w-none text-stone-800 font-serif leading-relaxed text-base sm:text-lg"
                 dangerouslySetInnerHTML={{ __html: segment }}
               />
             </React.Fragment>
@@ -477,10 +519,11 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
               </h3>
               <div className="space-y-3">
                 {relatedArticles.map((rel) => (
-                  <div
+                  <ArticleLink
                     key={rel.id}
-                    onClick={() => onSelectArticle(rel.url)}
-                    className="cursor-pointer group flex items-center gap-3 p-2 hover:bg-stone-100/60 transition"
+                    url={rel.url}
+                    onSelectArticle={onSelectArticle}
+                    className="cursor-pointer group flex items-center gap-3 p-2 hover:bg-stone-100/60 transition no-underline text-inherit"
                   >
                     <img
                       src={rel.image}
@@ -498,7 +541,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
                         {rel.created_at.split(' ')[0]}
                       </p>
                     </div>
-                  </div>
+                  </ArticleLink>
                 ))}
               </div>
             </div>
@@ -529,13 +572,14 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(relatedArticles.length > 0 ? relatedArticles : blogs.filter((b) => b.id !== article.id).slice(0, 3)).map((rel) => (
-              <div
+              <ArticleLink
                 key={rel.id}
-                onClick={() => {
+                url={rel.url}
+                onSelectArticle={(slug) => {
                   window.scrollTo({ top: 0, behavior: 'smooth' });
-                  onSelectArticle(rel.url);
+                  onSelectArticle(slug);
                 }}
-                className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between"
+                className="group cursor-pointer bg-white border border-[#E7E5E4] hover:border-[#991B1B]/40 overflow-hidden shadow-xs transition flex flex-col justify-between no-underline text-inherit"
               >
                 <div className="relative h-44 w-full overflow-hidden bg-stone-100">
                   <img
@@ -568,7 +612,7 @@ export const PublicArticlePage: React.FC<PublicArticlePageProps> = ({
                     </span>
                   </div>
                 </div>
-              </div>
+              </ArticleLink>
             ))}
           </div>
         </section>

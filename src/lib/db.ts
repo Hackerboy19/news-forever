@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
-import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog } from '../types.js';
+import { CIBlog, CICategory, CIAdvertisement, CITag, CIImageLibrary, CISubscriber, CIUser, CIActivityLog, SearchItem } from '../types.js';
 import { resolveCategoryIds } from './taxonomy.js';
+import { resolveAuthorName, NEWSROOM_BYLINE } from './editorial.js';
 
 /**
  * MySQL data provider for the legacy jaipurwe_fsianews CodeIgniter database.
@@ -117,14 +118,21 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     is_featured: index === 0,
     is_trending: index > 0 && index < 4,
     author_id: row.user_created_by,
-    author_name: author || 'News Forever Bureau',
+    // The ci_admin join above gives the account's real firstname/lastname.
+    // Shared operations logins ("Admin User") are not bylines — see
+    // resolveAuthorName — so those fall back to the newsroom.
+    author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
     views: row.views ?? 0,
     created_at: row.created_at || '',
     updated_at: row.created_at || '',
     meta_title: row.meta_title || row.title,
     meta_description: row.meta_description || summary,
     meta_keyword: row.meta_keyword || '',
-    og_title: row.og_title || row.title,
+    // Fall through to meta_title, not straight to title. An editor who
+    // rewrites the Meta Title and leaves OG Title blank expects the share
+    // card to follow; with `|| row.title` it silently kept the old headline,
+    // because every consumer downstream sees og_title as already set.
+    og_title: row.og_title?.trim() || row.meta_title?.trim() || row.title,
     // Use the stored og_url only if it is clean (no whitespace); otherwise
     // rebuild it from the trimmed slug so legacy "…/ slug" values can't break
     // the canonical / share URL.
@@ -218,6 +226,66 @@ export async function getPublishedBlogs(limit = 50, categorySlug?: string): Prom
   }
 }
 
+let searchIndexCache: { data: SearchItem[]; at: number } | null = null;
+const SEARCH_INDEX_CACHE_MS = 300_000;
+
+/**
+ * Every published article, trimmed to what search needs.
+ *
+ * The site list endpoint caps at 200 rows and ships each article's full HTML
+ * body, so the palette could only ever search the newest 200 of 664. This
+ * query drops `description` (about 70% of that payload) and takes only the
+ * first 400 characters as a summary fallback, which makes the whole catalogue
+ * small enough to send in one go — roughly 200 KB against the 4.5 MB an
+ * uncapped /api/blogs would be.
+ */
+export async function getSearchIndex(): Promise<SearchItem[]> {
+  if (searchIndexCache && Date.now() - searchIndexCache.at < SEARCH_INDEX_CACHE_MS) {
+    return searchIndexCache.data;
+  }
+  try {
+    const query = `
+      SELECT b.id, b.title, b.url, b.image, b.alt_tag, b.cat_id, b.sub_cat_id,
+             b.meta_keyword, b.meta_description, b.created_at,
+             LEFT(b.description, 400) AS description_head,
+             c.cat_name AS category_name,
+             sc.cat_name AS sub_category_name,
+             a.firstname AS author_firstname,
+             a.lastname AS author_lastname
+      FROM ci_blog b
+      LEFT JOIN ci_category c ON b.cat_id = c.id
+      LEFT JOIN ci_category sc ON b.sub_cat_id = sc.id
+      LEFT JOIN ci_admin a ON b.user_created_by = a.admin_id
+      WHERE b.status = 1
+      ORDER BY b.created_at DESC, b.id DESC
+    `;
+    const [rows] = await dbPool.query(query);
+    const data = (rows as any[]).map((row) => {
+      const summarySource = row.meta_description?.trim() || stripHtml(row.description_head || '');
+      const author = [row.author_firstname, row.author_lastname].filter(Boolean).join(' ').trim();
+      return {
+        id: row.id,
+        title: row.title || '',
+        url: (row.url || '').trim(),
+        short_content: summarySource.length > 180 ? summarySource.slice(0, 177).trimEnd() + '…' : summarySource,
+        category_id: row.cat_id,
+        sub_category_id: row.sub_cat_id,
+        category_name: row.sub_category_name || row.category_name || 'News',
+        image: assetUrl(row.image),
+        alt_tag: row.alt_tag || row.title || '',
+        author_name: resolveAuthorName(author) || NEWSROOM_BYLINE,
+        meta_keyword: row.meta_keyword || '',
+        created_at: row.created_at || '',
+      } as SearchItem;
+    });
+    searchIndexCache = { data, at: Date.now() };
+    return data;
+  } catch (err) {
+    handleDbError('getSearchIndex', err);
+    return [];
+  }
+}
+
 /** Fetch a single article by exact ci_blog.url slug (legacy rows carry stray whitespace). */
 export async function incrementBlogViews(id: number): Promise<void> {
   try {
@@ -229,6 +297,8 @@ export async function incrementBlogViews(id: number): Promise<void> {
 
 export async function incrementAdClick(id: number): Promise<void> {
   try {
+    // Only where the install has somewhere to put the number.
+    if (!(await adHasColumn('click_count'))) return;
     await dbPool.query(`UPDATE ci_advertisement SET click_count = click_count + 1 WHERE id = ?`, [id]);
   } catch (err) {
     handleDbError('incrementAdClick', err);
@@ -363,9 +433,50 @@ export async function getSubAdmins(): Promise<CIUser[]> {
   }
 }
 
-/** Real activity trail from ci_activity_log (labels joined from ci_activity_status). */
+/**
+ * Labels for the codes in ci_activity_log.activity_id, read from
+ * ci_activity_status.
+ *
+ * The column holding the text differs between CodeIgniter builds, so rather
+ * than guess a name the first row is inspected and the first non-numeric,
+ * non-timestamp string column is taken as the label. Cached for the life of
+ * the process; an absent table simply yields no labels.
+ */
+let activityLabelCache: Map<number, string> | null = null;
+async function getActivityLabels(): Promise<Map<number, string>> {
+  if (activityLabelCache) return activityLabelCache;
+  const map = new Map<number, string>();
+  try {
+    const [rows] = await dbPool.query(`SELECT * FROM ci_activity_status LIMIT 500`);
+    for (const row of rows as any[]) {
+      const id = Number(row.id ?? row.activity_id ?? row.status_id);
+      if (!Number.isFinite(id)) continue;
+      const entry = Object.entries(row).find(
+        ([k, v]) =>
+          typeof v === 'string' &&
+          v.trim() !== '' &&
+          !/^\d+$/.test(v.trim()) &&
+          !/(date|time|created|updated|ip)/i.test(k)
+      );
+      if (entry) map.set(id, String(entry[1]).trim());
+    }
+  } catch {
+    // No such table on this install — codes stay unlabelled.
+  }
+  activityLabelCache = map;
+  return map;
+}
+
+/**
+ * Real activity trail from ci_activity_log, with the code resolved to the
+ * label stored in ci_activity_status.
+ *
+ * The join the old comment promised was never actually written, so every
+ * row in the admin panel read "Activity code 7" under a module of "System".
+ */
 export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
   try {
+    const labels = await getActivityLabels();
     const [rows] = await dbPool.query(
       `SELECT l.id, l.activity_id, l.user_id, l.admin_id, l.created_at,
               a.username, a.firstname, a.lastname
@@ -378,14 +489,60 @@ export async function getActivityLogs(limit = 100): Promise<CIActivityLog[]> {
       id: r.id,
       user_id: r.user_id || r.admin_id,
       user_name: [r.firstname, r.lastname].filter(Boolean).join(' ').trim() || r.username || `Admin #${r.admin_id}`,
-      activity: `Activity code ${r.activity_id}`,
-      module: 'System',
+      activity: labels.get(Number(r.activity_id)) || `Activity code ${r.activity_id}`,
+      module: 'Legacy CMS',
       ip_address: '',
       created_at: r.created_at ? String(r.created_at) : '',
     }));
   } catch (err) {
     handleDbError('getActivityLogs', err);
     return [];
+  }
+}
+
+const ACTIVITY_KEY = 'nf_activity_log';
+const ACTIVITY_KEEP = 300;
+
+/**
+ * The actions taken in this admin panel.
+ *
+ * They used to live in a variable, so every restart wiped them and the panel
+ * showed an empty or misleadingly short history. Stored as JSON in the same
+ * ci_setting row style the site config already uses — no schema change, and
+ * nothing is written to the legacy ci_activity_log.
+ */
+export async function getPanelActivity(): Promise<CIActivityLog[]> {
+  try {
+    const [rows] = await dbPool.query(
+      `SELECT page_description FROM ci_setting WHERE page_key = ? LIMIT 1`,
+      [ACTIVITY_KEY]
+    );
+    const list = rows as any[];
+    if (!list.length) return [];
+    const parsed = JSON.parse(list[0].page_description || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    handleDbError('getPanelActivity', err);
+    return [];
+  }
+}
+
+export async function appendPanelActivity(entry: CIActivityLog): Promise<void> {
+  try {
+    const current = await getPanelActivity();
+    const next = [entry, ...current].slice(0, ACTIVITY_KEEP);
+    const json = JSON.stringify(next);
+    const [rows] = await dbPool.query(`SELECT id FROM ci_setting WHERE page_key = ? LIMIT 1`, [ACTIVITY_KEY]);
+    if ((rows as any[]).length > 0) {
+      await dbPool.query(`UPDATE ci_setting SET page_description = ? WHERE page_key = ?`, [json, ACTIVITY_KEY]);
+    } else {
+      await dbPool.query(
+        `INSERT INTO ci_setting (page_key, page_description, email, phone, address, map, status) VALUES (?, ?, '', '', '', '', 1)`,
+        [ACTIVITY_KEY, json]
+      );
+    }
+  } catch (err) {
+    handleDbError('appendPanelActivity', err);
   }
 }
 
@@ -546,30 +703,92 @@ function toAdColumns(payload: Partial<CIAdvertisement>): Record<string, string |
   return cols;
 }
 
+/**
+ * The real shape of a legacy table, read once from the database.
+ *
+ * ci_advertisement was created by the old CodeIgniter installer, and which
+ * columns it has varies between installs. Inserting a fixed list of columns
+ * fails on any install that has an extra NOT NULL column without a default —
+ * MySQL in strict mode rejects the whole row with "Field 'x' doesn't have a
+ * default value", which is how an ad save can appear to do nothing. Reading
+ * the definition lets the insert name only columns that exist and fill in
+ * the ones the table insists on.
+ */
+interface ColumnInfo { name: string; nullable: boolean; hasDefault: boolean; type: string; isAuto: boolean }
+const tableColumnCache = new Map<string, ColumnInfo[]>();
+async function describeTable(table: string): Promise<ColumnInfo[]> {
+  const cached = tableColumnCache.get(table);
+  if (cached) return cached;
+  let cols: ColumnInfo[] = [];
+  try {
+    const [rows] = await dbPool.query(`SHOW COLUMNS FROM \`${table}\``);
+    cols = (rows as any[]).map((r) => ({
+      name: String(r.Field),
+      nullable: String(r.Null).toUpperCase() === 'YES',
+      hasDefault: r.Default !== null && r.Default !== undefined,
+      type: String(r.Type || '').toLowerCase(),
+      isAuto: String(r.Extra || '').toLowerCase().includes('auto_increment'),
+    }));
+  } catch (err) {
+    handleDbError('describeTable:' + table, err);
+    cols = [];
+  }
+  tableColumnCache.set(table, cols);
+  return cols;
+}
+
+/** A harmless value for a NOT NULL column the caller said nothing about. */
+function emptyValueFor(col: ColumnInfo): string | number {
+  if (/int|decimal|float|double|bit|year/.test(col.type)) return 0;
+  if (/datetime|timestamp/.test(col.type)) return legacyNow();
+  if (/^date/.test(col.type)) return legacyNow().slice(0, 10);
+  return '';
+}
+
 export async function createAd(payload: Partial<CIAdvertisement>): Promise<CIAdvertisement[]> {
   const defaults: Record<string, string | number> = {
     advertisement_title: '', advertisement_url: '', advertisement_image: '', alt_tag: '',
     priority: 2, position: 'right', status: 1,
   };
-  const row = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+  const wanted: Record<string, string | number> = { ...defaults, ...toAdColumns(payload), created_at: legacyNow() };
+
+  const schema = await describeTable('ci_advertisement');
+  const row: Record<string, string | number> = {};
+  if (schema.length === 0) {
+    // Could not read the definition — behave exactly as before.
+    Object.assign(row, wanted);
+  } else {
+    const known = new Set(schema.map((c) => c.name));
+    for (const [k, v] of Object.entries(wanted)) if (known.has(k)) row[k] = v;
+    // Anything the table requires and the form never asked about.
+    for (const col of schema) {
+      if (col.isAuto || col.nullable || col.hasDefault) continue;
+      if (row[col.name] === undefined) row[col.name] = emptyValueFor(col);
+    }
+  }
+
   const names = Object.keys(row);
   await dbPool.query(
     `INSERT INTO ci_advertisement (${names.map((n) => `\`${n}\``).join(',')}) VALUES (${names.map(() => '?').join(',')})`,
-    names.map((n) => row[n as keyof typeof row])
+    names.map((n) => row[n])
   );
-  return getActiveAds();
+  return getAllAdsAdmin();
 }
 
 export async function updateAd(id: number, payload: Partial<CIAdvertisement>): Promise<CIAdvertisement[]> {
   const cols = toAdColumns(payload);
-  const names = Object.keys(cols);
+  const schema = await describeTable('ci_advertisement');
+  const known = schema.length ? new Set(schema.map((c) => c.name)) : null;
+  const names = Object.keys(cols).filter((n) => !known || known.has(n));
   if (names.length > 0) {
     await dbPool.query(
       `UPDATE ci_advertisement SET ${names.map((n) => `\`${n}\` = ?`).join(', ')} WHERE id = ?`,
       [...names.map((n) => cols[n]), id]
     );
   }
-  return getActiveAds();
+  // The admin list, not the active one: an ad that was just switched off has
+  // to stay on screen, or there is no way to switch it back on.
+  return getAllAdsAdmin();
 }
 
 export async function deleteAd(id: number): Promise<boolean> {
@@ -582,7 +801,7 @@ export async function deleteAd(id: number): Promise<boolean> {
 export async function createCategory(payload: Partial<CICategory>): Promise<CICategory[]> {
   const row: Record<string, string | number> = {
     parent_id: payload.parent_id ?? 0,
-    url: (payload.slug || '').trim(),
+    url: normaliseSlug(payload.slug),
     cat_name: payload.category_name || '',
     meta_title: payload.meta_title || payload.category_name || '',
     meta_keyword: '', meta_description: payload.meta_description || '',
@@ -603,7 +822,7 @@ export async function createCategory(payload: Partial<CICategory>): Promise<CICa
 export async function updateCategory(id: number, payload: Partial<CICategory>): Promise<CICategory[]> {
   const cols: Record<string, string | number> = {};
   if (payload.category_name !== undefined) cols.cat_name = payload.category_name;
-  if (payload.slug !== undefined) cols.url = payload.slug.trim();
+  if (payload.slug !== undefined) cols.url = normaliseSlug(payload.slug);
   if (payload.parent_id !== undefined) cols.parent_id = payload.parent_id;
   if (payload.status !== undefined) cols.status = payload.status;
   if (payload.meta_title !== undefined) cols.meta_title = payload.meta_title;
@@ -628,14 +847,28 @@ export async function deleteCategory(id: number): Promise<boolean> {
 /** Fetch active tags from ci_tag (url column is the slug). */
 export async function getActiveTags(): Promise<CITag[]> {
   try {
+    // article_count is counted here rather than in the browser because the
+    // admin only ever loads a page of articles (200 by default, against 664
+    // published), so a client-side tally showed 0 for every tag whose
+    // articles fell outside that page. ci_blog.tag_id is a CSV, sometimes
+    // with spaces after the commas, which is why FIND_IN_SET is given a
+    // de-spaced copy to look in.
     const [rows] = await dbPool.query(
-      `SELECT id, tag_name, url, created_at FROM ci_tag WHERE status = 1 ORDER BY id ASC`
+      `SELECT t.id, t.tag_name, t.url, t.created_at,
+              (SELECT COUNT(*) FROM ci_blog b
+                WHERE b.status = 1
+                  AND FIND_IN_SET(t.id, REPLACE(IFNULL(b.tag_id, ''), ' ', '')) > 0
+              ) AS article_count
+         FROM ci_tag t
+        WHERE t.status = 1
+        ORDER BY t.id ASC`
     );
     return (rows as any[]).map((row) => ({
       id: row.id,
       tag_name: row.tag_name,
       slug: (row.url || '').trim(),
       created_at: row.created_at || '',
+      article_count: Number(row.article_count) || 0,
     }));
   } catch (err) {
     handleDbError('getActiveTags', err);
@@ -643,7 +876,24 @@ export async function getActiveTags(): Promise<CITag[]> {
   }
 }
 
-const slugifyTag = (s: string) => (s || '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+/**
+ * Slug for a tag whose name is not written in ASCII.
+ *
+ * The old pattern was [^a-z0-9-], which deletes every Devanagari character,
+ * so `सुपर हीरो अवॉर्ड` and three siblings all collapsed to the slug "-" and
+ * their tag pages resolve to /tag/- . Matching Unicode letters and numbers
+ * instead keeps the name intact. \p{M} has to be in the set as well: the
+ * matras in `सुपर` are combining marks, not letters, so matching only \p{L}
+ * strips the vowels and leaves `स-पर`. A non-ASCII slug is percent-encoded on
+ * the wire and decoded back before lookup, which the tag route already does.
+ */
+const slugifyTag = (s: string) =>
+  (s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}\p{M}-]+/gu, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 // --- Tag CRUD (ci_tag) ---
 export async function createTag(data: { tag_name: string; slug?: string; status?: number }) {
@@ -658,7 +908,7 @@ export async function createTag(data: { tag_name: string; slug?: string; status?
 export async function updateTag(id: number, data: { tag_name?: string; slug?: string; status?: number }) {
   const cols: Record<string, any> = {};
   if (data.tag_name !== undefined) cols.tag_name = data.tag_name;
-  if (data.slug !== undefined) cols.url = data.slug.trim() || slugifyTag(data.tag_name || '');
+  if (data.slug !== undefined) cols.url = normaliseSlug(data.slug) || slugifyTag(data.tag_name || '');
   if (data.status !== undefined) cols.status = data.status;
   const names = Object.keys(cols);
   if (names.length) {
@@ -805,6 +1055,35 @@ export async function changeAdminPassword(
   return (result as any).affectedRows > 0;
 }
 
+/**
+ * Make a slug safe to live in a URL, without changing what it says.
+ *
+ * Search Console reported 404s for paths like `/ tanvi-yatin-khairnar-...`,
+ * `/Miss Teen India 2022 Manushi Parmar 1st Runner-Up` and one containing a
+ * literal newline — slugs saved with a leading space, inner spaces or a
+ * pasted-in headline. A URL cannot carry raw whitespace, so those pages were
+ * unreachable from the moment they were saved.
+ *
+ * Deliberately conservative: whitespace only. Case, punctuation and
+ * non-ASCII are left exactly as entered, because live slugs rely on them
+ * (`Miss-Universe-2026`, `Beauty-Pageant`) and lower-casing or stripping
+ * would break URLs that work today.
+ */
+export function normaliseSlug(raw: string | undefined): string {
+  // Whitespace and nothing else.
+  //
+  // An earlier version also collapsed repeated hyphens and stripped leading
+  // and trailing ones. That was wrong: live articles are published at
+  // `/-tanvi-yatin-khairnar-miss-teen-india-2025`,
+  // `/-best-homoeopathy-doctor-hajipur-dr-ritu-roy-` and
+  // `/Miss--Mrs-and-Miss-Teen-FSIA-International-Beauty-pageant-Grand-Finale-2023`,
+  // all answering 200 today. Tidying those on save would have silently
+  // changed the URL of any such article the moment an editor pressed Save,
+  // and 404'd the link Google already has. Whitespace is the only thing a
+  // URL genuinely cannot carry, so it is the only thing touched here.
+  return (raw || '').replace(/\s+/g, '-');
+}
+
 /** Legacy CodeIgniter created_at format: 'YYYY-MM-DD : HH:MM:SS' */
 function legacyNow(): string {
   const d = new Date();
@@ -827,7 +1106,7 @@ function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number
   if (payload.tag_ids !== undefined) cols.tag_id = payload.tag_ids.join(',');
   if (payload.image !== undefined) cols.image = toLegacyAssetPath(payload.image);
   if (payload.alt_tag !== undefined) cols.alt_tag = payload.alt_tag;
-  if (payload.url !== undefined) cols.url = payload.url.trim();
+  if (payload.url !== undefined) cols.url = normaliseSlug(payload.url);
   if (payload.meta_title !== undefined) cols.meta_title = payload.meta_title;
   if (payload.meta_keyword !== undefined) cols.meta_keyword = payload.meta_keyword;
   if (payload.meta_description !== undefined) cols.meta_description = payload.meta_description;
@@ -936,11 +1215,80 @@ interface RawAdRow {
 }
 
 /** Fetch active promotional ads from ci_advertisement, most prominent first. */
+/** Shared row -> CIAdvertisement mapping for both ad queries. */
+function mapAdRow(row: RawAdRow): CIAdvertisement {
+  return {
+    id: row.id,
+    title: row.advertisement_title,
+    advertisement_image: assetUrl(row.advertisement_image),
+    alt_tag: row.alt_tag || row.advertisement_title,
+    url: row.advertisement_url,
+    position: row.position,
+    priority: row.priority,
+    status: row.status,
+    click_count: row.click_count ?? 0,
+    impressions: 0,
+    created_at: row.created_at || '',
+  };
+}
+
+/**
+ * Every ad, whatever its status — for the admin manager only.
+ *
+ * The manager used to render the public `getActiveAds` list, which filters to
+ * `status = 1`. Deactivating an ad therefore removed it from the only screen
+ * that could edit it, so it could never be edited or switched back on again.
+ */
+export async function getAllAdsAdmin(): Promise<CIAdvertisement[]> {
+  try {
+    const cols = await adSelectColumns([
+      'id', 'advertisement_title', 'advertisement_url', 'advertisement_image',
+      'alt_tag', 'priority', 'position', 'status', 'click_count', 'created_at',
+    ]);
+    const [rows] = await dbPool.query(`
+      SELECT ${cols.map((c) => `\`${c}\``).join(', ')}
+      FROM ci_advertisement
+      ORDER BY status DESC, priority ASC, id DESC
+    `);
+    return (rows as RawAdRow[]).map(mapAdRow);
+  } catch (err) {
+    handleDbError('getAllAdsAdmin', err);
+    return [];
+  }
+}
+
+/**
+ * The columns an ad query may ask for, narrowed to the ones this install's
+ * ci_advertisement actually has.
+ *
+ * This is why no ad ever reached the site. The admin query does not select
+ * click_count and worked fine; the public one did, and this table has no
+ * such column, so MySQL rejected the whole statement, the error was caught,
+ * and the endpoint answered with an empty list. Ads were live and active in
+ * the manager and invisible everywhere else.
+ */
+async function adSelectColumns(wanted: string[]): Promise<string[]> {
+  const schema = await describeTable('ci_advertisement');
+  // Definition unreadable → ask for everything, exactly as before.
+  if (schema.length === 0) return wanted;
+  const known = new Set(schema.map((c) => c.name));
+  return wanted.filter((c) => known.has(c));
+}
+
+/** Does this install's ci_advertisement have the column? Unknown → assume yes. */
+async function adHasColumn(name: string): Promise<boolean> {
+  const schema = await describeTable('ci_advertisement');
+  return schema.length === 0 || schema.some((c) => c.name === name);
+}
+
 export async function getActiveAds(): Promise<CIAdvertisement[]> {
   try {
+    const cols = await adSelectColumns([
+      'id', 'advertisement_title', 'advertisement_url', 'advertisement_image',
+      'alt_tag', 'priority', 'position', 'status', 'click_count', 'created_at',
+    ]);
     const query = `
-      SELECT id, advertisement_title, advertisement_url, advertisement_image,
-             alt_tag, priority, position, status, click_count, created_at
+      SELECT ${cols.map((c) => `\`${c}\``).join(', ')}
       FROM ci_advertisement
       WHERE status = 1
       ORDER BY priority ASC, id DESC
