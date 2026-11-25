@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   CIBlog, 
   CICategory, 
@@ -17,6 +17,8 @@ import PublicLayout from './components/PublicLayout';
 import PublicHome from './components/PublicHome';
 import PublicArticlePage from './components/PublicArticlePage';
 import StaticPage from './components/StaticPage';
+import LegalPage, { LEGAL_SLUGS, type LegalSlug } from './components/LegalPage';
+import { resizeForUpload, describeResize } from './lib/imageResize';
 import SEOManager from './components/SEOManager';
 
 import { I18nProvider } from './lib/i18n';
@@ -86,6 +88,12 @@ function categorySlugFromPath(): string | null {
   return p.slice('category/'.length).split('/')[0] || null;
 }
 /** If the path is /tag/<slug>, return the slug; else null. */
+/** True on the /latest-news landing page. */
+function isLatestNewsPath(): boolean {
+  if (typeof window === 'undefined') return false;
+  return decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '').toLowerCase() === 'latest-news';
+}
+
 function tagSlugFromPath(): string | null {
   if (typeof window === 'undefined') return null;
   const p = decodeURIComponent(window.location.pathname).replace(/^\/+|\/+$/g, '');
@@ -112,6 +120,10 @@ export function App() {
   const [currentSlug, setCurrentSlug] = useState<string | null>(() => pathSlug());
   // number = ci_category id, string = public nav slug (e.g. 'miss-india')
   const [activeCategory, setActiveCategory] = useState<number | string | 'all'>('all');
+  /** /category/<slug> in the URL has been matched against the real categories. */
+  const [categoryResolved, setCategoryResolved] = useState(categorySlugFromPath() === null);
+  /** Every article in the open category, fetched server-side (not the 200-row page). */
+  const [catBlogs, setCatBlogs] = useState<CIBlog[]>([]);
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [adminTab, setAdminTab] = useState<string>('Dashboard');
   const [adminAuth, setAdminAuth] = useState<AdminCredentials | null>(() => loadAdminSession());
@@ -126,6 +138,16 @@ export function App() {
   const [categories, setCategories] = useState<CICategory[]>([]);
   const [tags, setTags] = useState<CITag[]>([]);
   const [ads, setAds] = useState<CIAdvertisement[]>([]);
+  /**
+   * The ad manager's own list, from /api/advertisements?status=all.
+   *
+   * The panel used to show the public list, which is active ads only (plus
+   * the demo banners that ship in the bundle). Switching an ad off made it
+   * disappear from the manager with no way back, and a newly saved row that
+   * was not active never appeared at all — the section looked like it was
+   * ignoring every edit.
+   */
+  const [adminAds, setAdminAds] = useState<CIAdvertisement[]>([]);
   const [activityLogs, setActivityLogs] = useState<CIActivityLog[]>([]);
   const [users, setUsers] = useState<CIUser[]>([]);
   const [subAdmins, setSubAdmins] = useState<CIUser[]>([]);
@@ -134,33 +156,53 @@ export function App() {
   // Start with the built-in default so the site renders instantly (no blank
   // screen); the real ci_setting row replaces it once the API responds.
   const [setting, setSetting] = useState<CISetting>(siteSetting);
-  const [siteConfig, setSiteConfig] = useState<SiteConfigValues>({});
+  /**
+   * Site settings, seeded from the copy the server inlines into the HTML.
+   *
+   * With them in the document there is nothing to wait for: the ticker, the
+   * header colour and the logo are right in the first paint instead of
+   * appearing, or changing, a few hundred milliseconds later. The fetch below
+   * still runs and overwrites this, so a cached shell cannot pin old values.
+   */
+  const bootConfig: SiteConfigValues =
+    (typeof window !== 'undefined' && (window as any).__NF_CONFIG__) || {};
+  const [siteConfig, setSiteConfig] = useState<SiteConfigValues>(bootConfig);
+  /** Settings are known — inlined in the shell, or fetched. */
+  const [configLoaded, setConfigLoaded] = useState(Object.keys(bootConfig).length > 0);
 
   // Loading state
   const [loading, setLoading] = useState(true);
 
-  // Fetch initial data from REST API
+  // Fetch initial data from REST API.
+  //
+  // Public only. The subscriber list, the ci_admin accounts, the activity log
+  // and the image library used to be fetched here too — on every homepage
+  // load, by every visitor, with no credentials. That made a newsletter list
+  // and a roster of admin usernames readable by anyone who opened the network
+  // tab. Those four now live in fetchAdminData below, behind the session.
   const fetchData = async () => {
     try {
+      // Site config decides whether chrome like the breaking-news ticker is
+      // shown at all. Started with the others rather than after them, and
+      // waited for, because rendering that chrome and then removing it when
+      // the answer arrives is a layout shift on every page.
+      const configPromise = fetch('/api/site-config')
+        .then(r => (r.ok ? r.json() : {}))
+        .then((c) => { setSiteConfig(c || {}); return c; })
+        .catch(() => ({}))
+        .finally(() => setConfigLoaded(true));
+
       const [
         resBlogs,
         resCats,
         resTags,
         resAds,
-        resLogs,
-        resUsers,
-        resSubs,
-        resImgs,
         resSetting
       ] = await Promise.all([
         fetch('/api/blogs').then(r => r.json()),
         fetch('/api/categories').then(r => r.json()),
         fetch('/api/tags').then(r => r.json()),
         fetch('/api/advertisements').then(r => r.json()),
-        fetch('/api/activity-logs').then(r => r.json()),
-        fetch('/api/users').then(r => r.json()),
-        fetch('/api/subscribers').then(r => r.json()),
-        fetch('/api/image-library').then(r => r.json()),
         fetch('/api/settings').then(r => r.json()),
       ]);
 
@@ -168,19 +210,45 @@ export function App() {
       setCategories(resCats);
       setTags(resTags);
       setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      setActivityLogs(resLogs);
-      setUsers(resUsers);
-      setSubscribers(resSubs);
-      setImages(resImgs);
       setSetting(resSetting && typeof resSetting === 'object' ? { ...siteSetting, ...resSetting } : siteSetting);
-      fetch('/api/site-config').then(r => r.ok ? r.json() : {}).then(setSiteConfig).catch(() => {});
-      fetch('/api/sub-admins').then(r => r.ok ? r.json() : []).then((d) => Array.isArray(d) && setSubAdmins(d)).catch(() => {});
+      await configPromise;
       fetch('/api/pages').then(r => r.ok ? r.json() : []).then((d) => { if (Array.isArray(d) && d.length) setStaticPages(d); }).catch(() => {}).finally(() => setPagesLoaded(true));
     } catch (err) {
       console.error('Failed to fetch REST API data', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Admin-only collections, sent with the session credentials.
+   *
+   * Called when a session starts and cleared when it ends, so a logged-out
+   * browser never holds this data and never asks the server for it.
+   */
+  const fetchAdminData = async (creds: AdminCredentials | null) => {
+    if (!creds) {
+      setActivityLogs([]);
+      setUsers([]);
+      setSubscribers([]);
+      setImages([]);
+      setSubAdmins([]);
+      return;
+    }
+    const headers = adminHeaders(creds);
+    const get = (url: string) => fetch(url, { headers }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    const [resLogs, resUsers, resSubs, resImgs, resSubAdmins] = await Promise.all([
+      get('/api/activity-logs'),
+      get('/api/users'),
+      get('/api/subscribers'),
+      get('/api/image-library'),
+      get('/api/sub-admins'),
+    ]);
+    if (Array.isArray(resLogs)) setActivityLogs(resLogs);
+    if (Array.isArray(resUsers)) setUsers(resUsers);
+    if (Array.isArray(resSubs)) setSubscribers(resSubs);
+    if (Array.isArray(resImgs)) setImages(resImgs);
+    if (Array.isArray(resSubAdmins)) setSubAdmins(resSubAdmins);
   };
 
   useEffect(() => {
@@ -208,6 +276,71 @@ export function App() {
     };
   }, []);
 
+  /**
+   * Meta title/description for whatever listing route is being viewed.
+   *
+   * The server already injects these — from ci_category for
+   * /category/<slug>, from ci_tags for /tag/<slug> — but SEOManager knew
+   * nothing about either: with no article in scope it fell through to the
+   * site-wide defaults and overwrote the correct tags the moment React
+   * mounted. Google renders JavaScript, so what it indexed was the
+   * overwritten version: a site: search showed /category/..., /tag/... and
+   * /latest-news all sharing one generic title, which is also a duplicate
+   * title problem in Search Console. The database had the right values the
+   * whole time; the browser was throwing them away a few hundred
+   * milliseconds after paint.
+   *
+   * Every fallback string below is worded exactly as the server words it,
+   * so the pre- and post-hydration documents agree character for character.
+   */
+  const routeMeta = useMemo(() => {
+    if (activeTag) {
+      const tg = tags.find((t) => (t.slug || '').toLowerCase() === activeTag.toLowerCase());
+      const name = tg ? tg.tag_name : activeTag.replace(/-/g, ' ');
+      return {
+        title: `${name} — News Forever`,
+        description: `Latest ${name} news, updates and articles on News Forever.`,
+      };
+    }
+    if (isLatestNewsPath()) {
+      return {
+        title: 'Latest News — News Forever',
+        description:
+          'The newest national and international reporting on News Forever — breaking news, beauty pageants, Forever Star India Awards, business, lifestyle and astrology.',
+      };
+    }
+    if (!activeCategory || activeCategory === 'all') return null;
+    const key = String(activeCategory).toLowerCase();
+    const cat = categories.find(
+      (c) => String(c.id) === key || (c.slug || '').toLowerCase() === key
+    );
+    if (!cat) return null;
+    const name = cat.category_name;
+    return {
+      title: cat.meta_title?.trim() || `${name} — News Forever`,
+      description:
+        cat.meta_description?.trim() ||
+        `Latest ${name} news, updates and articles on News Forever.`,
+    };
+  }, [activeTag, tags, activeCategory, categories, currentSlug]);
+
+  // Admin collections follow the session: loaded on login, cleared on logout.
+  //
+  // The article list belongs to the session too. Logging in refreshed it, but
+  // a reload with a saved session did not: the public fetch had already put
+  // its 200-row page into the same state, so the dashboard counted 200 of 664
+  // until the next save. Re-fetch it whenever a session is present.
+  useEffect(() => {
+    fetchAdminData(adminAuth);
+    if (adminAuth) {
+      refreshAdminBlogs(adminAuth);
+      refreshAdminAds(adminAuth);
+    } else {
+      setAdminAds([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminAuth]);
+
   // Fetch every article for the active tag from the server (covers old articles
   // + duplicate-slug tag ids). Runs whenever the active tag changes.
   useEffect(() => {
@@ -221,6 +354,30 @@ export function App() {
       .finally(() => { if (!cancelled) setTagLoading(false); });
     return () => { cancelled = true; };
   }, [activeTag]);
+
+  /**
+   * Every article in the open category, straight from the server.
+   *
+   * The category page used to filter the site-wide list, which is the newest
+   * 200 articles — so /category/beauty-pageant offered 85 of its 411 stories
+   * and the rest were unreachable by browsing. The slug lookup resolves year
+   * variants and child categories the same way the server's own filter does.
+   */
+  useEffect(() => {
+    const slug =
+      activeTag || activeCategory === 'all'
+        ? null
+        : typeof activeCategory === 'number'
+        ? categories.find((c) => c.id === activeCategory)?.slug || null
+        : String(activeCategory);
+    if (!slug) { setCatBlogs([]); return; }
+    let cancelled = false;
+    fetch(`/api/blogs?category_slug=${encodeURIComponent(slug)}&limit=100000`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { if (!cancelled) setCatBlogs(Array.isArray(d) ? d : []); })
+      .catch(() => { if (!cancelled) setCatBlogs([]); });
+    return () => { cancelled = true; };
+  }, [activeCategory, activeTag, categories]);
 
   // Google Tag Manager: fire a virtual page_view on every SPA navigation so
   // GTM/GA4 records route changes (a plain SPA only fires once on load).
@@ -301,7 +458,17 @@ export function App() {
     const match = categoriesRef.current.find((c) => (c.slug || '').toLowerCase() === slug.toLowerCase());
     setSelectedArticleUrl(null);
     setActiveCategory(match ? match.id : slug); // fall back to treating it as a public nav slug
+    setCategoryResolved(true);
   };
+  /**
+   * On a /category/<slug> URL the filter is applied from an effect, one
+   * commit after the articles land. That commit rendered the whole
+   * unfiltered list and the next one cut it down to the category — a listing
+   * replaced wholesale, and 0.62 of layout shift on the way. Hold the
+   * skeleton until the slug has been resolved so the first thing drawn is
+   * already the right list.
+   */
+  const awaitingCategory = categorySlugFromPath() !== null && !categoryResolved;
   useEffect(() => {
     if (categories.length) applyCategoryFromUrl();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -319,6 +486,25 @@ export function App() {
     setAdminAuth(null);
     setViewMode('public');
     fetchData(); // back to the published-only list
+  };
+
+  /** Ad manager list includes inactive ads (status=all, auth required). */
+  const refreshAdminAds = async (creds: AdminCredentials | null = adminAuth) => {
+    if (!creds) return;
+    try {
+      const res = await fetch('/api/advertisements?status=all', { headers: adminHeaders(creds) });
+      if (res.ok) setAdminAds(await res.json());
+    } catch (err) {
+      console.error('Failed to refresh admin ad list', err);
+    }
+  };
+
+  /** Public ad list, so the site reflects a change straight after a save. */
+  const refreshPublicAds = async () => {
+    try {
+      const resAds = await fetch('/api/advertisements').then((r) => (r.ok ? r.json() : []));
+      setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
+    } catch { /* the site keeps the list it already has */ }
   };
 
   /** Admin blog list includes drafts (status=all, auth required). */
@@ -410,8 +596,9 @@ export function App() {
       if (await handleWriteError(res)) return;
       await refreshAdminBlogs();
 
-      const resLogs = await fetch('/api/activity-logs').then(r => r.json());
-      setActivityLogs(resLogs);
+      const resLogs = await fetch('/api/activity-logs', { headers: adminHeaders(adminAuth) })
+        .then(r => (r.ok ? r.json() : []));
+      setActivityLogs(Array.isArray(resLogs) ? resLogs : []);
 
       setIsBlogFormOpen(false);
       setEditingBlog(null);
@@ -443,19 +630,20 @@ export function App() {
   /** Upload an image via the bridge; returns the stored assets path. */
   const handleImageUpload = async (file: File): Promise<string | null> => {
     try {
-      const base64: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      // Downscale before upload. Straight from a phone or a design tool an
+      // image is routinely several megabytes, which readers then pay for on
+      // every page load and which WhatsApp refuses outright as a share
+      // image. See src/lib/imageResize.ts for what is and is not touched.
+      const resized = await resizeForUpload(file);
       const res = await fetch('/api/upload-image', {
         method: 'POST',
         headers: writeHeaders(),
-        body: JSON.stringify({ folder: 'blog', filename: file.name, data: base64 }),
+        body: JSON.stringify({ folder: 'blog', filename: resized.filename, data: resized.data }),
       });
       if (await handleWriteError(res)) return null;
       const { path } = await res.json();
+      const note = describeResize(resized);
+      if (note) console.info(`[upload] ${file.name} resized: ${note}`);
       return path || null;
     } catch {
       alert('Could not upload that image. Use a JPG, PNG or WebP under 8 MB and try again.');
@@ -487,8 +675,9 @@ export function App() {
       const res = await fetch(`/api/blogs/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
       setBlogs(prev => prev.filter(b => b.id !== id));
-      const resLogs = await fetch('/api/activity-logs').then(r => r.json());
-      setActivityLogs(resLogs);
+      const resLogs = await fetch('/api/activity-logs', { headers: adminHeaders(adminAuth) })
+        .then(r => (r.ok ? r.json() : []));
+      setActivityLogs(Array.isArray(resLogs) ? resLogs : []);
     } catch (err) {
       alert('Could not delete the article. Please try again.');
     }
@@ -582,12 +771,12 @@ export function App() {
         body: JSON.stringify(payload),
       });
       if (await handleWriteError(res)) return;
+      // The server answers with the manager's list (inactive ads included),
+      // so the row that was just saved is always on screen afterwards.
       const data = await res.json();
-      if (Array.isArray(data)) setAds(data);
-      else {
-        const resAds = await fetch('/api/advertisements').then(r => r.json());
-        setAds([...(Array.isArray(resAds) ? resAds : []), ...DEMO_ADS]);
-      }
+      if (Array.isArray(data)) setAdminAds(data);
+      else await refreshAdminAds();
+      await refreshPublicAds();
     } catch (err) {
       alert('Could not save the ad. Please try again.');
     }
@@ -598,6 +787,7 @@ export function App() {
     try {
       const res = await fetch(`/api/advertisements/${id}`, { method: 'DELETE', headers: writeHeaders() });
       if (await handleWriteError(res)) return;
+      setAdminAds(prev => prev.filter(a => a.id !== id));
       setAds(prev => prev.filter(a => a.id !== id));
     } catch (err) {
       alert('Could not delete the ad. Please try again.');
@@ -642,8 +832,8 @@ export function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
-      const resSubs = await fetch('/api/subscribers').then(r => r.json());
-      setSubscribers(resSubs);
+      // No re-fetch here: a reader subscribing must not pull down the whole
+      // subscriber list. The admin panel loads it with credentials instead.
     } catch (err) {
       console.error(err);
     }
@@ -700,7 +890,8 @@ export function App() {
               <AdminDashboard
                 blogs={blogs}
                 categories={categories}
-                ads={ads}
+                /* Real ads only (inactive included), not the demo banners. */
+                ads={adminAds.length ? adminAds : ads}
                 activityLogs={activityLogs}
                 onNavigate={(tab) => setAdminTab(tab)}
                 onNewArticle={() => {
@@ -742,7 +933,7 @@ export function App() {
 
             {adminTab === 'Advertisement' && (
               <AdminAds
-                ads={ads}
+                ads={adminAds}
                 onSaveAd={handleSaveAd}
                 onDeleteAd={handleDeleteAd}
               />
@@ -850,18 +1041,28 @@ export function App() {
       onCategorySelect={openCategory}
       onSelectArticle={openArticle}
       onGoHome={goHomeNav}
-      onSwitchToAdmin={() => setViewMode('admin')}
+      onSwitchToAdmin={() => {
+        setViewMode('admin');
+        // Returning from the public site, where the list was replaced by the
+        // published-only page, so load the admin lists again.
+        if (adminAuth) {
+          refreshAdminBlogs(adminAuth);
+          refreshAdminAds(adminAuth);
+        }
+      }}
       onSubscribe={handleSubscribe}
       dateFilter={dateFilter}
       onDateFilterChange={setDateFilter}
       siteConfig={siteConfig}
+      configLoaded={configLoaded}
       ads={publicAds}
     >
       {!selectedArticleUrl && (
         <SEOManager
           siteName={setting?.site_title || "News Forever"}
+          meta_title={routeMeta?.title}
           defaultTitle={siteConfig.siteTitle || setting?.meta_default_title || "News Forever | National & International News Portal"}
-          meta_description={siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
+          meta_description={routeMeta?.description || siteConfig.siteDescription || setting?.meta_default_description || "Latest breaking news, beauty pageant updates, Forever Star India Awards, products, astrology, and international editorial coverage."}
           meta_keyword={siteConfig.siteKeywords || setting?.meta_default_keywords}
           og_image={siteConfig.ogImage ? resolveAssetUrl(siteConfig.ogImage) : undefined}
         />
@@ -870,6 +1071,13 @@ export function App() {
         const pageMatch = currentSlug ? staticPages.find(p => p.slug.toLowerCase() === currentSlug.toLowerCase()) : null;
         if (pageMatch) {
           return <StaticPage page={pageMatch.slug} setting={setting} siteConfig={siteConfig} onGoHome={goHomeNav} />;
+        }
+        // Built-in copy for the three legal routes the footer links to, so
+        // they are never dead. An admin-created page of the same slug wins
+        // (handled above), which is how this gets replaced with real,
+        // counsel-reviewed text without a deploy.
+        if (currentSlug && (LEGAL_SLUGS as readonly string[]).includes(currentSlug.toLowerCase())) {
+          return <LegalPage slug={currentSlug.toLowerCase() as LegalSlug} onGoHome={goHomeNav} />;
         }
         return selectedArticleUrl ? (
           <PublicArticlePage
@@ -882,13 +1090,16 @@ export function App() {
           />
         ) : (
         <PublicHome
-          blogs={activeTag ? tagBlogs : blogs}
+          blogs={activeTag ? tagBlogs : activeCategory !== 'all' && catBlogs.length ? catBlogs : blogs}
           ads={publicAds}
           categories={categories}
           tags={tags}
           activeCategory={activeTag ? 'all' : activeCategory}
           dateFilter={dateFilter}
-          isLoading={activeTag ? tagLoading : loading}
+          /* The complete category list is not waited for: the first screen
+             comes from the articles already loaded, in the same newest-first
+             order, and the rest are appended when the request lands. */
+          isLoading={activeTag ? tagLoading : loading || awaitingCategory}
           onSelectArticle={openArticle}
           onCategorySelect={openCategory}
           homeH1={activeTag ? undefined : (siteConfig as any).homeH1}

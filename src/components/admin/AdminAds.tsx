@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CIAdvertisement } from '../../types';
 import { isDemoAd } from '../../data/demoAds';
+import { resizeForUpload } from '../../lib/imageResize';
 import { BarChart2, Plus, Edit3, Trash2, ExternalLink, Image as ImageIcon } from 'lucide-react';
 
 interface AdminAdsProps {
@@ -43,20 +44,25 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
     setShowModal(true);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
       alert('Image too large (max 8MB)');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '');
-      const base64 = result.split(',')[1] || '';
-      setImageFile({ filename: file.name, data: base64, preview: result });
-    };
-    reader.readAsDataURL(file);
+    // Same downscaling as article images — a banner has no business being
+    // several megabytes, and it loads on every page that shows the slot.
+    try {
+      const resized = await resizeForUpload(file);
+      setImageFile({
+        filename: resized.filename,
+        data: resized.data,
+        preview: `data:${resized.type};base64,${resized.data}`,
+      });
+    } catch {
+      alert('Could not read that image. Use a JPG, PNG or WebP and try again.');
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -263,6 +269,22 @@ export const AdminAds: React.FC<AdminAdsProps> = ({ ads, onSaveAd, onDeleteAd })
                   onChange={(e) => setEditingAd(prev => ({ ...prev, url: e.target.value }))}
                   className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
                 />
+              </div>
+
+              {/* Without this there was no way to switch an ad off, or to
+                  switch a switched-off one back on. */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  Status <span className="text-zinc-500 font-normal">(only active ads appear on the site)</span>
+                </label>
+                <select
+                  value={editingAd.status === 0 ? 0 : 1}
+                  onChange={(e) => setEditingAd(prev => ({ ...prev, status: parseInt(e.target.value, 10) }))}
+                  className="w-full px-3 py-2 bg-[#0A0A0A] border border-zinc-700 text-white text-sm focus:border-orange-500 outline-none"
+                >
+                  <option value={1}>Active — showing on the site</option>
+                  <option value={0}>Inactive — hidden, kept for later</option>
+                </select>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#222222]">

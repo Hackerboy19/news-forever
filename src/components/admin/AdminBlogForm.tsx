@@ -234,15 +234,30 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  /**
+   * Save to the server.
+   *
+   * `status` lets the Save as Draft button store the article as a draft in
+   * one click. The Status toggle further down does the same thing, but it
+   * sits in a side panel and is easy to miss — and the auto-save notice
+   * above used the word "draft" for something else entirely, so an article
+   * could feel saved as a draft without ever reaching the server.
+   */
+  const saveArticle = (status?: number) => {
     if (!formData.title) {
       setActiveTab('general');
       alert('Please enter an Article Title');
       return;
     }
+    const payload = status === undefined ? formData : { ...formData, status };
+    if (status !== undefined) setFormData(payload);
     clearDraft(); // saved to the server — drop the local backup
-    onSave(formData);
+    onSave(payload);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveArticle();
   };
 
   return (
@@ -263,8 +278,11 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
             </h2>
             <p className="text-xs text-zinc-500 mt-0.5">
               Fill in the details below and press Save. Only the Title is required.
+              {/* This backup lives in this browser only — it is not an
+                  article in the Articles list until it is saved. Calling it
+                  a "draft" made it look like one. */}
               {draftSavedAt && (
-                <span className="ml-2 text-emerald-400">· Draft auto-saved {draftSavedAt}</span>
+                <span className="ml-2 text-emerald-400">· Backup kept in this browser, {draftSavedAt}</span>
               )}
             </p>
           </div>
@@ -288,12 +306,22 @@ export const AdminBlogForm: React.FC<AdminBlogFormProps> = ({
             Cancel
           </button>
           <button
+            type="button"
+            onClick={() => saveArticle(0)}
+            disabled={isSaving}
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-widest text-amber-300 border border-amber-700 bg-amber-950/40 hover:bg-amber-900/40 transition disabled:opacity-50"
+            title="Save to the Articles list as a draft — not visible on the site"
+          >
+            <FileText className="w-4 h-4" />
+            Save as Draft
+          </button>
+          <button
             onClick={handleSubmit}
             disabled={isSaving}
             className="flex items-center gap-2 px-5 py-2 text-xs font-bold uppercase tracking-widest text-white bg-orange-600 hover:bg-orange-500 transition shadow-lg shadow-orange-600/20 disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            {isSaving ? 'Saving...' : 'Update Article'}
+            {isSaving ? 'Saving...' : formData.status === 0 ? 'Save Draft' : 'Publish'}
           </button>
         </div>
       </div>
