@@ -4,7 +4,8 @@ import { resolveCategoryIds } from './taxonomy.js';
 
 /**
  * MySQL data provider for the legacy jaipurwe_fsianews CodeIgniter database.
- * Strictly read-only mapping — no schema alteration, no writes.
+ * Schema is left as-is apart from one added nullable column, ci_blog.short_content
+ * (see ensureShortContentColumn).
  *
  * Real ci_blog columns: id, user_created_by, title, cat_id, sub_cat_id, type,
  * tag_id (CSV), image, alt_tag, video_*, url, meta_*, h2..h6_tag, og_*,
@@ -71,6 +72,7 @@ interface RawBlogRow {
   og_image: string;
   person_name?: string;
   views?: number;
+  short_content?: string | null;
   description: string;
   status: number;
   created_at: string;
@@ -94,7 +96,7 @@ interface RawCategoryRow {
 
 /** Map a raw ci_blog row to the frontend CIBlog shape. */
 export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
-  const summarySource = row.meta_description?.trim() || stripHtml(row.description);
+  const summarySource = row.short_content?.trim() || row.meta_description?.trim() || stripHtml(row.description);
   const summary = summarySource.length > 220 ? summarySource.slice(0, 217).trimEnd() + '…' : summarySource;
   const author = [row.author_firstname, row.author_lastname].filter(Boolean).join(' ').trim();
 
@@ -122,7 +124,10 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     created_at: row.created_at || '',
     updated_at: row.created_at || '',
     meta_title: row.meta_title || row.title,
-    meta_description: row.meta_description || summary,
+    // Raw values (no summary fallback): otherwise the editor pre-fills these
+    // with the old summary and saves it back, freezing search/share text.
+    // Every reader already falls back to short_content.
+    meta_description: row.meta_description || '',
     meta_keyword: row.meta_keyword || '',
     og_title: row.og_title || row.title,
     // Use the stored og_url only if it is clean (no whitespace); otherwise
@@ -131,7 +136,7 @@ export function mapBlogRow(row: RawBlogRow, index = 0): CIBlog {
     og_url: ((row.og_url || '').trim() && !/\s/.test((row.og_url || '').trim()))
       ? (row.og_url || '').trim()
       : `https://newsforever.in/${(row.url || '').trim()}`,
-    og_description: row.og_description || summary,
+    og_description: row.og_description || '',
     og_image: assetUrl(row.og_image || row.image),
     h2_tag: row.h2_tag,
     h3_tag: row.h3_tag,
@@ -171,12 +176,42 @@ function handleDbError(context: string, err: any) {
   }
 }
 
-const BLOG_SELECT = `
+/**
+ * The legacy ci_blog table has no column for the editor's "Short summary",
+ * so edits to it were silently dropped on save. We add a nullable
+ * `short_content` column on first use (one-time, idempotent). If the DB user
+ * lacks ALTER rights, everything keeps working without it.
+ */
+let shortContentReady: Promise<boolean> | null = null;
+export function ensureShortContentColumn(): Promise<boolean> {
+  if (!shortContentReady) {
+    shortContentReady = (async () => {
+      const [rows] = await dbPool.query(
+        `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ci_blog' AND COLUMN_NAME = 'short_content'`
+      );
+      if (Number((rows as any[])[0]?.n) > 0) return true;
+      await dbPool.query(`ALTER TABLE ci_blog ADD COLUMN short_content TEXT NULL`);
+      console.info('[MySQL Data Provider] Added ci_blog.short_content column');
+      return true;
+    })().catch((err) => {
+      console.warn('[MySQL Data Provider] short_content column unavailable:', err?.code || err?.message || err);
+      // Retry on a later request if the DB was just offline; give up on permission errors.
+      if (!/ACCESS|DENIED|PRIVILEGE/i.test(String(err?.code || ''))) shortContentReady = null;
+      return false;
+    });
+  }
+  return shortContentReady;
+}
+
+async function blogSelect(): Promise<string> {
+  const shortCol = (await ensureShortContentColumn()) ? ' b.short_content,' : '';
+  return `
   SELECT b.id, b.user_created_by, b.title, b.cat_id, b.sub_cat_id, b.type, b.tag_id, b.youtube_video_link,
          b.image, b.alt_tag, b.url, b.meta_title, b.meta_keyword, b.meta_description,
          b.h2_tag, b.h3_tag, b.h4_tag, b.h5_tag, b.h6_tag,
          b.og_title, b.og_url, b.og_description, b.og_image,
-         b.person_name, b.views,
+         b.person_name, b.views,${shortCol}
          b.description, b.status, b.created_at,
          c.cat_name AS category_name,
          sc.cat_name AS sub_category_name,
@@ -187,6 +222,7 @@ const BLOG_SELECT = `
   LEFT JOIN ci_category sc ON b.sub_cat_id = sc.id
   LEFT JOIN ci_admin a ON b.user_created_by = a.admin_id
 `;
+}
 
 /**
  * Fetch published blogs from ci_blog. When categorySlug is given, it is
@@ -207,7 +243,7 @@ export async function getPublishedBlogs(limit = 50, categorySlug?: string): Prom
       params.push(...ids, ...ids);
     }
 
-    const query = `${BLOG_SELECT} ${where} ORDER BY b.created_at DESC, b.id DESC LIMIT ?`;
+    const query = `${await blogSelect()} ${where} ORDER BY b.created_at DESC, b.id DESC LIMIT ?`;
     params.push(limit);
 
     const [rows] = await dbPool.query(query, params);
@@ -237,7 +273,7 @@ export async function incrementAdClick(id: number): Promise<void> {
 
 export async function getBlogByUrlSlug(urlSlug: string): Promise<CIBlog | null> {
   try {
-    const query = `${BLOG_SELECT} WHERE TRIM(b.url) = ? AND b.status = 1 LIMIT 1`;
+    const query = `${await blogSelect()} WHERE TRIM(b.url) = ? AND b.status = 1 LIMIT 1`;
     const [rows] = await dbPool.query(query, [urlSlug.trim()]);
     const list = rows as RawBlogRow[];
     return list.length > 0 ? mapBlogRow(list[0]) : null;
@@ -818,7 +854,7 @@ function toLegacyAssetPath(url: string | undefined): string {
 }
 
 /** Map a frontend CIBlog partial onto real ci_blog columns. */
-function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number> {
+function toBlogColumns(payload: Partial<CIBlog>, withShortContent = false): Record<string, string | number> {
   const cols: Record<string, string | number> = {};
   if (payload.title !== undefined) cols.title = payload.title;
   if (payload.category_id !== undefined) cols.cat_id = payload.category_id;
@@ -843,20 +879,21 @@ function toBlogColumns(payload: Partial<CIBlog>): Record<string, string | number
   if (payload.og_image !== undefined) cols.og_image = toLegacyAssetPath(payload.og_image);
   if (payload.youtube_video_link !== undefined) cols.youtube_video_link = payload.youtube_video_link;
   if (payload.content !== undefined) cols.description = payload.content;
+  if (payload.short_content !== undefined && withShortContent) cols.short_content = payload.short_content.trim();
   if (payload.status !== undefined) cols.status = payload.status;
   return cols;
 }
 
 /** Fetch one blog (any status) by id, mapped to the frontend shape. */
 export async function getBlogByIdAdmin(id: number): Promise<CIBlog | null> {
-  const [rows] = await dbPool.query(`${BLOG_SELECT} WHERE b.id = ? LIMIT 1`, [id]);
+  const [rows] = await dbPool.query(`${await blogSelect()} WHERE b.id = ? LIMIT 1`, [id]);
   const list = rows as RawBlogRow[];
   return list.length > 0 ? mapBlogRow(list[0]) : null;
 }
 
 /** INSERT a new article into ci_blog. Returns the created row. */
 export async function createBlog(payload: Partial<CIBlog>, adminId: number): Promise<CIBlog> {
-  const cols = toBlogColumns(payload);
+  const cols = toBlogColumns(payload, await ensureShortContentColumn());
   // NOT NULL varchar columns need explicit empty-string defaults
   const defaults: Record<string, string | number> = {
     title: '', cat_id: 0, sub_cat_id: 0, type: 0, tag_id: '', image: '', alt_tag: '',
@@ -878,7 +915,7 @@ export async function createBlog(payload: Partial<CIBlog>, adminId: number): Pro
 
 /** UPDATE an existing ci_blog row (only provided fields). */
 export async function updateBlog(id: number, payload: Partial<CIBlog>): Promise<CIBlog | null> {
-  const cols = toBlogColumns(payload);
+  const cols = toBlogColumns(payload, await ensureShortContentColumn());
   const names = Object.keys(cols);
   if (names.length > 0) {
     await dbPool.query(
@@ -912,7 +949,7 @@ export async function bulkBlogAction(ids: number[], action: 'activate' | 'deacti
 export async function getAllBlogsAdmin(limit = 500): Promise<CIBlog[]> {
   try {
     const [rows] = await dbPool.query(
-      `${BLOG_SELECT} ORDER BY b.created_at DESC, b.id DESC LIMIT ?`,
+      `${await blogSelect()} ORDER BY b.created_at DESC, b.id DESC LIMIT ?`,
       [limit]
     );
     return (rows as RawBlogRow[]).map((row, i) => mapBlogRow(row, i));
