@@ -1610,6 +1610,13 @@ async function startServer() {
     res.json(dbSetting);
   });
   let sitemapCache = { xml: "", at: 0 };
+  let allBlogsCache = { data: [], at: 0 };
+  const getAllBlogsCached = async () => {
+    if (!allBlogsCache.data.length || Date.now() - allBlogsCache.at > 5 * 60 * 1e3) {
+      allBlogsCache = { data: await getPublishedBlogs(1e5), at: Date.now() };
+    }
+    return allBlogsCache.data;
+  };
   const xmlEsc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
   app.get("/sitemap.xml", async (req, res) => {
     try {
@@ -1617,7 +1624,7 @@ async function startServer() {
       if (!sitemapCache.xml || now - sitemapCache.at > 10 * 60 * 1e3) {
         const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
         const origin = `${proto}://${req.get("host")}`;
-        const [blogs, cats, tags] = await Promise.all([getPublishedBlogs(1e5), getAllCategories(), getActiveTags()]);
+        const [blogs, cats, tags] = await Promise.all([getAllBlogsCached(), getAllCategories(), getActiveTags()]);
         const rows = [];
         const add = (loc, priority, lastmod) => rows.push(`  <url><loc>${xmlEsc(loc)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}<priority>${priority}</priority></url>`);
         add(`${origin}/`, "1.0");
@@ -1664,6 +1671,10 @@ ${rows.join("\n")}
 Allow: /
 Sitemap: ${proto}://${req.get("host")}/sitemap.xml
 `);
+  });
+  app.get(/^\/(?:((?:category|tag)\/[^/]+)\/)?pagination(?:\/\d*)?\/?$/i, (req, res) => {
+    const parent = req.params[0];
+    res.redirect(301, parent ? `/${parent}` : "/");
   });
   app.get(/^\/News\/(.+)$/i, async (req, res) => {
     const slug = decodeURIComponent(req.params[0] || "").replace(/\/+$/, "");
@@ -1797,12 +1808,13 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             ].filter(Boolean).join("\n    ");
             html = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace("</head>", `    ${tags}
   </head>`);
+            const headLevel = (tag, raw) => (raw || "").split("\n").map((t) => t.trim()).filter(Boolean).map((t) => `<${tag}>${esc(t)}</${tag}>`).join("\n");
             const heads = [
-              article.h2_tag ? `<h2>${esc(article.h2_tag)}</h2>` : "",
-              article.h3_tag ? `<h3>${esc(article.h3_tag)}</h3>` : "",
-              article.h4_tag ? `<h4>${esc(article.h4_tag)}</h4>` : "",
-              article.h5_tag ? `<h5>${esc(article.h5_tag)}</h5>` : "",
-              article.h6_tag ? `<h6>${esc(article.h6_tag)}</h6>` : ""
+              headLevel("h2", article.h2_tag),
+              headLevel("h3", article.h3_tag),
+              headLevel("h4", article.h4_tag),
+              headLevel("h5", article.h5_tag),
+              headLevel("h6", article.h6_tag)
             ].filter(Boolean).join("\n");
             const ssrBody = `<article><h1>${esc(article.title)}</h1>${heads}<div>${article.content || ""}</div></article>`;
             html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${ssrBody}</div>`);
@@ -1810,14 +1822,30 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             status = 404;
           }
         }
+        const ssrListing = (name, intro, items) => {
+          const li = items.map((b) => {
+            const slug = (b.url || "").trim();
+            return `<li><a href="/${esc(encodeURIComponent(slug))}">${esc(b.title)}</a>${b.short_content ? `<p>${esc(b.short_content)}</p>` : ""}</li>`;
+          }).join("");
+          const body = `<section><h1>${esc(name)}</h1><p>${esc(intro)}</p>${li ? `<ul>${li}</ul>` : ""}</section>`;
+          html = html.replace(/<div id="root">\s*<\/div>/i, `<div id="root">${body}</div>`);
+        };
+        const noindex = () => {
+          html = html.replace(/<meta\s+name="robots"[^>]*>/i, `<meta name="robots" content="noindex, follow" />`);
+        };
         if (!injected && seg.toLowerCase().startsWith("tag/")) {
           const tslug = decodeURIComponent(seg.slice(4).split("/")[0] || "");
           if (tslug) {
             const tags = await getActiveTags();
             const tg = tags.find((t) => (t.slug || "").toLowerCase() === tslug.toLowerCase());
+            const dbUp = tags.length > 0;
+            if (!tg && dbUp) status = 404;
             const name = tg ? tg.tag_name : tslug.replace(/-/g, " ");
             const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
-            const url = esc(`${proto}://${req.get("host")}/tag/${encodeURIComponent(tslug)}`);
+            const url = esc(`${proto}://${req.get("host")}/tag/${encodeURIComponent((tg?.slug || tslug).trim())}`);
+            const items = tg ? (await getAllBlogsCached()).filter((b) => (b.tag_ids || []).includes(tg.id)).slice(0, 30) : [];
+            ssrListing(name, `Latest ${name} news, updates and articles on News Forever.`, items);
+            if (dbUp && !items.length) noindex();
             const title = esc(`${name} \u2014 News Forever`);
             const desc = esc(`Latest ${name} news, updates and articles on News Forever.`);
             const tags2 = [
@@ -1841,9 +1869,15 @@ Sitemap: ${proto}://${req.get("host")}/sitemap.xml
             const cat = cats.find((c) => (c.slug || "").toLowerCase() === cslug.toLowerCase());
             const name = cat ? cat.category_name : cslug.replace(/-/g, " ");
             const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "https").split(",")[0];
-            const url = esc(`${proto}://${req.get("host")}/category/${encodeURIComponent(cslug)}`);
+            const url = esc(`${proto}://${req.get("host")}/category/${encodeURIComponent((cat?.slug || cslug).trim())}`);
             const title = esc(cat?.meta_title || `${name} \u2014 News Forever`);
-            const desc = esc(cat?.meta_description || `Latest ${name} news, updates and articles on News Forever.`);
+            const descRaw = cat?.meta_description || `Latest ${name} news, updates and articles on News Forever.`;
+            const desc = esc(descRaw);
+            const items = await getPublishedBlogs(30, cat?.slug || cslug);
+            const dbUp = cats.length > 0;
+            if (dbUp && !cat && !items.length) status = 404;
+            ssrListing(name, descRaw, items);
+            if (dbUp && !items.length) noindex();
             const tagsC = [
               `<title>${title}</title>`,
               `<meta name="description" content="${desc}">`,
