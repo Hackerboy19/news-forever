@@ -13,10 +13,10 @@ export const AdminActivityLogs: React.FC<AdminActivityLogsProps> = ({ activityLo
   const filteredLogs = activityLogs.filter((log) => {
     const matchesSearch = 
       log.user_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.activity.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.ip_address.includes(searchTerm);
+      (log.activity || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (log.ip_address || '').includes(searchTerm);
 
-    const matchesModule = moduleFilter === 'all' || log.module.toLowerCase() === moduleFilter.toLowerCase();
+    const matchesModule = moduleFilter === 'all' || (log.module || '').toLowerCase() === moduleFilter.toLowerCase();
     return matchesSearch && matchesModule;
   });
 
@@ -50,12 +50,13 @@ export const AdminActivityLogs: React.FC<AdminActivityLogsProps> = ({ activityLo
           onChange={(e) => setModuleFilter(e.target.value)}
           className="px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-sm focus:outline-none focus:border-rose-500"
         >
+          {/* Built from the entries actually present, so a module the server
+              records (Tag, Session, Pages, Legacy CMS) cannot be missing from
+              the filter. */}
           <option value="all">All Modules</option>
-          <option value="Blog">Blog</option>
-          <option value="Category">Category</option>
-          <option value="Advertisement">Advertisement</option>
-          <option value="Setting">Setting</option>
-          <option value="Image Library">Image Library</option>
+          {[...new Set(activityLogs.map((l) => l.module).filter(Boolean))].sort().map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
         </select>
       </div>
 

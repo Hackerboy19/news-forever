@@ -1,24 +1,51 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-0RMP8DB71P"></script>
+    <!-- Google tag (gtag.js) + Google Tag Manager.
+         Both still load with the same IDs and still record the page view, but
+         they are attached after first paint instead of competing with the app
+         bundle for a throttled mobile CPU. On a Moto-G-class phone the two
+         tag scripts were occupying the main thread for ~2s inside the window
+         that decides LCP. dataLayer is created now, so anything queued before
+         the scripts attach is replayed when they load. -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-0RMP8DB71P');
+      (function (w, d) {
+        var started = false;
+        function start() {
+          if (started) return;
+          started = true;
+          var s = d.createElement('script');
+          s.async = true;
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=G-0RMP8DB71P';
+          d.head.appendChild(s);
+          w.dataLayer.push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+          var g = d.createElement('script');
+          g.async = true;
+          g.src = 'https://www.googletagmanager.com/gtm.js?id=GTM-TN5ZP3S8';
+          d.head.appendChild(g);
+        }
+        // Whichever comes first: the page finishing load, a real interaction,
+        // or a 3s backstop so a stalled resource cannot lose the page view.
+        if (d.readyState === 'complete') setTimeout(start, 1200);
+        else w.addEventListener('load', function () { setTimeout(start, 1200); }, { once: true });
+        ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(function (e) {
+          w.addEventListener(e, start, { once: true, passive: true });
+        });
+        setTimeout(start, 3000);
+      })(window, document);
     </script>
-    <!-- Google Tag Manager -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-TN5ZP3S8');</script>
-    <!-- End Google Tag Manager -->
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='100' cy='100' r='98' fill='%23FFFFFF'/%3E%3Ccircle cx='100' cy='100' r='92' fill='none' stroke='%23B01117' stroke-width='10'/%3E%3Ctext x='100' y='128' font-family='Georgia,serif' font-size='88' font-weight='700' fill='%23B01117' text-anchor='middle'%3ENF%3C/text%3E%3C/svg%3E">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Start the article list while the HTML is still parsing. Without it
+         the request could not begin until the app bundle had downloaded,
+         compiled and run — about two seconds of a mobile page load spent
+         waiting to start waiting. -->
+    <link rel="preload" as="fetch" href="/api/blogs" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
@@ -26,8 +53,16 @@
     <meta name="description" content="Latest breaking news, beauty pageant updates, Forever Star India Awards, national achievers, business, astrology and international editorial coverage." />
     <meta name="keywords" content="news forever, beauty pageant, miss india, mrs india, forever star india awards, national achiever award, business news, astrology" />
     <link rel="canonical" href="https://newsforever.in/" />
+    <!-- RSS autodiscovery. Lives in the shell rather than SEOManager so it is
+         present before React mounts, for readers and crawlers that never run
+         JavaScript. The server-side head rewrite strips description, og:*,
+         twitter:*, canonical and ld+json — rel="alternate" is left alone, so
+         this survives on every route. -->
+    <link rel="alternate" type="application/rss+xml" title="News Forever RSS Feed" href="https://newsforever.in/feed" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="News Forever" />
+    <meta property="og:locale" content="en_IN" />
     <meta property="og:title" content="News Forever | National & International News Portal" />
     <meta property="og:description" content="Latest breaking news, beauty pageant updates, Forever Star India Awards, national achievers, business, astrology and international editorial coverage." />
     <meta property="og:url" content="https://newsforever.in/" />

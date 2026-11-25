@@ -1,6 +1,7 @@
 import React from 'react';
 import { CIBlog } from '../types';
 import { Zap } from 'lucide-react';
+import ArticleLink from './ui/ArticleLink';
 import { useI18n } from '../lib/i18n';
 
 interface NewsTickerProps {
@@ -45,18 +46,25 @@ export const NewsTicker: React.FC<NewsTickerProps> = ({ blogs, onSelectArticle, 
         <div className="relative flex-1 overflow-hidden">
           <div className="ticker-track flex items-center whitespace-nowrap py-2 w-max">
             {loop.map((article, i) => (
-              <button
+              <ArticleLink
                 key={`${article.id}-${i}`}
-                onClick={() => {
-                  if (!article.url) return; // custom text row — not a link
-                  onSelectArticle(article.url);
+                url={article.url}
+                onSelectArticle={(slug) => {
+                  onSelectArticle(slug);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className={`inline-flex items-center gap-2 px-6 text-xs font-medium text-stone-200 transition-colors ${article.url ? 'hover:text-amber-300' : 'cursor-default'}`}
+                /* The marquee renders the headline list twice for a seamless
+                   loop; the duplicate pass is hidden from assistive tech and
+                   from the tab order so each headline is announced once. */
+                aria-hidden={i >= loop.length / 2 ? true : undefined}
+                tabIndex={i >= loop.length / 2 ? -1 : undefined}
+                className={`inline-flex items-center gap-2 px-6 text-xs font-medium text-stone-200 transition-colors no-underline ${
+                  article.url ? 'hover:text-amber-300' : 'cursor-default'
+                }`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-[#991B1B] shrink-0" />
                 {tt(article.title)}
-              </button>
+              </ArticleLink>
             ))}
           </div>
           {/* Edge fades */}

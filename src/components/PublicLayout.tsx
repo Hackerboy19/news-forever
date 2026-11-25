@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CICategory, CIAdvertisement, CISetting, CIBlog } from '../types';
+import { CICategory, CIAdvertisement, CISetting, CIBlog, SearchItem } from '../types';
 import { 
   Search, 
   Menu, 
@@ -21,6 +21,13 @@ import {
   Globe
 } from 'lucide-react';
 
+/** Static legal routes surfaced in the footer (see src/components/LegalPage.tsx). */
+const LEGAL_LINKS: { slug: 'privacy-policy' | 'terms-of-service' | 'disclaimer'; label: string }[] = [
+  { slug: 'privacy-policy', label: 'Privacy Policy' },
+  { slug: 'terms-of-service', label: 'Terms of Service' },
+  { slug: 'disclaimer', label: 'Disclaimer' },
+];
+
 interface PublicLayoutProps {
   categories: CICategory[];
   ads: CIAdvertisement[];
@@ -31,10 +38,14 @@ interface PublicLayoutProps {
   onSelectArticle: (urlSlug: string) => void;
   onGoHome: () => void;
   onSwitchToAdmin: () => void;
+  /** Opens a static legal page (privacy-policy | terms-of-service | disclaimer). */
+  onOpenLegal?: (slug: 'privacy-policy' | 'terms-of-service' | 'disclaimer') => void;
   onSubscribe: (email: string) => void;
   dateFilter?: DateFilter;
   onDateFilterChange?: (f: DateFilter) => void;
   siteConfig?: { headerColor?: string; footerColor?: string; navExtra?: number[]; logoUrl?: string; showTicker?: boolean; tickerText?: string };
+  /** /api/site-config has answered. Chrome it controls stays out until then. */
+  configLoaded?: boolean;
   children: React.ReactNode;
 }
 
@@ -53,11 +64,13 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
   ads,
   setting,
   blogs = [],
+  configLoaded = false,
   activeCategory,
   onCategorySelect,
   onSelectArticle,
   onGoHome,
   onSwitchToAdmin,
+  onOpenLegal,
   onSubscribe,
   dateFilter = 'all',
   onDateFilterChange,
@@ -116,9 +129,50 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     }
   }, [commandPaletteOpen]);
 
-  // Real-time filtering over blogs real data
+  // The search palette must cover every published article, not the newest 200
+  // that /api/blogs returns. The full-catalogue index is fetched once, lazily,
+  // the first time the palette opens — it is ~200 KB because it carries no
+  // article bodies, and it is cached for the rest of the visit.
+  const [searchIndex, setSearchIndex] = useState<SearchItem[] | null>(null);
+  const [indexState, setIndexState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+
+  // One request per visit, tracked in a ref rather than in indexState: a state
+  // value cannot gate this effect, because setting it re-runs the effect and
+  // the first run's cleanup would then cancel its own in-flight fetch.
+  const indexRequested = useRef(false);
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  useEffect(() => {
+    if (!commandPaletteOpen || indexRequested.current) return;
+    indexRequested.current = true;
+    setIndexState('loading');
+    fetch('/api/search-index')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((rows: SearchItem[]) => {
+        if (!aliveRef.current) return;
+        if (Array.isArray(rows) && rows.length) {
+          setSearchIndex(rows);
+          setIndexState('ready');
+        } else {
+          // Nothing usable came back; keep searching the loaded articles
+          // rather than showing an empty palette.
+          setIndexState('error');
+        }
+      })
+      .catch(() => {
+        if (!aliveRef.current) return;
+        // Let the next open try again instead of searching 200 rows forever.
+        indexRequested.current = false;
+        setIndexState('error');
+      });
+  }, [commandPaletteOpen]);
+
+  // Real-time filtering over real data: the whole catalogue once the index has
+  // loaded, the already-loaded articles until then (and if the fetch fails).
+  const searchPool: SearchItem[] = searchIndex ?? blogs;
   const selectedCat = categories.find((c) => c.category_name === selectedCatFilter);
-  const filteredArticles = blogs.filter((article) => {
+  const filteredArticles = searchPool.filter((article) => {
     const matchesCat =
       selectedCatFilter === 'all' ||
       (selectedCat
@@ -130,13 +184,19 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
     if (!query) return true;
 
     return (
-      article.title.toLowerCase().includes(query) ||
+      (article.title || '').toLowerCase().includes(query) ||
+      (article.url && article.url.toLowerCase().includes(query)) ||
       (article.short_content && article.short_content.toLowerCase().includes(query)) ||
       (article.category_name && article.category_name.toLowerCase().includes(query)) ||
       (article.meta_keyword && article.meta_keyword.toLowerCase().includes(query)) ||
       (article.author_name && article.author_name.toLowerCase().includes(query))
     );
   });
+
+  // Render a page of results rather than all 664 rows of an empty query —
+  // the count above the list still reports every match.
+  const PALETTE_PAGE = 60;
+  const visibleArticles = filteredArticles.slice(0, PALETTE_PAGE);
 
   // Top-level ci_category rows that actually have published articles
   const topCategories = categories.filter(c => !c.parent_id && (c.article_count ?? 0) > 0);
@@ -317,8 +377,25 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             {/* Part 1 (mobile row): logo + hamburger side-by-side. On desktop
                 this wrapper dissolves (md:contents) so the logo sits inline. */}
             <div className="flex items-center justify-between w-full md:w-auto md:contents">
-              {/* Logo: NEWS FOREVER */}
-              <button onClick={onGoHome} className="flex items-center gap-3 text-left group shrink-0 py-0.5">
+              {/* Logo: NEWS FOREVER — a real <a href="/">, not a button.
+                  As a button it only worked when React was already driving the
+                  page; on any URL the SPA does not own (a legacy page, or a
+                  route it renders as "article not found") the click updated
+                  state without navigating, so the address bar changed but the
+                  homepage never loaded. An anchor always gets the reader home:
+                  the SPA intercepts a plain left-click, and anything else is a
+                  normal browser navigation. It is also the home link crawlers
+                  expect to find on the masthead. */}
+              <a
+                href="/"
+                aria-label="News Forever — go to the homepage"
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onGoHome();
+                }}
+                className="flex items-center gap-3 text-left group shrink-0 py-0.5 no-underline"
+              >
                 {siteConfig.logoUrl ? (
                   <img
                     src={resolveAssetUrl(siteConfig.logoUrl)}
@@ -343,7 +420,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     {t('tagline')}
                   </span>
                 </div>
-              </button>
+              </a>
 
               {/* Mobile hamburger (right of logo) */}
               <button
@@ -546,8 +623,14 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
         </div>
       )}
 
-      {/* Breaking News Ticker — hidden if admin turned it off; custom lines override latest articles */}
-      {siteConfig.showTicker !== false && (
+      {/* Breaking News Ticker — hidden if admin turned it off; custom lines
+          override latest articles. Held back until the config has answered:
+          this site has the ticker switched off, so rendering it on the
+          assumption that it is on and pulling it out ~300ms later pushed the
+          whole page down and back by 33px — 0.068 of layout shift on every
+          route, two thirds of Google's entire budget, for a strip the site
+          does not even use. */}
+      {configLoaded && siteConfig.showTicker !== false && (
         <NewsTicker
           blogs={blogs}
           onSelectArticle={(slug) => { onSelectArticle(slug); }}
@@ -556,7 +639,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
       )}
 
       {/* Leaderboard Ad Strip — between header and hero, ci_advertisement-backed */}
-      <LeaderboardAd ads={ads} />
+      {configLoaded && <LeaderboardAd ads={ads} />}
 
       {/* Main Page Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -645,12 +728,35 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             <div className="space-y-2">
               <h4 className="font-bold text-stone-900 uppercase tracking-widest text-[10px] font-mono">{t('topSubcategories')}</h4>
-              <ul className="space-y-1 text-stone-600 text-[11px]">
-                <li>• Fashion &amp; Glamour</li>
-                <li>• Entertainment</li>
-                <li>• Business News</li>
-                <li>• Lifestyle &amp; Products</li>
-                <li>• Astrology</li>
+              {/* These were five hardcoded strings with typed-in "•" bullets and
+                  no links — dead text that named the sections but went nowhere
+                  and taught crawlers nothing. They now come from the same
+                  NAV_UMBRELLAS the header uses, as real /category/<slug>
+                  anchors, so the list cannot drift out of step with the nav. */}
+              <ul className="space-y-1.5 text-[11px]">
+                {navItems
+                  // Same source and same filtering as the header, so the two
+                  // can never disagree — an umbrella with no published
+                  // articles is hidden in both rather than linking to an
+                  // empty section. Umbrellas are the entries carrying a public
+                  // slug (a string id); "Home", the numeric ci_category
+                  // extras and the external About/Contact links are not.
+                  .filter((item) => typeof item.id === 'string' && item.id !== 'all')
+                  .map((item) => (
+                    <li key={String(item.id)}>
+                      <a
+                        href={`/category/${item.id}`}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                          e.preventDefault();
+                          handleCatSelect(item.id as string, null);
+                        }}
+                        className="text-stone-600 hover:text-[#7A0C0C] transition"
+                      >
+                        {item.name}
+                      </a>
+                    </li>
+                  ))}
               </ul>
             </div>
 
@@ -667,7 +773,30 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             </div>
           </div>
 
-          <div className="border-t border-stone-200 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
+          {/* Legal — real anchors so they are crawlable and can be opened in a
+              new tab, with SPA navigation on a plain left-click. */}
+          <nav
+            aria-label="Legal"
+            className="border-t border-stone-200 pt-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[10px] uppercase tracking-widest font-mono"
+          >
+            {LEGAL_LINKS.map(({ slug, label }) => (
+              <a
+                key={slug}
+                href={`/${slug}`}
+                onClick={(e) => {
+                  if (!onOpenLegal) return;
+                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                  e.preventDefault();
+                  onOpenLegal(slug);
+                }}
+                className="text-stone-600 hover:text-[#7A0C0C] transition underline underline-offset-2"
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+
+          <div className="border-t border-stone-200 mt-4 pt-6 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center text-[10px] text-stone-500 uppercase tracking-widest font-mono">
             <span>© 2026 News Forever. All rights reserved.</span>
             <button
               onClick={onSwitchToAdmin}
@@ -737,7 +866,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
                     : 'bg-white text-stone-700 border border-stone-300 hover:bg-stone-200'
                 }`}
               >
-                {t('allCount')} ({blogs.length})
+                {t('allCount')} ({searchPool.length})
               </button>
               {topCategories.map((cat) => (
                 <button
@@ -757,8 +886,11 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
             {/* Article Results Header Status */}
             <div className="px-4 py-2 bg-stone-50 border-b border-stone-100 flex items-center justify-between text-[11px] font-mono text-stone-500">
               <span>
-                {paletteQuery.trim()
-                  ? `Found ${filteredArticles.length} matching article${filteredArticles.length === 1 ? '' : 's'}`
+                {indexState === 'loading' && !searchIndex
+                  ? 'Loading full archive…'
+                  : paletteQuery.trim()
+                  ? `Found ${filteredArticles.length} matching article${filteredArticles.length === 1 ? '' : 's'}` +
+                    (filteredArticles.length > visibleArticles.length ? ` — showing first ${visibleArticles.length}` : '')
                   : `${t('trendingStories')} (${filteredArticles.length})`}
               </span>
               <span className="hidden sm:inline text-stone-400">{t('clickResult')}</span>
@@ -766,8 +898,8 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({
 
             {/* Results List */}
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100 p-2 space-y-1">
-              {filteredArticles.length > 0 ? (
-                filteredArticles.map((article) => (
+              {visibleArticles.length > 0 ? (
+                visibleArticles.map((article) => (
                   <div
                     key={article.id}
                     onClick={() => {
